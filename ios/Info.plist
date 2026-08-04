@@ -84,11 +84,11 @@
     <!--                                                                  -->
     <!-- NOTE: .snb is a directory bundle (loose folder), not a file.     -->
     <!-- It lives in app-private storage and is NOT registered here.      -->
-    <!-- The portable interchange format is .snbx (a ZIP archive).        -->
+    <!-- The preferred portable format is .3enotes; .snbx remains legacy-compatible.        -->
     <!-- ================================================================ -->
     <key>CFBundleDocumentTypes</key>
     <array>
-        <!-- SpeedyNote Package (.snbx) — ZIP archive for import/export -->
+        <!-- 3ENotes project (.3enotes), with legacy .snbx compatibility -->
         <dict>
             <key>CFBundleTypeName</key>
             <string>3ENotes Notebook Package</string>
@@ -98,6 +98,7 @@
             <string>Owner</string>
             <key>LSItemContentTypes</key>
             <array>
+                <string>com.3e.3enotes.project</string>
                 <string>org.speedynote.snbx</string>
             </array>
         </dict>
@@ -119,11 +120,30 @@
     <!-- ================================================================ -->
     <!-- Exported UTI Declarations                                        -->
     <!-- ================================================================ -->
-    <!-- Declare .snbx as a custom file type so iOS recognizes it.        -->
-    <!-- Without this, .snbx files would be treated as generic binary.    -->
+    <!-- Declare the portable project types so Files and Share Sheet can open them. -->
     <!-- ================================================================ -->
     <key>UTExportedTypeDeclarations</key>
     <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.3e.3enotes.project</string>
+            <key>UTTypeDescription</key>
+            <string>3ENotes Project</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+                <string>public.archive</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>3enotes</string>
+                </array>
+                <key>public.mime-type</key>
+                <string>application/x-3enotes</string>
+            </dict>
+        </dict>
         <dict>
             <key>UTTypeIdentifier</key>
             <string>org.speedynote.snbx</string>

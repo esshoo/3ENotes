@@ -144,6 +144,7 @@ void ShortcutManager::registerDefaults()
     registerAction("tool.highlighter", "T", tr("Text Highlighter Tool"), tr("Tools"));
     registerAction("tool.marker", "M", tr("Marker Tool"), tr("Tools"));
     registerAction("tool.object_select", "V", tr("Object Select Tool"), tr("Tools"));
+    registerAction("tool.laser", "P", tr("Laser Pointer Tool"), tr("Tools"));
     registerAction("tool.pan", "H", tr("Pan Tool (Hold)"), tr("Tools"));
     // Cycle the active tool's color / thickness presets (single-key, remappable).
     // Color applies to Pen/Marker/Highlighter; thickness to Pen/Marker/Eraser.

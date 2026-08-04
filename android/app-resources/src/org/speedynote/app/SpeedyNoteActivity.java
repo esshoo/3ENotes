@@ -14,13 +14,13 @@ import org.qtproject.qt.android.bindings.QtActivity;
  * 
  * Extends QtActivity to:
  * 1. Handle Activity results from the PDF file picker (BUG-A003)
- * 2. Handle Activity results from the .snbx package importer (Phase 2)
+ * 2. Handle .3enotes/.snbx import and external-open intents (Phase 2)
  * 3. Enable high-rate stylus input via requestUnbufferedDispatch() (BUG-A004)
  * 4. Provide system dark mode detection for theme synchronization (BUG-A007)
  * 
  * This is necessary because:
  * - PDF picker: We need to process the file picker result while SAF permission is valid
- * - Package importer: Same SAF handling for .snbx files
+ * - Project importer: SAF handling for .3enotes and legacy .snbx files
  * - Stylus input: Android batches touch events at 60Hz by default; we want 240Hz
  * - Dark mode: Qt doesn't automatically detect Android's system theme setting
  */
@@ -58,6 +58,35 @@ public class SpeedyNoteActivity extends QtActivity {
     public void onCreate(android.os.Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         sInstance = this;
+        dispatchProjectViewIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        dispatchProjectViewIntent(intent);
+    }
+
+    private void dispatchProjectViewIntent(final Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return;
+
+        // Qt finishes loading asynchronously during a cold start. Try once
+        // after the first frame, then retry if the JNI callback was not ready.
+        final View root = getWindow().getDecorView();
+        root.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!ImportHelper.handleViewIntent(SpeedyNoteActivity.this, intent)) {
+                    root.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            ImportHelper.handleViewIntent(SpeedyNoteActivity.this, intent);
+                        }
+                    }, 1200);
+                }
+            }
+        }, 350);
     }
     
     @Override

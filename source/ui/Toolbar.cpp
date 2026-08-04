@@ -4,6 +4,7 @@
 #include "subtoolbars/MarkerSubToolbar.h"
 #include "subtoolbars/EraserSubToolbar.h"
 #include "subtoolbars/HighlighterSubToolbar.h"
+#include "subtoolbars/LaserSubToolbar.h"
 #include "subtoolbars/ObjectSelectSubToolbar.h"
 #include "subtoolbars/OcrSubToolbar.h"
 
@@ -93,6 +94,15 @@ void Toolbar::setupUi()
     m_toolGroup->addButton(m_textExpandable->toolButton());
     mainLayout->addWidget(m_textExpandable);
 
+    // --- Laser pointer (temporary overlay; never saved/exported) ---
+    m_laserSubToolbar = new LaserSubToolbar();
+    m_laserExpandable = new ExpandableToolButton(this);
+    m_laserExpandable->setThemedIcon("laser");
+    m_laserExpandable->toolButton()->setToolTip(tr("Laser Pointer Tool (P)"));
+    m_laserExpandable->setContentWidget(m_laserSubToolbar);
+    m_toolGroup->addButton(m_laserExpandable->toolButton());
+    mainLayout->addWidget(m_laserExpandable);
+
     // --- OCR (not in tool group, hover-to-expand) ---
     m_ocrSubToolbar = new OcrSubToolbar();
     m_ocrExpandable = new ExpandableToolButton(this);
@@ -168,6 +178,10 @@ void Toolbar::connectSignals()
         expandToolButton(ToolType::Highlighter);
         emit toolSelected(ToolType::Highlighter);
     });
+    connect(m_laserExpandable->toolButton(), &QPushButton::clicked, this, [this]() {
+        expandToolButton(ToolType::Laser);
+        emit toolSelected(ToolType::Laser);
+    });
     connect(m_panButton, &QPushButton::clicked, this, [this]() {
         expandToolButton(ToolType::Pan);
         emit toolSelected(ToolType::Pan);
@@ -199,6 +213,7 @@ void Toolbar::expandToolButton(ToolType tool)
         case ToolType::Marker:    newSub = m_markerSubToolbar; break;
         case ToolType::Eraser:    newSub = m_eraserSubToolbar; break;
         case ToolType::Highlighter: newSub = m_highlighterSubToolbar; break;
+        case ToolType::Laser: newSub = m_laserSubToolbar; break;
         case ToolType::ObjectSelect: newSub = m_objectSelectSubToolbar; break;
         default: break;
     }
@@ -222,6 +237,7 @@ void Toolbar::collapseAllToolButtons()
     m_eraserExpandable->setExpanded(false);
     m_objectInsertExpandable->setExpanded(false);
     m_textExpandable->setExpanded(false);
+    m_laserExpandable->setExpanded(false);
 }
 
 void Toolbar::onOcrExpanded(bool expanded)
@@ -243,6 +259,7 @@ ExpandableToolButton* Toolbar::expandableForTool(ToolType tool) const
         case ToolType::Eraser:       return m_eraserExpandable;
         case ToolType::ObjectSelect: return m_objectInsertExpandable;
         case ToolType::Highlighter:  return m_textExpandable;
+        case ToolType::Laser:        return m_laserExpandable;
         default: return nullptr;
     }
 }
@@ -291,6 +308,7 @@ void Toolbar::updateTheme(bool darkMode)
     m_objectInsertExpandable->setDarkMode(darkMode);
     m_textExpandable->setDarkMode(darkMode);
     m_ocrExpandable->setDarkMode(darkMode);
+    m_laserExpandable->setDarkMode(darkMode);
 
     // Update subtoolbars
     m_penSubToolbar->setDarkMode(darkMode);
@@ -299,6 +317,7 @@ void Toolbar::updateTheme(bool darkMode)
     m_highlighterSubToolbar->setDarkMode(darkMode);
     m_objectSelectSubToolbar->setDarkMode(darkMode);
     m_ocrSubToolbar->setDarkMode(darkMode);
+    m_laserSubToolbar->setDarkMode(darkMode);
 
     // Update plain buttons
     m_straightLineButton->setDarkMode(darkMode);
@@ -350,6 +369,7 @@ void Toolbar::onTabChanged(int newTabId, int oldTabId)
         m_penSubToolbar->saveTabState(oldTabId);
         m_markerSubToolbar->saveTabState(oldTabId);
         m_highlighterSubToolbar->saveTabState(oldTabId);
+        m_laserSubToolbar->saveTabState(oldTabId);
         m_eraserSubToolbar->saveTabState(oldTabId);
         m_objectSelectSubToolbar->saveTabState(oldTabId);
         m_ocrSubToolbar->saveTabState(oldTabId);
@@ -360,6 +380,7 @@ void Toolbar::onTabChanged(int newTabId, int oldTabId)
         m_penSubToolbar->restoreTabState(newTabId);
         m_markerSubToolbar->restoreTabState(newTabId);
         m_highlighterSubToolbar->restoreTabState(newTabId);
+        m_laserSubToolbar->restoreTabState(newTabId);
         m_eraserSubToolbar->restoreTabState(newTabId);
         m_objectSelectSubToolbar->restoreTabState(newTabId);
         m_ocrSubToolbar->restoreTabState(newTabId);
@@ -371,6 +392,7 @@ void Toolbar::clearTabState(int tabId)
     m_penSubToolbar->clearTabState(tabId);
     m_markerSubToolbar->clearTabState(tabId);
     m_highlighterSubToolbar->clearTabState(tabId);
+    m_laserSubToolbar->clearTabState(tabId);
     m_eraserSubToolbar->clearTabState(tabId);
     m_objectSelectSubToolbar->clearTabState(tabId);
     m_ocrSubToolbar->clearTabState(tabId);

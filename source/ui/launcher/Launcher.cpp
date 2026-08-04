@@ -81,6 +81,28 @@ namespace {
     static QStringList s_pickedPackagePaths;  // Supports multi-file selection
     static bool s_packagePickerCancelled = false;
     static QEventLoop* s_packagePickerLoop = nullptr;
+
+    void deliverExternalPackageToLauncher(const QString& path, int attempt = 0)
+    {
+        QMetaObject::invokeMethod(qApp, [path, attempt]() {
+            for (QWidget* widget : QApplication::topLevelWidgets()) {
+                if (auto* launcher = qobject_cast<Launcher*>(widget)) {
+                    launcher->importFiles(QStringList{path});
+                    return;
+                }
+            }
+
+            // During a cold start the Java VIEW intent may arrive before the
+            // Launcher is constructed. Retry briefly on the Qt event thread.
+            if (attempt < 10) {
+                QTimer::singleShot(300, qApp, [path, attempt]() {
+                    deliverExternalPackageToLauncher(path, attempt + 1);
+                });
+            } else {
+                qWarning() << "Could not deliver external 3ENotes project to Launcher:" << path;
+            }
+        }, Qt::QueuedConnection);
+    }
 }
 
 // JNI callback: Called from Java when a single package file is picked and copied
@@ -99,6 +121,8 @@ Java_org_speedynote_app_ImportHelper_onPackageFilePicked(JNIEnv *env, jclass /*c
     
     if (s_packagePickerLoop) {
         s_packagePickerLoop->quit();
+    } else if (!s_pickedPackagePaths.isEmpty()) {
+        deliverExternalPackageToLauncher(s_pickedPackagePaths.constFirst());
     }
 }
 
@@ -142,7 +166,7 @@ Java_org_speedynote_app_ImportHelper_onPackagePickCancelled(JNIEnv * /*env*/, jc
     }
 }
 
-// Helper function to pick .snbx package file(s) on Android via SAF
+// Helper function to pick .3enotes project file(s) on Android via SAF
 // Supports multi-file selection (Phase 3: Batch Import)
 static QStringList pickSnbxFilesAndroid()
 {
@@ -792,7 +816,7 @@ void Launcher::showEvent(QShowEvent* event)
 static bool isSupportedDropFile(const QString& path)
 {
     if (path.endsWith(".pdf", Qt::CaseInsensitive)) return true;
-    if (path.endsWith(".snbx", Qt::CaseInsensitive)) return true;
+    if (path.endsWith(".snbx", Qt::CaseInsensitive) || path.endsWith(".3enotes", Qt::CaseInsensitive)) return true;
     if (path.endsWith(".snb", Qt::CaseInsensitive) && QFileInfo(path).isDir()) return true;
     return false;
 }
@@ -844,7 +868,7 @@ void Launcher::dropEvent(QDropEvent* event)
             directOpenFiles.append(filePath);
         } else if (filePath.endsWith(".snb", Qt::CaseInsensitive) && QFileInfo(filePath).isDir()) {
             directOpenFiles.append(filePath);
-        } else if (filePath.endsWith(".snbx", Qt::CaseInsensitive) && QFile::exists(filePath)) {
+        } else if ((filePath.endsWith(".snbx", Qt::CaseInsensitive) || filePath.endsWith(".3enotes", Qt::CaseInsensitive)) && QFile::exists(filePath)) {
             snbxFiles.append(filePath);
         }
     }
@@ -861,7 +885,7 @@ void Launcher::dropEvent(QDropEvent* event)
         emit notebookSelected(path);
     }
 
-    // Import .snbx packages via the batch import flow
+    // Import .3enotes projects via the batch import flow
     if (!snbxFiles.isEmpty()) {
         if (snbxFiles.size() > 1) {
             QString message = tr("Import %1 notebooks?").arg(snbxFiles.size());
@@ -1038,7 +1062,7 @@ void Launcher::showNotebookContextMenu(const QString& bundlePath, const QPoint& 
         showPdfExportDialog({bundlePath});
     });
     
-    QAction* exportSnbxAction = exportMenu->addAction(tr("To SNBX..."));
+    QAction* exportSnbxAction = exportMenu->addAction(tr("To 3ENotes Project..."));
     connect(exportSnbxAction, &QAction::triggered, this, [this, bundlePath]() {
         showSnbxExportDialog({bundlePath});
     });
@@ -1558,7 +1582,7 @@ void Launcher::showTimelineOverflowMenu()
         }
     });
     
-    QAction* exportSnbxAction = exportMenu->addAction(tr("To SNBX..."));
+    QAction* exportSnbxAction = exportMenu->addAction(tr("To 3ENotes Project..."));
     connect(exportSnbxAction, &QAction::triggered, this, [this]() {
         QStringList selected = m_timelineList->selectedBundlePaths();
         if (!selected.isEmpty()) {
@@ -1793,11 +1817,11 @@ void Launcher::onExportJobComplete(const BatchOps::BatchResult& result, const QS
             chooserTitle = successfulOutputs.size() == 1 
                 ? tr("Share PDF") 
                 : tr("Share %1 PDFs").arg(successfulOutputs.size());
-        } else if (firstOutput.endsWith(".snbx", Qt::CaseInsensitive)) {
-            mimeType = "application/octet-stream";
-            chooserTitle = successfulOutputs.size() == 1 
-                ? tr("Share Notebook") 
-                : tr("Share %1 Notebooks").arg(successfulOutputs.size());
+        } else if ((firstOutput.endsWith(".snbx", Qt::CaseInsensitive) || firstOutput.endsWith(".3enotes", Qt::CaseInsensitive))) {
+            mimeType = "application/x-3enotes";
+            chooserTitle = successfulOutputs.size() == 1
+                ? tr("Share 3ENotes Project")
+                : tr("Share %1 3ENotes Projects").arg(successfulOutputs.size());
         }
         
         AndroidShareHelper::shareMultipleFiles(successfulOutputs, mimeType, chooserTitle);
@@ -1813,11 +1837,11 @@ void Launcher::onExportJobComplete(const BatchOps::BatchResult& result, const QS
             title = successfulOutputs.size() == 1
                 ? tr("Share PDF")
                 : tr("Share %1 PDFs").arg(successfulOutputs.size());
-        } else if (firstOutput.endsWith(".snbx", Qt::CaseInsensitive)) {
-            mimeType = "application/octet-stream";
+        } else if ((firstOutput.endsWith(".snbx", Qt::CaseInsensitive) || firstOutput.endsWith(".3enotes", Qt::CaseInsensitive))) {
+            mimeType = "application/x-3enotes";
             title = successfulOutputs.size() == 1
-                ? tr("Share Notebook")
-                : tr("Share %1 Notebooks").arg(successfulOutputs.size());
+                ? tr("Share 3ENotes Project")
+                : tr("Share %1 3ENotes Projects").arg(successfulOutputs.size());
         }
 
         IOSShareHelper::shareMultipleFiles(successfulOutputs, mimeType, title);
@@ -2009,7 +2033,7 @@ QString Launcher::findImportedPdfPath(const QString& bundlePath)
     
     // Check if the PDF is in our sandbox directories:
     // 1. /files/pdfs/ - Direct PDF imports via SAF (BUG-A003)
-    // 2. /files/notebooks/embedded/ - PDFs extracted from .snbx packages (Phase 2)
+    // 2. /files/notebooks/embedded/ - PDFs extracted from .3enotes projects (Phase 2)
     QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QString sandboxPdfDir = appDataDir + "/pdfs";
     QString embeddedDir = appDataDir + "/notebooks/embedded";

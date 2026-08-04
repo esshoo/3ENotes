@@ -411,7 +411,7 @@ void StarredView::showOverflowMenu()
         }
     });
     
-    QAction* exportSnbxAction = exportMenu->addAction(tr("To SNBX..."));
+    QAction* exportSnbxAction = exportMenu->addAction(tr("To 3ENotes Project..."));
     connect(exportSnbxAction, &QAction::triggered, this, [this]() {
         QStringList selected = m_listView->selectedBundlePaths();
         if (!selected.isEmpty()) {

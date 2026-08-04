@@ -66,7 +66,7 @@ void FloatingActionButton::setupUi()
     m_pagedBtn = createActionButton("bookmark", tr("New Paged Notebook"));
     m_pdfBtn = createActionButton("pdf", tr("Open PDF for Annotation"));
     m_openBtn = createActionButton("folder", tr("Open Notebook (.snb)"));
-    m_importBtn = createActionButton("import", tr("Import Package (.snbx)"));
+    m_importBtn = createActionButton("import", tr("Import 3ENotes Project (.3enotes / .snbx)"));
     
     m_actionButtons << m_edgelessBtn << m_pagedBtn << m_pdfBtn << m_openBtn << m_importBtn;
     

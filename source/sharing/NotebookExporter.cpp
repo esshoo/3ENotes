@@ -9,6 +9,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDebug>
+#include <QDateTime>
+#include <QCoreApplication>
 
 // miniz - cross-platform ZIP library (MIT license)
 #include "miniz.h"
@@ -91,6 +93,24 @@ NotebookExporter::ExportResult NotebookExporter::exportPackage(
         QFile::remove(options.destPath);
     };
     
+    // Portable 3ENotes container metadata. Legacy .snbx importers ignore this
+    // unknown root entry, while newer clients can use it for format migration.
+    {
+        QJsonObject packageMeta;
+        packageMeta[QStringLiteral("format")] = QStringLiteral("3ENotes");
+        packageMeta[QStringLiteral("format_version")] = 1;
+        packageMeta[QStringLiteral("application_version")] = QCoreApplication::applicationVersion();
+        packageMeta[QStringLiteral("created_utc")] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        packageMeta[QStringLiteral("bundle")] = notebookName;
+        const QByteArray meta = QJsonDocument(packageMeta).toJson(QJsonDocument::Indented);
+        if (!mz_zip_writer_add_mem(&zipArchive, "3enotes-package.json",
+                                   meta.constData(), meta.size(), MZ_BEST_COMPRESSION)) {
+            result.errorMessage = QObject::tr("Failed to add 3ENotes package metadata");
+            cleanupOnError();
+            return result;
+        }
+    }
+
     // ===== Step 1: Add all files from the .snb bundle =====
     
     // Iterate through all files in the bundle

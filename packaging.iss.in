@@ -44,6 +44,11 @@ es.FileAssociations=Asociaciones de archivos:
 zh.FileAssociations=文件关联：
 fr.FileAssociations=Associations de fichiers :
 
+en.ProjectAssociationTask=Associate .3enotes project files with 3ENotes
+es.ProjectAssociationTask=Asociar archivos de proyecto .3enotes con 3ENotes
+zh.ProjectAssociationTask=将 .3enotes 项目文件与 3ENotes 关联
+fr.ProjectAssociationTask=Associer les fichiers projet .3enotes à 3ENotes
+
 en.SystemIntegration=System integration:
 es.SystemIntegration=Integración del sistema:
 zh.SystemIntegration=系统集成：
@@ -83,6 +88,7 @@ Name: "{group}\Uninstall 3ENotes"; Filename: "{uninstallexe}"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:DesktopIconTask}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "pdfassociation"; Description: "{cm:PDFAssociationTask}"; GroupDescription: "{cm:FileAssociations}"
+Name: "projectassociation"; Description: "{cm:ProjectAssociationTask}"; GroupDescription: "{cm:FileAssociations}"; Flags: checkedonce
 Name: "addtopath"; Description: "{cm:AddToPathTask}"; GroupDescription: "{cm:SystemIntegration}"
 
 [Registry]
@@ -98,6 +104,13 @@ Root: HKLM; Subkey: "SOFTWARE\SpeedyNote\Capabilities\FileAssociations"; ValueNa
 Root: HKLM; Subkey: "SOFTWARE\3ENotes\Capabilities\FileAssociations"; ValueName: ".spn"; Flags: deletevalue
 
 ; =============================================================================
+; 3ENotes project file association
+Root: HKCR; Subkey: ".3enotes"; ValueType: string; ValueData: "3ENotes.Project"; Tasks: projectassociation; Flags: uninsdeletekey
+Root: HKCR; Subkey: "3ENotes.Project"; ValueType: string; ValueData: "3ENotes Project"; Tasks: projectassociation; Flags: uninsdeletekey
+Root: HKCR; Subkey: "3ENotes.Project\DefaultIcon"; ValueType: string; ValueData: "{app}\speedynote.exe,0"; Tasks: projectassociation
+Root: HKCR; Subkey: "3ENotes.Project\shell\open\command"; ValueType: string; ValueData: """{app}\speedynote.exe"" ""%1"""; Tasks: projectassociation
+Root: HKLM; Subkey: "SOFTWARE\3ENotes\Capabilities\FileAssociations"; ValueType: string; ValueName: ".3enotes"; ValueData: "3ENotes.Project"; Tasks: projectassociation
+
 ; PDF file association entries (only if task is selected)
 ; uninsdeletekey: removes entire key tree on uninstall
 ; uninsdeletevalue: removes only the specific value on uninstall

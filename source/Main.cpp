@@ -695,7 +695,7 @@ protected:
         QFileInfo fi(path);
         QString ext = fi.suffix().toLower();
 
-        if (ext == "snbx") {
+        if (ext == "snbx" || ext == "3enotes") {
             if (m_launcher) {
                 m_launcher->importFiles(QStringList{path});
             }
@@ -818,7 +818,7 @@ private:
             QString ext = fi.suffix().toLower();
             QString path = fi.absoluteFilePath();
 
-            if (ext == "snbx") {
+            if (ext == "snbx" || ext == "3enotes") {
                 snbxFiles.append(path);
             } else if (ext == "pdf") {
                 QString permanentPath = copyPdfToPermanentStorage(path);
@@ -879,6 +879,7 @@ int main(int argc, char* argv[])
         QGuiApplication app(argc, argv);
         app.setOrganizationName("3E");
         app.setApplicationName("3ENotes");
+        app.setApplicationVersion(QStringLiteral(APP_VERSION));
         migrateLegacySettings();
         return Cli::run(app, argc, argv);
     }
@@ -901,6 +902,7 @@ int main(int argc, char* argv[])
     QApplication app(argc, argv);
     app.setOrganizationName("3E");
     app.setApplicationName("3ENotes");
+    app.setApplicationVersion(QStringLiteral(APP_VERSION));
     migrateLegacySettings();
 
 #ifdef Q_OS_WIN

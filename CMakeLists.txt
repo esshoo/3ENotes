@@ -874,6 +874,7 @@ set(UI_SOURCES
     source/ui/subtoolbars/MarkerSubToolbar.cpp
     source/ui/subtoolbars/EraserSubToolbar.cpp
     source/ui/subtoolbars/HighlighterSubToolbar.cpp
+    source/ui/subtoolbars/LaserSubToolbar.cpp
     source/ui/subtoolbars/ObjectSelectSubToolbar.cpp
     source/ui/subtoolbars/OcrSubToolbar.cpp
     # Panels
@@ -1350,6 +1351,8 @@ elseif(UNIX AND NOT ANDROID)
             DESTINATION share/applications)
     install(FILES data/org.speedynote.SpeedyNote.metainfo.xml
             DESTINATION share/metainfo)
+    install(FILES data/com.3e.3enotes-project.xml
+            DESTINATION share/mime/packages)
     install(FILES resources/icons/mainicon.svg
             DESTINATION share/icons/hicolor/scalable/apps
             RENAME org.speedynote.SpeedyNote.svg)

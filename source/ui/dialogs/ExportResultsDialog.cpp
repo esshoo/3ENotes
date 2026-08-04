@@ -420,6 +420,9 @@ QString ExportResultsDialog::extractDisplayName(const QString& path) const
         name.chop(4);
     }
     // Remove .snbx extension for packages
+    else if (name.endsWith(".3enotes", Qt::CaseInsensitive)) {
+        name.chop(8);
+    }
     else if (name.endsWith(".snbx", Qt::CaseInsensitive)) {
         name.chop(5);
     }

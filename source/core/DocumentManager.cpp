@@ -163,7 +163,7 @@ Document* DocumentManager::loadDocument(const QString& path)
     }
     
     // Handle .snbx packages - extract and load the contained notebook
-    if (suffix == "snbx") {
+    if (suffix == "snbx" || suffix == "3enotes") {
         // Determine extraction destination
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
         // On Android/iOS, extract to app-private notebooks directory
@@ -174,12 +174,12 @@ Document* DocumentManager::loadDocument(const QString& path)
 #endif
         
 #ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "DocumentManager: Importing .snbx package" << path << "to" << destDir;
+        qDebug() << "DocumentManager: Importing 3ENotes package" << path << "to" << destDir;
 #endif
         
         auto importResult = NotebookImporter::importPackage(path, destDir);
         if (!importResult.success) {
-            qWarning() << "DocumentManager::loadDocument: Failed to import .snbx:" << importResult.errorMessage;
+            qWarning() << "DocumentManager::loadDocument: Failed to import package:" << importResult.errorMessage;
             return nullptr;
         }
         
@@ -199,7 +199,7 @@ Document* DocumentManager::loadDocument(const QString& path)
         if (path.startsWith(importsDir)) {
             QFile::remove(path);
 #ifdef SPEEDYNOTE_DEBUG
-            qDebug() << "DocumentManager: Cleaned up imported .snbx file:" << path;
+            qDebug() << "DocumentManager: Cleaned up imported package file:" << path;
 #endif
         }
 #endif

@@ -66,7 +66,20 @@
                 <data android:mimeType="application/pdf"/>
             </intent-filter>
 
-            <!-- Open SpeedyNote bundle files (.snb) -->
+            <!-- Open portable 3ENotes project files. The legacy .snbx
+                 extension remains supported for backward compatibility. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:mimeType="application/x-3enotes"/>
+                <data android:mimeType="application/octet-stream"
+                      android:pathPattern=".*\\.3enotes"/>
+                <data android:mimeType="application/octet-stream"
+                      android:pathPattern=".*\\.snbx"/>
+            </intent-filter>
+
+            <!-- Open internal/legacy SpeedyNote bundle files (.snb) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>

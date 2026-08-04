@@ -88,7 +88,7 @@ void BatchImportDialog::setupUi()
     
     // ===== Description =====
     QLabel* descLabel = new QLabel(
-        tr("Add .snbx notebook packages to import. You can add individual files "
+        tr("Add .3enotes projects or legacy .snbx packages to import. You can add individual files "
            "or scan a folder for notebooks."));
     descLabel->setWordWrap(true);
     descLabel->setStyleSheet("color: palette(placeholderText); font-size: 13px;");
@@ -200,7 +200,7 @@ void BatchImportDialog::onAddFilesClicked()
         this,
         tr("Select Notebook Files"),
         lastDir,
-        tr("3ENotes Packages (*.snbx);;All Files (*)")
+        tr("3ENotes Projects (*.3enotes *.snbx);;All Files (*)")
     );
     
     if (!files.isEmpty()) {
@@ -239,14 +239,14 @@ void BatchImportDialog::onAddFolderClicked()
         
         // Scan folder for .snbx files
         QStringList foundFiles;
-        QDirIterator it(folder, QStringList() << "*.snbx", QDir::Files, QDirIterator::Subdirectories);
+        QDirIterator it(folder, QStringList() << "*.3enotes" << "*.snbx", QDir::Files, QDirIterator::Subdirectories);
         while (it.hasNext()) {
             foundFiles.append(it.next());
         }
         
         if (foundFiles.isEmpty()) {
             QMessageBox::information(this, tr("No Notebooks Found"),
-                tr("No .snbx notebook files were found in the selected folder."));
+                tr("No .3enotes or .snbx files were found in the selected folder."));
         } else {
             addFiles(foundFiles);
         }
@@ -322,7 +322,7 @@ void BatchImportDialog::addFiles(const QStringList& files)
     
     for (const QString& file : files) {
         // Skip non-.snbx files
-        if (!file.endsWith(".snbx", Qt::CaseInsensitive)) {
+        if (!file.endsWith(".snbx", Qt::CaseInsensitive) && !file.endsWith(".3enotes", Qt::CaseInsensitive)) {
             continue;
         }
         

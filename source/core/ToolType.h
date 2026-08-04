@@ -20,6 +20,7 @@ enum class ToolType {
     Highlighter,///< Vector highlighter - highlight blend mode (Phase 2B)
     Lasso,      ///< Selection tool - select and manipulate strokes (Phase 2B)
     ObjectSelect,///< Object selection tool - select and manipulate inserted objects (Phase O2)
+    Laser,      ///< Temporary laser pointer overlay (never saved or exported)
     Pan         ///< Hand tool - click-drag to pan the viewport
 };
 

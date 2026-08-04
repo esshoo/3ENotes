@@ -13,6 +13,7 @@ class PenSubToolbar;
 class MarkerSubToolbar;
 class EraserSubToolbar;
 class HighlighterSubToolbar;
+class LaserSubToolbar;
 class ObjectSelectSubToolbar;
 class OcrSubToolbar;
 
@@ -48,6 +49,7 @@ public:
     MarkerSubToolbar* markerSubToolbar() const { return m_markerSubToolbar; }
     EraserSubToolbar* eraserSubToolbar() const { return m_eraserSubToolbar; }
     HighlighterSubToolbar* highlighterSubToolbar() const { return m_highlighterSubToolbar; }
+    LaserSubToolbar* laserSubToolbar() const { return m_laserSubToolbar; }
     ObjectSelectSubToolbar* objectSelectSubToolbar() const { return m_objectSelectSubToolbar; }
     OcrSubToolbar* ocrSubToolbar() const { return m_ocrSubToolbar; }
 
@@ -82,6 +84,7 @@ private:
     ExpandableToolButton *m_eraserExpandable;
     ExpandableToolButton *m_objectInsertExpandable;
     ExpandableToolButton *m_textExpandable;
+    ExpandableToolButton *m_laserExpandable;
     ExpandableToolButton *m_ocrExpandable;
 
     // Plain tool buttons (no subtoolbar)
@@ -106,6 +109,7 @@ private:
     MarkerSubToolbar *m_markerSubToolbar;
     EraserSubToolbar *m_eraserSubToolbar;
     HighlighterSubToolbar *m_highlighterSubToolbar;
+    LaserSubToolbar *m_laserSubToolbar;
     ObjectSelectSubToolbar *m_objectSelectSubToolbar;
     OcrSubToolbar *m_ocrSubToolbar;
 

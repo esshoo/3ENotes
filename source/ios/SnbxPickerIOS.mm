@@ -35,7 +35,8 @@
     for (NSURL *url in urls) {
         NSString *fileName = url.lastPathComponent;
 
-        if (![fileName.pathExtension.lowercaseString isEqualToString:@"snbx"])
+        NSString *extLower = fileName.pathExtension.lowercaseString;
+        if (!([extLower isEqualToString:@"3enotes"] || [extLower isEqualToString:@"snbx"]))
             continue;
 
         BOOL accessed = [url startAccessingSecurityScopedResource];
@@ -149,12 +150,15 @@ void pickSnbxFiles(const QString& destDir, std::function<void(const QStringList&
     pickerWindow.rootViewController.view.backgroundColor = [UIColor clearColor];
     [pickerWindow makeKeyAndVisible];
 
-    UTType *snbxType = [UTType typeWithIdentifier:@"org.speedynote.snbx"];
-    if (!snbxType)
-        snbxType = UTTypeItem;
+    UTType *projectType = [UTType typeWithIdentifier:@"com.3e.3enotes.project"];
+    UTType *legacyType = [UTType typeWithIdentifier:@"org.speedynote.snbx"];
+    NSMutableArray<UTType *> *types = [NSMutableArray array];
+    if (projectType) [types addObject:projectType];
+    if (legacyType) [types addObject:legacyType];
+    if (types.count == 0) [types addObject:UTTypeItem];
 
     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc]
-        initForOpeningContentTypes:@[snbxType]];
+        initForOpeningContentTypes:types];
     picker.allowsMultipleSelection = YES;
     picker.modalPresentationStyle = UIModalPresentationFormSheet;
 

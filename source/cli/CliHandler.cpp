@@ -204,10 +204,11 @@ int handleExportSnbx(const QCommandLineParser& parser)
     }
     
     // Validate: can't export multiple notebooks to a single file
-    bool outputIsFile = BatchOps::isSingleFileOutput(outputPath, ".snbx");
+    bool outputIsFile = BatchOps::isSingleFileOutput(outputPath, ".3enotes") ||
+                        BatchOps::isSingleFileOutput(outputPath, ".snbx");
     if (bundles.size() > 1 && outputIsFile) {
         progress.reportError(QCoreApplication::translate("CLI",
-            "Cannot export %1 notebooks to a single SNBX file.\n"
+            "Cannot export %1 notebooks to a single 3ENotes project file.\n"
             "Use a directory as output destination, e.g.: -o ~/Backup/")
             .arg(bundles.size()));
         return ExitCode::InvalidArgs;
@@ -296,7 +297,7 @@ int handleImport(const QCommandLineParser& parser)
     QStringList packages = BatchOps::expandPackagePaths(inputPaths, recursive);
     if (packages.isEmpty()) {
         progress.reportError(QCoreApplication::translate("CLI",
-            "No valid .snbx packages found in the specified paths."));
+            "No valid .3enotes projects or legacy .snbx packages found in the specified paths."));
         return ExitCode::InvalidArgs;
     }
     

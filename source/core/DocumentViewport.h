@@ -165,6 +165,8 @@ struct UndoAction {
 #include <QTimer>
 #include <QMutex>
 #include <QFutureWatcher>
+
+class QPainter;
 #include <deque>
 
 // Forward declarations
@@ -505,6 +507,19 @@ public:
      * @brief Get the current drawing tool.
      */
     ToolType currentTool() const { return m_currentTool; }
+
+    // Temporary laser pointer overlay. These settings affect only presentation
+    // and are never written into the document or included in exports.
+    void setLaserColor(const QColor& color);
+    void setLaserSpotSize(qreal pixels);
+    void setLaserTrailLengthCm(qreal centimeters);
+    void setLaserTrailThickness(qreal pixels);
+    void setLaserHoldDuration(int milliseconds);
+    void setLaserFadeDuration(int milliseconds);
+    void setLaserPressOnly(bool enabled);
+    void setLaserPulseEnabled(bool enabled);
+    void setLaserSpotlightEnabled(bool enabled);
+    void setLaserSpotlightRadius(qreal pixels);
     
     /**
      * @brief Set the pen color for drawing.
@@ -2169,6 +2184,39 @@ private:
     bool m_isMiddleMousePanning = false;
     QPointF m_middleMouseLastPos;
     
+    // ===== Laser Pointer Overlay =====
+    struct LaserTrailPoint {
+        QPointF viewportPos;
+        qint64 timestampMs = 0;
+        qreal pathDistancePx = 0.0;
+        bool beginsStroke = false;
+    };
+    void addLaserPoint(const QPointF& viewportPos, bool pressed, bool beginStroke = false);
+    void releaseLaserPointer(const QPointF& viewportPos);
+    void pruneLaserTrail(qint64 nowMs);
+    void renderLaserPointer(QPainter& painter);
+    qreal laserMaxTrailPixels() const;
+
+    QVector<LaserTrailPoint> m_laserTrail;
+    QElapsedTimer m_laserClock;
+    QTimer* m_laserAnimationTimer = nullptr;
+    QColor m_laserColor = QColor(255, 45, 45);
+    qreal m_laserSpotSizePx = 14.0;
+    qreal m_laserTrailLengthCm = 12.0;
+    qreal m_laserTrailThicknessPx = 6.0;
+    int m_laserHoldDurationMs = 1200;
+    int m_laserFadeDurationMs = 700;
+    bool m_laserPressOnly = false;
+    bool m_laserPulseEnabled = true;
+    bool m_laserSpotlightEnabled = false;
+    qreal m_laserSpotlightRadiusPx = 110.0;
+    bool m_laserPressed = false;
+    bool m_laserVisible = false;
+    QPointF m_laserCurrentPos;
+    QPointF m_laserPulsePos;
+    qint64 m_laserPulseStartMs = -1;
+    qint64 m_laserLastInputMs = -1;
+
     // ===== Touch Gesture Handler =====
     // Touch gesture logic is encapsulated in TouchGestureHandler (see TouchGestureHandler.h)
     TouchGestureHandler* m_touchHandler = nullptr;  ///< Handles touch pan/zoom/tap

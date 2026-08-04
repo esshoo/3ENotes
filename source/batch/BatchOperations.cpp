@@ -134,8 +134,9 @@ BatchResult exportSnbxBatch(const QStringList& bundlePaths,
     }
     
     // Determine single-file vs batch mode
-    bool singleFileMode = (bundlePaths.size() == 1) && 
-                          isSingleFileOutput(options.outputPath, ".snbx");
+    bool singleFileMode = (bundlePaths.size() == 1) &&
+                          (isSingleFileOutput(options.outputPath, ".3enotes") ||
+                           isSingleFileOutput(options.outputPath, ".snbx"));
     
     // For batch mode, ensure output directory exists
     QString outputDir;
@@ -198,7 +199,7 @@ BatchResult exportSnbxBatch(const QStringList& bundlePaths,
         if (singleFileMode) {
             outputPath = options.outputPath;
         } else {
-            outputPath = generateOutputPath(bundlePath, outputDir, ".snbx", !options.overwrite);
+            outputPath = generateOutputPath(bundlePath, outputDir, ".3enotes", !options.overwrite);
         }
         fr.outputPath = outputPath;
         

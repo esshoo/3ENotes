@@ -27,9 +27,9 @@ BatchSnbxExportDialog::BatchSnbxExportDialog(const QStringList& bundlePaths, QWi
     , m_bundlePaths(bundlePaths)
 {
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
-    setWindowTitle(tr("Share Notebook Package"));
+    setWindowTitle(tr("Share 3ENotes Project"));
 #else
-    setWindowTitle(tr("Export Notebook Package"));
+    setWindowTitle(tr("Export 3ENotes Project"));
 #endif
     setWindowIcon(QIcon(":/resources/icons/mainicon.svg"));
     setModal(true);
@@ -130,17 +130,17 @@ void BatchSnbxExportDialog::setupUi()
 #else
     // Android: show share note
     QLabel* shareNote = new QLabel(
-        tr("The exported packages will be shared using Android's share sheet."));
+        tr("The exported 3ENotes projects will be shared using the system share sheet."));
     shareNote->setWordWrap(true);
     shareNote->setStyleSheet("color: palette(placeholderText); font-size: 13px; padding: 8px;");
     mainLayout->addWidget(shareNote);
 #endif
     
     // ===== Options =====
-    m_includePdfCheckbox = new QCheckBox(tr("Include PDF copy in package"));
+    m_includePdfCheckbox = new QCheckBox(tr("Include PDF copy in project"));
     m_includePdfCheckbox->setToolTip(
-        tr("Embed the source PDF file in the package.\n"
-           "This makes the package larger but allows the recipient to view the original PDF."));
+        tr("Embed the source PDF file in the project.\n"
+           "This makes the project larger but allows the recipient to view the original PDF."));
     m_includePdfCheckbox->setChecked(true);  // Default: include PDF
     m_includePdfCheckbox->setStyleSheet("font-size: 14px; padding: 8px;");
     m_includePdfCheckbox->setMinimumHeight(48);  // Touch-friendly
@@ -229,19 +229,19 @@ void BatchSnbxExportDialog::updateTitle()
     
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
     if (count == 1) {
-        m_titleLabel->setText(tr("Share Notebook Package"));
-        m_descLabel->setText(tr("Share the notebook as a .snbx package that can be imported on another device."));
+        m_titleLabel->setText(tr("Share 3ENotes Project"));
+        m_descLabel->setText(tr("Share the notebook as a .3enotes project that can be imported on another device."));
     } else {
-        m_titleLabel->setText(tr("Share %1 Notebook Packages").arg(count));
-        m_descLabel->setText(tr("Share %1 notebooks as .snbx packages that can be imported on another device.").arg(count));
+        m_titleLabel->setText(tr("Share %1 3ENotes Projects").arg(count));
+        m_descLabel->setText(tr("Share %1 notebooks as .3enotes projects that can be imported on another device.").arg(count));
     }
 #else
     if (count == 1) {
-        m_titleLabel->setText(tr("Export Notebook Package"));
-        m_descLabel->setText(tr("Export the notebook as a .snbx package that can be shared or transferred."));
+        m_titleLabel->setText(tr("Export 3ENotes Project"));
+        m_descLabel->setText(tr("Export the notebook as a .3enotes project that can be shared or transferred."));
     } else {
-        m_titleLabel->setText(tr("Export %1 Notebook Packages").arg(count));
-        m_descLabel->setText(tr("Export %1 notebooks as .snbx packages that can be shared or transferred.").arg(count));
+        m_titleLabel->setText(tr("Export %1 3ENotes Projects").arg(count));
+        m_descLabel->setText(tr("Export %1 notebooks as .3enotes projects that can be shared or transferred.").arg(count));
     }
 #endif
 }
@@ -308,7 +308,7 @@ QString BatchSnbxExportDialog::outputDirectory() const
     // The share intent copies the file, so we can safely delete old exports
     // This runs before each new export, ensuring cleanup even if user cancelled share
     QDir dir(cacheDir);
-    QStringList snbxFiles = dir.entryList(QStringList() << "*.snbx", QDir::Files);
+    QStringList snbxFiles = dir.entryList(QStringList() << "*.3enotes" << "*.snbx", QDir::Files);
     for (const QString& snbxFile : snbxFiles) {
         QFile::remove(dir.absoluteFilePath(snbxFile));
     }

@@ -171,7 +171,19 @@
             <source>%1 files selected</source>
             <translation>تم تحديد %1 files</translation>
         </message>
-    </context>
+            <message>
+            <source>Add .3enotes projects or legacy .snbx packages to import. You can add individual files or scan a folder.</source>
+            <translation>أضف مشاريع ‎.3enotes أو حزم ‎.snbx القديمة لاستيرادها. يمكنك إضافة ملفات منفردة أو فحص مجلد.</translation>
+        </message>
+        <message>
+            <source>3ENotes Projects (*.3enotes *.snbx);;All Files (*)</source>
+            <translation>مشاريع 3ENotes (*.3enotes *.snbx);;كل الملفات (*)</translation>
+        </message>
+        <message>
+            <source>No .3enotes or .snbx files were found in the selected folder.</source>
+            <translation>لم يتم العثور على ملفات ‎.3enotes أو ‎.snbx داخل المجلد المحدد.</translation>
+        </message>
+</context>
     <context>
         <name>BatchPdfExportDialog</name>
         <message>
@@ -476,7 +488,53 @@ This makes the package larger but allows the recipient to view the original PDF.
             <source>Select Output Folder</source>
             <translation>تحديد Output مجلد</translation>
         </message>
-    </context>
+            <message>
+            <source>Share 3ENotes Project</source>
+            <translation>مشاركة مشروع 3ENotes</translation>
+        </message>
+        <message>
+            <source>Export 3ENotes Project</source>
+            <translation>تصدير مشروع 3ENotes</translation>
+        </message>
+        <message>
+            <source>Share %1 3ENotes Projects</source>
+            <translation>مشاركة %1 من مشاريع 3ENotes</translation>
+        </message>
+        <message>
+            <source>Export %1 3ENotes Projects</source>
+            <translation>تصدير %1 من مشاريع 3ENotes</translation>
+        </message>
+        <message>
+            <source>The exported 3ENotes projects will be shared using the system share sheet.</source>
+            <translation>ستتم مشاركة مشاريع 3ENotes المصدّرة باستخدام نافذة المشاركة في النظام.</translation>
+        </message>
+        <message>
+            <source>Include PDF copy in project</source>
+            <translation>تضمين نسخة PDF داخل المشروع</translation>
+        </message>
+        <message>
+            <source>Embed the source PDF file in the project.
+This makes the project larger but allows the recipient to view the original PDF.</source>
+            <translation>تضمين ملف PDF الأصلي داخل المشروع.
+سيزيد ذلك حجم المشروع، لكنه يتيح للمستلم عرض ملف PDF الأصلي.</translation>
+        </message>
+        <message>
+            <source>Share the notebook as a .3enotes project that can be imported on another device.</source>
+            <translation>مشاركة المذكرة كمشروع ‎.3enotes يمكن استيراده على جهاز آخر.</translation>
+        </message>
+        <message>
+            <source>Share %1 notebooks as .3enotes projects that can be imported on another device.</source>
+            <translation>مشاركة %1 من المذكرات كمشاريع ‎.3enotes يمكن استيرادها على جهاز آخر.</translation>
+        </message>
+        <message>
+            <source>Export the notebook as a .3enotes project that can be shared or transferred.</source>
+            <translation>تصدير المذكرة كمشروع ‎.3enotes يمكن مشاركته أو نقله.</translation>
+        </message>
+        <message>
+            <source>Export %1 notebooks as .3enotes projects that can be shared or transferred.</source>
+            <translation>تصدير %1 من المذكرات كمشاريع ‎.3enotes يمكن مشاركتها أو نقلها.</translation>
+        </message>
+</context>
     <context>
         <name>CLI</name>
         <message>
@@ -2329,7 +2387,11 @@ This helps prevent accidental palm touches while writing. Only affects Y-Axis On
             <source>Import Package (.snbx)</source>
             <translation>استيراد Package (.snbx)</translation>
         </message>
-    </context>
+            <message>
+            <source>Import 3ENotes Project (.3enotes / .snbx)</source>
+            <translation>استيراد مشروع 3ENotes ‏(.3enotes / .snbx)</translation>
+        </message>
+</context>
     <context>
         <name>FloatingTextEditor</name>
         <message>
@@ -2926,7 +2988,19 @@ This action cannot be undone.</translation>
             <source>Some files could not be copied.</source>
             <translation>تعذر نسخ بعض الملفات.</translation>
         </message>
-    </context>
+            <message>
+            <source>To 3ENotes Project...</source>
+            <translation>إلى مشروع 3ENotes...</translation>
+        </message>
+        <message>
+            <source>Share 3ENotes Project</source>
+            <translation>مشاركة مشروع 3ENotes</translation>
+        </message>
+        <message>
+            <source>Share %1 3ENotes Projects</source>
+            <translation>مشاركة %1 من مشاريع 3ENotes</translation>
+        </message>
+</context>
     <context>
         <name>LayerPanel</name>
         <message>
@@ -3750,7 +3824,11 @@ Quit anyway?</translation>
             <source>At least one tab must remain open.</source>
             <translation>يجب إبقاء علامة تبويب واحدة على الأقل مفتوحة.</translation>
         </message>
-    </context>
+            <message>
+            <source>Share 3ENotes Project</source>
+            <translation>مشاركة مشروع 3ENotes</translation>
+        </message>
+</context>
     <context>
         <name>MarkdownNote</name>
         <message>
@@ -5631,7 +5709,11 @@ Try a different search term.</translation>
             <source>Go Back</source>
             <translation>رجوع</translation>
         </message>
-    </context>
+            <message>
+            <source>Laser Pointer Tool</source>
+            <translation>أداة مؤشر الليزر</translation>
+        </message>
+</context>
     <context>
         <name>StarredModel</name>
         <message>
@@ -5674,8 +5756,8 @@ Try a different search term.</translation>
         </message>
         <message>
             <location filename="../../source/ui/launcher/StarredView.cpp" line="414" />
-            <source>To SNBX...</source>
-            <translation>إلى SNBX...</translation>
+            <source>To 3ENotes Project...</source>
+            <translation>إلى مشروع 3ENotes...</translation>
         </message>
         <message>
             <location filename="../../source/ui/launcher/StarredView.cpp" line="426" />
@@ -5878,7 +5960,11 @@ and select "Star" to add it here.</translation>
 1: Y-axis scroll only
 2: Full gestures</translation>
         </message>
-    </context>
+            <message>
+            <source>Laser Pointer Tool (P)</source>
+            <translation>أداة مؤشر الليزر (P)</translation>
+        </message>
+</context>
     <context>
         <name>UndoDeleteButton</name>
         <message>
@@ -5906,6 +5992,95 @@ and select "Star" to add it here.</translation>
                 <numerusform>%n نتيجة</numerusform>
                 <numerusform>%n نتيجة</numerusform>
             </translation>
+        </message>
+    </context>
+    <context>
+        <name>LaserSubToolbar</name>
+        <message>
+            <source>Laser color</source>
+            <translation>لون الليزر</translation>
+        </message>
+        <message>
+            <source>Spot</source>
+            <translation>النقطة</translation>
+        </message>
+        <message>
+            <source>Laser point diameter in screen pixels</source>
+            <translation>قطر نقطة الليزر بوحدات بكسل الشاشة</translation>
+        </message>
+        <message>
+            <source> px</source>
+            <translation> بكسل</translation>
+        </message>
+        <message>
+            <source>Trail</source>
+            <translation>الأثر</translation>
+        </message>
+        <message>
+            <source>Maximum visible laser trail length</source>
+            <translation>أقصى طول ظاهر لأثر الليزر</translation>
+        </message>
+        <message>
+            <source> cm</source>
+            <translation> سم</translation>
+        </message>
+        <message>
+            <source> ms</source>
+            <translation> مللي ثانية</translation>
+        </message>
+        <message>
+            <source>Advanced laser settings</source>
+            <translation>إعدادات الليزر المتقدمة</translation>
+        </message>
+        <message>
+            <source>Select Laser Color</source>
+            <translation>اختر لون الليزر</translation>
+        </message>
+        <message>
+            <source>Laser Pointer Settings</source>
+            <translation>إعدادات مؤشر الليزر</translation>
+        </message>
+        <message>
+            <source>Trail thickness:</source>
+            <translation>سُمك الأثر:</translation>
+        </message>
+        <message>
+            <source>Stay visible:</source>
+            <translation>مدة البقاء:</translation>
+        </message>
+        <message>
+            <source>Fade duration:</source>
+            <translation>مدة التلاشي:</translation>
+        </message>
+        <message>
+            <source>Show only while pressed</source>
+            <translation>إظهار أثناء الضغط فقط</translation>
+        </message>
+        <message>
+            <source>Pulse when pressing</source>
+            <translation>نبضة عند الضغط</translation>
+        </message>
+            <message>
+            <source>Spotlight mode</source>
+            <translation>وضع تسليط الضوء</translation>
+        </message>
+        <message>
+            <source>Spotlight radius:</source>
+            <translation>نصف قطر تسليط الضوء:</translation>
+        </message>
+</context>
+    <context>
+        <name>NotebookExporter</name>
+        <message>
+            <source>Failed to add 3ENotes package metadata</source>
+            <translation>تعذر إضافة بيانات حزمة 3ENotes</translation>
+        </message>
+    </context>
+    <context>
+        <name>BatchOperations</name>
+        <message>
+            <source>Not a valid 3ENotes bundle</source>
+            <translation>ليست حزمة 3ENotes صالحة</translation>
         </message>
     </context>
 </TS>

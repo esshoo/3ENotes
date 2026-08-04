@@ -50,10 +50,10 @@
 
 ### Document Modes
 
-- **Paged Notebooks** - traditional page-by-page notes (`.snb)
-- **Edgeless Canvas** - infinite whiteboard with lazy-loading tiles (`.snb)
+- **Paged Notebooks** - traditional page-by-page notes (`.snb`)
+- **Edgeless Canvas** - infinite whiteboard with lazy-loading tiles (`.snb`)
 - **PDF Backgrounds** - annotate PDFs with clickable internal links
-- **Sharing** - `.snbx` note bundles allows easy cross-platform note sharing. 
+- **Sharing** - `.3enotes` portable projects allow cross-platform note sharing; legacy `.snbx` imports remain supported.
 
 ### Tablet-First UX
 
@@ -119,7 +119,7 @@ Download the latest release from **[GitHub Releases](https://github.com/esshoo/3
 
 #### Android
 
-**Option 1: Google Play Store** (coming soon), supports development  
+**Option 1: Google Play Store** (coming soon), supports development
 **Option 2: Build from source** - Free, see [Android Build Guide](./docs/build_docs/ANDROID_BUILD_GUIDE.md)
 
 > The Play Store version is a convenience fee. The source code is always free under GPL v3.
@@ -179,7 +179,10 @@ cd 3ENotes
 | Format  | Description              | Use Case                        |
 | ------- | ------------------------ | ------------------------------- |
 | `.snb`  | Bundle folder with tiles | Edgeless canvas, large projects |
-| `.snbx` | Compressed bundle (ZIP)  | Sharing, backup                 |
+| `.3enotes` | Portable compressed project (ZIP-compatible) | Sharing, backup, cross-platform transfer |
+| `.snbx` | Legacy compressed bundle | Import compatibility |
+
+`.3enotes` is the preferred single-file project format on Windows, Android, iOS/iPadOS, macOS, and Linux. The editable internal notebook remains an `.snb` bundle, and older `.snbx` packages continue to open.
 
 **Note:** The legacy `.spn` format from v0.x is not supported.
 
@@ -195,11 +198,11 @@ cd 3ENotes
 # Export all notebooks to PDF
 speedynote export-pdf ~/Notes/ -o ~/PDFs/
 
-# Backup notebooks to .snbx packages
+# Backup notebooks to .3enotes projects
 speedynote export-snbx ~/Notes/ -o ~/Backup/
 
-# Import .snbx packages
-speedynote import ~/Downloads/*.snbx -d ~/Notes/
+# Import .3enotes projects (legacy .snbx is also accepted)
+speedynote import ~/Downloads/*.3enotes -d ~/Notes/
 ```
 
 ### Commands
@@ -207,8 +210,8 @@ speedynote import ~/Downloads/*.snbx -d ~/Notes/
 | Command       | Description                        |
 | ------------- | ---------------------------------- |
 | `export-pdf`  | Export notebooks to PDF format     |
-| `export-snbx` | Export notebooks to .snbx packages |
-| `import`      | Import .snbx packages as notebooks |
+| `export-snbx` | Export notebooks to `.3enotes` portable projects (command name retained for compatibility) |
+| `import`      | Import `.3enotes` or legacy `.snbx` projects as notebooks |
 
 ### Export to PDF
 
@@ -244,7 +247,7 @@ speedynote export-pdf ~/Notes/*.snb -o ~/PDFs/ --annotations-only
 speedynote export-pdf ~/Notes/ -o ~/PDFs/ --dry-run
 ```
 
-### Export to SNBX
+### Export to 3ENotes Project
 
 ```bash
 speedynote export-snbx [OPTIONS] <input>... -o <output>
@@ -268,10 +271,10 @@ speedynote export-snbx ~/Notes/ -o ~/Backup/
 speedynote export-snbx ~/Notes/ -o ~/Backup/ --no-pdf
 
 # Single notebook
-speedynote export-snbx ~/Notes/Project.snb -o ~/Desktop/project.snbx
+speedynote export-snbx ~/Notes/Project.snb -o ~/Desktop/project.3enotes
 ```
 
-### Import SNBX Packages
+### Import 3ENotes Projects
 
 ```bash
 speedynote import [OPTIONS] <input>... -d <dest>
@@ -289,10 +292,10 @@ speedynote import [OPTIONS] <input>... -d <dest>
 
 ```bash
 # Import packages
-speedynote import ~/Downloads/*.snbx -d ~/Notes/
+speedynote import ~/Downloads/*.3enotes -d ~/Notes/
 
 # Import and add to library (shows in launcher)
-speedynote import ~/Downloads/*.snbx -d ~/Notes/ --add-to-library
+speedynote import ~/Downloads/*.3enotes -d ~/Notes/ --add-to-library
 
 # Import from a directory
 speedynote import ~/Backup/ -d ~/Notes/ --recursive --add-to-library
@@ -332,12 +335,12 @@ TABLET="user@tablet:/storage/emulated/0/Notes"
 LOCAL="$HOME/Notes"
 BACKUP="$HOME/Backup"
 
-# Pull new .snbx files from tablet
-rsync -av "$TABLET/*.snbx" "$BACKUP/incoming/"
+# Pull new .3enotes files from tablet
+rsync -av "$TABLET/*.3enotes" "$BACKUP/incoming/"
 
 # Import to local library
 speedynote import "$BACKUP/incoming/" -d "$LOCAL" --json | \
-  jq '.status == "success"' && rm "$BACKUP/incoming/"*.snbx
+  jq '.status == "success"' && rm "$BACKUP/incoming/"*.3enotes
 
 # Export updated notes as PDF for reference
 speedynote export-pdf "$LOCAL" -o "$HOME/PDFs/" --dpi 150

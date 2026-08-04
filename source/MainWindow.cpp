@@ -14,6 +14,7 @@
 #include "ui/StyleLoader.h"         // QSS stylesheet loader
 // Phase D: Subtoolbar includes
 #include "ui/subtoolbars/PenSubToolbar.h"
+#include "ui/subtoolbars/LaserSubToolbar.h"
 #include "ui/subtoolbars/MarkerSubToolbar.h"
 #include "ui/subtoolbars/HighlighterSubToolbar.h"
 #include "ui/subtoolbars/ObjectSelectSubToolbar.h"
@@ -1154,7 +1155,7 @@ void MainWindow::setupUi() {
         toggleFullscreen();
     });
     connect(m_navigationBar, &NavigationBar::shareClicked, this, [this]() {
-        // Phase 3: Export notebook as .snbx package using unified dialog
+        // Phase 3: Export notebook as .3enotes project using unified dialog
         DocumentViewport* vp = currentViewport();
         Document* doc = vp ? vp->document() : nullptr;
         if (!doc) {
@@ -1180,7 +1181,7 @@ void MainWindow::setupUi() {
         // Single-file export: use direct export for immediate feedback
         // (ExportQueueManager is for batch exports from Launcher)
         QString outputDir = dialog.outputDirectory();
-        QString outputPath = outputDir + "/" + doc->name + ".snbx";
+        QString outputPath = outputDir + "/" + doc->name + ".3enotes";
         
         // Auto-rename if file exists (with safety limit to prevent infinite loop)
         if (QFile::exists(outputPath)) {
@@ -1188,7 +1189,7 @@ void MainWindow::setupUi() {
             QString baseName = doc->name;
             const int maxAttempts = 1000;  // Safety limit
             while (QFile::exists(outputPath) && counter <= maxAttempts) {
-                outputPath = outputDir + "/" + baseName + QString(" (%1).snbx").arg(counter++);
+                outputPath = outputDir + "/" + baseName + QString(" (%1).3enotes").arg(counter++);
             }
             if (counter > maxAttempts) {
                 QMessageBox::warning(this, tr("Export Failed"),
@@ -1203,7 +1204,7 @@ void MainWindow::setupUi() {
         
         QApplication::setOverrideCursor(Qt::WaitCursor);
         // Plan B2: materialize imported PDF sources into bundled mini-PDFs before the
-        // recursive zip so the .snbx is self-contained (updates document.json + pdfs/).
+        // recursive zip so the .3enotes project is self-contained (updates document.json + pdfs/).
         if (doc->needsMaterialization()) {
             doc->saveBundle(bundlePath, /*finalize=*/true);
         }
@@ -1220,10 +1221,10 @@ void MainWindow::setupUi() {
                 "(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;)V",
                 activity.object<jobject>(),
                 QJniObject::fromString(outputPath).object<jstring>(),
-                QJniObject::fromString("application/octet-stream").object<jstring>()
+                QJniObject::fromString("application/x-3enotes").object<jstring>()
             );
 #elif defined(Q_OS_IOS)
-            IOSShareHelper::shareFile(outputPath, "application/octet-stream", tr("Share Notebook Package"));
+            IOSShareHelper::shareFile(outputPath, "application/x-3enotes", tr("Share 3ENotes Project"));
 #else
             // Desktop: Show success message
             QString sizeStr;
@@ -1873,6 +1874,7 @@ void MainWindow::wireQActionDispatchers()
     wireToolKey("tool.eraser",        ToolType::Eraser);
     wireToolKey("tool.lasso",         ToolType::Lasso);
     wireToolKey("tool.object_select", ToolType::ObjectSelect);
+    wireToolKey("tool.laser",         ToolType::Laser);
     // tool.pan (H) is intentionally NOT wired — it is hold-to-activate via
     // the existing event-filter path (m_panHoldKey / changeEvent / eventFilter).
     // Its registry shortcut is read once in setupManagedShortcuts() to seed
@@ -3074,6 +3076,11 @@ void MainWindow::applySubToolbarValuesToViewport(ToolType tool)
                 m_toolbar->highlighterSubToolbar()->emitCurrentValues();
             }
             break;
+        case ToolType::Laser:
+            if (m_toolbar->laserSubToolbar()) {
+                m_toolbar->laserSubToolbar()->emitCurrentValues();
+            }
+            break;
         default:
             // Other tools don't have color/thickness presets
             break;
@@ -3103,6 +3110,21 @@ void MainWindow::applyAllSubToolbarValuesToViewport(DocumentViewport* viewport)
         viewport->setMarkerThickness(m_toolbar->markerSubToolbar()->currentThickness());
     }
     
+    // Apply laser pointer presentation settings (never persisted in documents).
+    if (m_toolbar->laserSubToolbar()) {
+        auto* laser = m_toolbar->laserSubToolbar();
+        viewport->setLaserColor(laser->currentColor());
+        viewport->setLaserSpotSize(laser->currentSpotSize());
+        viewport->setLaserTrailLengthCm(laser->currentTrailLengthCm());
+        viewport->setLaserTrailThickness(laser->currentTrailThickness());
+        viewport->setLaserHoldDuration(laser->currentHoldDurationMs());
+        viewport->setLaserFadeDuration(laser->currentFadeDurationMs());
+        viewport->setLaserPressOnly(laser->currentPressOnly());
+        viewport->setLaserPulseEnabled(laser->currentPulseEnabled());
+        viewport->setLaserSpotlightEnabled(laser->currentSpotlightEnabled());
+        viewport->setLaserSpotlightRadius(laser->currentSpotlightRadius());
+    }
+
     // Apply highlighter color (uses separate m_highlighterColor in viewport)
     // Note: Highlighter and Marker share the same color PRESETS (QSettings),
     // but the Highlighter tool uses a separate color variable in DocumentViewport
@@ -5511,6 +5533,7 @@ void MainWindow::connectSubToolbarSignals()
     auto* highlighterST = m_toolbar->highlighterSubToolbar();
     auto* objectST = m_toolbar->objectSelectSubToolbar();
     auto* eraserST = m_toolbar->eraserSubToolbar();
+    auto* laserST = m_toolbar->laserSubToolbar();
 
     // Pen
     connect(penST, &PenSubToolbar::penColorChanged, this, [this](const QColor& color) {
@@ -5576,6 +5599,38 @@ void MainWindow::connectSubToolbarSignals()
     connect(eraserST, &EraserSubToolbar::eraserModeChanged, this, [this](int mode) {
         if (DocumentViewport* vp = currentViewport())
             vp->setEraserMode(static_cast<DocumentViewport::EraserMode>(mode));
+    });
+
+    // Laser pointer (presentation-only overlay)
+    connect(laserST, &LaserSubToolbar::laserColorChanged, this, [this](const QColor& value) {
+        if (auto* vp = currentViewport()) vp->setLaserColor(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserSpotSizeChanged, this, [this](qreal value) {
+        if (auto* vp = currentViewport()) vp->setLaserSpotSize(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserTrailLengthChanged, this, [this](qreal value) {
+        if (auto* vp = currentViewport()) vp->setLaserTrailLengthCm(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserTrailThicknessChanged, this, [this](qreal value) {
+        if (auto* vp = currentViewport()) vp->setLaserTrailThickness(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserHoldDurationChanged, this, [this](int value) {
+        if (auto* vp = currentViewport()) vp->setLaserHoldDuration(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserFadeDurationChanged, this, [this](int value) {
+        if (auto* vp = currentViewport()) vp->setLaserFadeDuration(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserPressOnlyChanged, this, [this](bool value) {
+        if (auto* vp = currentViewport()) vp->setLaserPressOnly(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserPulseEnabledChanged, this, [this](bool value) {
+        if (auto* vp = currentViewport()) vp->setLaserPulseEnabled(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserSpotlightEnabledChanged, this, [this](bool value) {
+        if (auto* vp = currentViewport()) vp->setLaserSpotlightEnabled(value);
+    });
+    connect(laserST, &LaserSubToolbar::laserSpotlightRadiusChanged, this, [this](qreal value) {
+        if (auto* vp = currentViewport()) vp->setLaserSpotlightRadius(value);
     });
 
     // LinkObject color
@@ -9022,7 +9077,7 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, long *r
 static bool isSupportedDropFile(const QString& path)
 {
     if (path.endsWith(".pdf", Qt::CaseInsensitive)) return true;
-    if (path.endsWith(".snbx", Qt::CaseInsensitive)) return true;
+    if (path.endsWith(".snbx", Qt::CaseInsensitive) || path.endsWith(".3enotes", Qt::CaseInsensitive)) return true;
     if (path.endsWith(".snb", Qt::CaseInsensitive) && QFileInfo(path).isDir()) return true;
     return false;
 }

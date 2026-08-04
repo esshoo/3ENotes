@@ -18,6 +18,7 @@
 #include "../ui/banners/MissingPdfBanner.h"  // Phase R.3: Missing PDF notification
 
 #include <QPainter>
+#include <QPainterPath>
 #include <QPaintEvent>
 #include <QRegion>
 #include <QResizeEvent>
@@ -242,9 +243,29 @@ DocumentViewport::DocumentViewport(QWidget* parent)
                                    eraserRadius * 2, eraserRadius * 2);
                 update(QRegion(cursorRectF.toAlignedRect(), QRegion::Ellipse));
             }
+            if (m_currentTool == ToolType::Laser && !m_laserPressed) {
+                m_laserVisible = false;
+                update();
+            }
         }
     });
     
+    // Laser pointer animation/fade timer. It runs only while a pointer trail
+    // or pulse is visible, so the idle cost is zero.
+    m_laserClock.start();
+    m_laserAnimationTimer = new QTimer(this);
+    m_laserAnimationTimer->setInterval(16);
+    connect(m_laserAnimationTimer, &QTimer::timeout, this, [this]() {
+        const qint64 now = m_laserClock.elapsed();
+        pruneLaserTrail(now);
+        if (m_laserPulseStartMs >= 0 && now - m_laserPulseStartMs > 450)
+            m_laserPulseStartMs = -1;
+        update();
+        if (m_laserTrail.isEmpty() && m_laserPulseStartMs < 0) {
+            m_laserAnimationTimer->stop();
+        }
+    });
+
     // Initialize PDF cache capacity based on default layout mode
     updatePdfCacheCapacity();
 }
@@ -749,7 +770,7 @@ void DocumentViewport::setCurrentTool(ToolType tool)
     
     // CR-2B-1: Disable straight line mode when switching to Eraser or Lasso
     // (straight lines only work with Pen and Marker)
-    if ((tool == ToolType::Eraser || tool == ToolType::Lasso) && m_straightLineMode) {
+    if ((tool == ToolType::Eraser || tool == ToolType::Lasso || tool == ToolType::Laser) && m_straightLineMode) {
         m_straightLineMode = false;
         emit straightLineModeChanged(false);
     }
@@ -785,6 +806,17 @@ void DocumentViewport::setCurrentTool(ToolType tool)
         }
     }
     
+    // Laser is an ephemeral presentation overlay. Switching away removes it
+    // immediately and never changes the document/undo stack.
+    if (previousTool == ToolType::Laser && tool != ToolType::Laser) {
+        m_laserTrail.clear();
+        m_laserPressed = false;
+        m_laserVisible = false;
+        m_laserPulseStartMs = -1;
+        m_laserLastInputMs = -1;
+        if (m_laserAnimationTimer) m_laserAnimationTimer->stop();
+    }
+
     // Clean up Pan tool state when switching away
     if (previousTool == ToolType::Pan && tool != ToolType::Pan) {
         if (m_isPanToolDragging) {
@@ -811,6 +843,223 @@ void DocumentViewport::setCurrentTool(ToolType tool)
     update();
     
     emit toolChanged(tool);
+}
+
+void DocumentViewport::setLaserColor(const QColor& color)
+{
+    QColor opaque = color;
+    opaque.setAlpha(255);
+    m_laserColor = opaque.isValid() ? opaque : QColor(255, 45, 45);
+    update();
+}
+
+void DocumentViewport::setLaserSpotSize(qreal pixels)
+{
+    m_laserSpotSizePx = qBound(4.0, pixels, 40.0);
+    update();
+}
+
+void DocumentViewport::setLaserTrailLengthCm(qreal centimeters)
+{
+    m_laserTrailLengthCm = qBound(0.0, centimeters, 20.0);
+    pruneLaserTrail(m_laserClock.elapsed());
+    update();
+}
+
+void DocumentViewport::setLaserTrailThickness(qreal pixels)
+{
+    m_laserTrailThicknessPx = qBound(1.0, pixels, 20.0);
+    update();
+}
+
+void DocumentViewport::setLaserHoldDuration(int milliseconds)
+{
+    m_laserHoldDurationMs = qBound(0, milliseconds, 10000);
+}
+
+void DocumentViewport::setLaserFadeDuration(int milliseconds)
+{
+    m_laserFadeDurationMs = qBound(100, milliseconds, 5000);
+}
+
+void DocumentViewport::setLaserPressOnly(bool enabled)
+{
+    m_laserPressOnly = enabled;
+    if (enabled && !m_laserPressed) m_laserVisible = false;
+    update();
+}
+
+void DocumentViewport::setLaserPulseEnabled(bool enabled)
+{
+    m_laserPulseEnabled = enabled;
+    if (!enabled) m_laserPulseStartMs = -1;
+}
+
+void DocumentViewport::setLaserSpotlightEnabled(bool enabled)
+{
+    m_laserSpotlightEnabled = enabled;
+    update();
+}
+
+void DocumentViewport::setLaserSpotlightRadius(qreal pixels)
+{
+    m_laserSpotlightRadiusPx = qBound(40.0, pixels, 300.0);
+    update();
+}
+
+qreal DocumentViewport::laserMaxTrailPixels() const
+{
+    // Convert the requested physical length to logical screen pixels. Qt's
+    // logical DPI is stable across Windows scaling, Android density and iOS.
+    return m_laserTrailLengthCm * qMax<qreal>(logicalDpiX(), 72.0) / 2.54;
+}
+
+void DocumentViewport::addLaserPoint(const QPointF& viewportPos, bool pressed, bool beginStroke)
+{
+    if (m_laserPressOnly && !pressed) return;
+
+    m_laserCurrentPos = viewportPos;
+    m_laserVisible = true;
+    const qint64 now = m_laserClock.elapsed();
+    m_laserLastInputMs = now;
+
+    if (beginStroke && m_laserPulseEnabled) {
+        m_laserPulsePos = viewportPos;
+        m_laserPulseStartMs = now;
+    }
+
+    const qreal maxTrail = laserMaxTrailPixels();
+    if (maxTrail > 0.0) {
+        bool append = m_laserTrail.isEmpty() || beginStroke;
+        qreal distance = m_laserTrail.isEmpty() ? 0.0 : m_laserTrail.constLast().pathDistancePx;
+        if (!m_laserTrail.isEmpty() && !beginStroke) {
+            const qreal segment = QLineF(m_laserTrail.constLast().viewportPos, viewportPos).length();
+            append = segment >= 1.5;
+            if (append) distance += segment;
+        }
+        if (append) m_laserTrail.append({viewportPos, now, distance, beginStroke});
+    } else {
+        m_laserTrail.clear();
+    }
+
+    pruneLaserTrail(now);
+    if (m_laserAnimationTimer && !m_laserAnimationTimer->isActive())
+        m_laserAnimationTimer->start();
+    update();
+}
+
+void DocumentViewport::releaseLaserPointer(const QPointF& viewportPos)
+{
+    if (m_laserPressed) addLaserPoint(viewportPos, true, false);
+    m_laserPressed = false;
+    if (m_laserPressOnly) m_laserVisible = false;
+    if (m_laserAnimationTimer && (!m_laserTrail.isEmpty() || m_laserPulseStartMs >= 0))
+        m_laserAnimationTimer->start();
+    update();
+}
+
+void DocumentViewport::pruneLaserTrail(qint64 nowMs)
+{
+    // The full shape remains visible for the selected stay time after the
+    // latest movement, then fades as one unit. This lets a presenter finish
+    // a box/circle before the first segment starts disappearing.
+    const qint64 maxAge = qint64(m_laserHoldDurationMs) + qint64(m_laserFadeDurationMs);
+    if (m_laserLastInputMs >= 0 && nowMs - m_laserLastInputMs > maxAge) {
+        m_laserTrail.clear();
+        m_laserLastInputMs = -1;
+        return;
+    }
+
+    if (!m_laserTrail.isEmpty()) {
+        const qreal minDistance = m_laserTrail.constLast().pathDistancePx - laserMaxTrailPixels();
+        while (m_laserTrail.size() > 1 && m_laserTrail.at(1).pathDistancePx < minDistance)
+            m_laserTrail.remove(0);
+    }
+}
+
+void DocumentViewport::renderLaserPointer(QPainter& painter)
+{
+    if (m_currentTool != ToolType::Laser && m_laserTrail.isEmpty() && m_laserPulseStartMs < 0)
+        return;
+
+    const qint64 now = m_laserClock.elapsed();
+    pruneLaserTrail(now);
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const bool showSpot = m_laserVisible && (!m_laserPressOnly || m_laserPressed);
+    if (m_laserSpotlightEnabled && showSpot) {
+        QPainterPath dimmedArea;
+        dimmedArea.setFillRule(Qt::OddEvenFill);
+        dimmedArea.addRect(rect());
+        dimmedArea.addEllipse(m_laserCurrentPos, m_laserSpotlightRadiusPx, m_laserSpotlightRadiusPx);
+        painter.fillPath(dimmedArea, QColor(0, 0, 0, 105));
+    }
+
+    qreal trailAgeAlpha = 1.0;
+    if (m_laserLastInputMs >= 0) {
+        const qint64 idleAge = now - m_laserLastInputMs;
+        if (idleAge > m_laserHoldDurationMs) {
+            trailAgeAlpha = 1.0 - qreal(idleAge - m_laserHoldDurationMs)
+                                     / qMax(1, m_laserFadeDurationMs);
+        }
+        trailAgeAlpha = qBound(0.0, trailAgeAlpha, 1.0);
+    }
+
+    const int count = m_laserTrail.size();
+    if (count > 1) {
+        const qreal startDistance = m_laserTrail.first().pathDistancePx;
+        const qreal distanceSpan = qMax<qreal>(1.0, m_laserTrail.last().pathDistancePx - startDistance);
+        for (int i = 1; i < count; ++i) {
+            const auto& a = m_laserTrail.at(i - 1);
+            const auto& b = m_laserTrail.at(i);
+            if (b.beginsStroke) continue;
+            const qreal pathAlpha = 0.15 + 0.85 * ((b.pathDistancePx - startDistance) / distanceSpan);
+            const int alpha = qRound(255.0 * trailAgeAlpha * pathAlpha);
+            if (alpha <= 0) continue;
+
+            QColor glow = m_laserColor;
+            glow.setAlpha(qRound(alpha * 0.28));
+            QPen glowPen(glow, m_laserTrailThicknessPx * 2.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+            glowPen.setCosmetic(true);
+            painter.setPen(glowPen);
+            painter.drawLine(a.viewportPos, b.viewportPos);
+
+            QColor core = m_laserColor;
+            core.setAlpha(alpha);
+            QPen corePen(core, m_laserTrailThicknessPx, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+            corePen.setCosmetic(true);
+            painter.setPen(corePen);
+            painter.drawLine(a.viewportPos, b.viewportPos);
+        }
+    }
+
+    if (m_laserPulseStartMs >= 0) {
+        const qreal t = qBound(0.0, qreal(now - m_laserPulseStartMs) / 450.0, 1.0);
+        QColor pulse = m_laserColor;
+        pulse.setAlpha(qRound(180.0 * (1.0 - t)));
+        QPen pulsePen(pulse, 2.0);
+        pulsePen.setCosmetic(true);
+        painter.setPen(pulsePen);
+        painter.setBrush(Qt::NoBrush);
+        const qreal radius = m_laserSpotSizePx * (0.8 + 2.2 * t);
+        painter.drawEllipse(m_laserPulsePos, radius, radius);
+    }
+
+    if (showSpot) {
+        const qreal radius = m_laserSpotSizePx / 2.0;
+        QColor glow = m_laserColor;
+        glow.setAlpha(70);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(glow);
+        painter.drawEllipse(m_laserCurrentPos, radius * 1.9, radius * 1.9);
+        painter.setBrush(m_laserColor);
+        painter.drawEllipse(m_laserCurrentPos, radius, radius);
+        painter.setBrush(Qt::white);
+        painter.drawEllipse(m_laserCurrentPos, qMax<qreal>(1.5, radius * 0.27),
+                            qMax<qreal>(1.5, radius * 0.27));
+    }
+    painter.restore();
 }
 
 void DocumentViewport::setPenColor(const QColor& color)
@@ -2735,6 +2984,8 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
             drawEraserCursor(painter);
         }
         
+        renderLaserPointer(painter);
+
         // Debug overlay is now handled by DebugOverlay widget (source/ui/DebugOverlay.cpp)
         // Toggle with Ctrl+Shift+D
         
@@ -2859,6 +3110,8 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
         painter.restore();
     }
     
+    renderLaserPointer(painter);
+
     // Debug overlay is now handled by DebugOverlay widget (source/ui/DebugOverlay.cpp)
     // Toggle with Ctrl+Shift+D
 }
@@ -3181,20 +3434,28 @@ void DocumentViewport::mousePressEvent(QMouseEvent* event)
         return;
     }
     
-    // Only handle left button for drawing
-    if (event->button() != Qt::LeftButton) {
-        event->ignore();
-        return;
-    }
-    
-    // CRITICAL: Reject touch-synthesized mouse events
-    // Touch input should not draw - only stylus and real mouse
+    // Reject touch-synthesized mouse events before laser handling. The real
+    // touchscreen path is processed as QTouchEvent below; accepting both would
+    // duplicate laser points on Android and Windows touch devices.
     if (event->source() == Qt::MouseEventSynthesizedBySystem ||
         event->source() == Qt::MouseEventSynthesizedByQt) {
         event->ignore();
         return;
     }
-    
+
+    if (m_currentTool == ToolType::Laser && event->button() == Qt::LeftButton) {
+        m_laserPressed = true;
+        addLaserPoint(SN_MOUSE_POS(event), true, true);
+        event->accept();
+        return;
+    }
+
+    // Only handle left button for drawing
+    if (event->button() != Qt::LeftButton) {
+        event->ignore();
+        return;
+    }
+
     // Ignore if tablet is active (avoid duplicate events)
     if (m_pointerActive && m_activeSource == PointerEvent::Stylus) {
         event->accept();
@@ -3224,7 +3485,14 @@ void DocumentViewport::mouseMoveEvent(QMouseEvent* event)
         event->ignore();
         return;
     }
-    
+
+    if (m_currentTool == ToolType::Laser) {
+        const bool pressed = m_laserPressed || (event->buttons() & Qt::LeftButton);
+        addLaserPoint(SN_MOUSE_POS(event), pressed, false);
+        event->accept();
+        return;
+    }
+
     // Ignore if tablet is active
     if (m_pointerActive && m_activeSource == PointerEvent::Stylus) {
         event->accept();
@@ -3276,14 +3544,20 @@ void DocumentViewport::mouseReleaseEvent(QMouseEvent* event)
         event->ignore();
         return;
     }
-    
-    // CRITICAL: Reject touch-synthesized mouse events
+
+    // See mousePressEvent(): touchscreen input has its own laser path.
     if (event->source() == Qt::MouseEventSynthesizedBySystem ||
         event->source() == Qt::MouseEventSynthesizedByQt) {
         event->ignore();
         return;
     }
-    
+
+    if (m_currentTool == ToolType::Laser) {
+        releaseLaserPointer(SN_MOUSE_POS(event));
+        event->accept();
+        return;
+    }
+
     // Ignore if tablet is active
     if (m_activeSource == PointerEvent::Stylus) {
         event->accept();
@@ -3578,6 +3852,10 @@ void DocumentViewport::enterEvent(QEvent* event)
 void DocumentViewport::leaveEvent(QEvent* event)
 {
     m_pointerInViewport = false;
+    if (m_currentTool == ToolType::Laser && !m_laserPressed) {
+        m_laserVisible = false;
+        update();
+    }
     
     // Trigger repaint to hide eraser cursor when pointer leaves viewport
     // Use elliptical region to match circular cursor shape
@@ -3611,6 +3889,29 @@ void DocumentViewport::tabletEvent(QTabletEvent* event)
             return;
     }
     
+    if (m_currentTool == ToolType::Laser) {
+        const QPointF pos = SN_EVENT_POS(event);
+        m_pointerInViewport = rect().contains(pos.toPoint());
+
+        if (event->type() == QEvent::TabletPress) {
+            m_laserPressed = true;
+            addLaserPoint(pos, true, true);
+        } else if (event->type() == QEvent::TabletRelease) {
+            releaseLaserPointer(pos);
+        } else if (m_pointerInViewport) {
+            addLaserPoint(pos, m_laserPressed, false);
+        }
+
+        // Tablet hover does not reliably send leaveEvent on every platform.
+        // Reuse the existing timeout so the laser spot disappears after the
+        // pen moves to another widget.
+        if (!m_laserPressed && m_tabletHoverTimer)
+            m_tabletHoverTimer->start();
+
+        event->accept();
+        return;
+    }
+
     // ===== Tablet Hover Tracking for Eraser Cursor =====
     // TabletMove events arrive even when the pen is hovering (not pressed).
     // We need to track position for eraser cursor even during hover.
@@ -4158,6 +4459,45 @@ bool DocumentViewport::event(QEvent* event)
             }
         }
         
+        if (m_currentTool == ToolType::Laser) {
+            const auto points = SN_TOUCH_POINTS(touchEvent);
+
+            // Qt may report TouchEnd with an empty point list. Release using
+            // the last known position so the pointer never remains stuck.
+            if ((event->type() == QEvent::TouchEnd ||
+                 event->type() == QEvent::TouchCancel) && points.isEmpty()) {
+                releaseLaserPointer(m_laserCurrentPos);
+                m_laserVisible = false;
+                update();
+                event->accept();
+                return true;
+            }
+
+            // One finger controls the laser. Two or more fingers retain the
+            // normal pan/zoom gestures so the presenter can still navigate.
+            if (points.size() == 1) {
+                const QPointF pos = SN_TP_POS(points.first());
+                if (event->type() == QEvent::TouchBegin || !m_laserPressed) {
+                    m_laserPressed = true;
+                    addLaserPoint(pos, true, true);
+                } else if (event->type() == QEvent::TouchUpdate) {
+                    addLaserPoint(pos, true, false);
+                } else {
+                    releaseLaserPointer(pos);
+                    m_laserVisible = false;
+                    update();
+                }
+                event->accept();
+                return true;
+            }
+
+            // A second finger entering ends the presentation stroke before the
+            // normal gesture handler takes over, preventing a line from being
+            // left in a pressed state after pinch/pan.
+            if (m_laserPressed)
+                releaseLaserPointer(m_laserCurrentPos);
+        }
+
         if (m_touchHandler && m_touchHandler->handleTouchEvent(touchEvent)) {
             return true;
         }
@@ -10679,6 +11019,19 @@ bool DocumentViewport::handleEscapeKey()
     // Returns true if something was cancelled, false if nothing to cancel.
     // Called by MainWindow to determine whether to toggle to launcher.
     
+    // Presentation users often need to clear a laser shape immediately.
+    if (m_currentTool == ToolType::Laser &&
+        (!m_laserTrail.isEmpty() || m_laserVisible || m_laserPulseStartMs >= 0)) {
+        m_laserTrail.clear();
+        m_laserPressed = false;
+        m_laserVisible = false;
+        m_laserPulseStartMs = -1;
+        m_laserLastInputMs = -1;
+        if (m_laserAnimationTimer) m_laserAnimationTimer->stop();
+        update();
+        return true;
+    }
+
     // Priority 1: Cancel lasso selection or drawing (Lasso tool only)
     // Note: Lasso selection is cleared when switching away from Lasso tool,
     // so this check only needs to handle the Lasso tool.
@@ -11677,6 +12030,10 @@ void DocumentViewport::updateHighlighterCursor()
 {
     if (m_currentTool == ToolType::Pan) {
         setCursor(m_isPanToolDragging ? Qt::ClosedHandCursor : Qt::OpenHandCursor);
+        return;
+    }
+    if (m_currentTool == ToolType::Laser) {
+        setCursor(Qt::BlankCursor);
         return;
     }
     

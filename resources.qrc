@@ -4,6 +4,8 @@
 
     <file>resources/icons/pen.png</file>
     <file>resources/icons/pen_reversed.png</file>
+    <file>resources/icons/laser.png</file>
+    <file>resources/icons/laser_reversed.png</file>
     <file>resources/icons/marker.png</file>
     <file>resources/icons/marker_reversed.png</file>
     <file>resources/icons/eraser.png</file>

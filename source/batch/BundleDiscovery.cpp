@@ -120,7 +120,7 @@ QStringList discoverPackages(const QString& directory, bool recursive)
     
     if (recursive) {
         // Recursive search
-        QDirIterator it(absPath, QStringList() << "*.snbx", 
+        QDirIterator it(absPath, QStringList() << "*.3enotes" << "*.snbx",
                         QDir::Files, QDirIterator::Subdirectories);
         
         while (it.hasNext()) {
@@ -129,7 +129,7 @@ QStringList discoverPackages(const QString& directory, bool recursive)
     } else {
         // Non-recursive: only check immediate directory
         QStringList filters;
-        filters << "*.snbx";
+        filters << "*.3enotes" << "*.snbx";
         
         QStringList files = dir.entryList(filters, QDir::Files);
         for (const QString& file : files) {
@@ -218,7 +218,7 @@ QStringList expandPackagePaths(const QStringList& inputPaths, bool recursive)
             }
         } else if (info.isFile()) {
             // Check if it's a .snbx file
-            if (absPath.endsWith(".snbx", Qt::CaseInsensitive)) {
+            if (absPath.endsWith(".snbx", Qt::CaseInsensitive) || absPath.endsWith(".3enotes", Qt::CaseInsensitive)) {
                 if (!seen.contains(absPath)) {
                     seen.insert(absPath);
                     results.append(absPath);

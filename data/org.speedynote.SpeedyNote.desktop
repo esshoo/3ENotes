@@ -10,4 +10,4 @@ Terminal=false
 StartupNotify=true
 Categories=Office;Education;
 Keywords=notes;pdf;annotation;writing;stylus;tablet;
-MimeType=application/pdf;
+MimeType=application/pdf;application/x-3enotes;application/x-speedynote-snbx;

@@ -17,10 +17,10 @@ import java.util.ArrayList;
 import android.content.ClipData;
 
 /**
- * Helper class for picking and importing .snbx package files on Android.
+ * Helper class for picking and importing .3enotes project files and legacy .snbx packages on Android.
  * 
  * This class handles the Storage Access Framework (SAF) properly by:
- * 1. Opening the file picker for .snbx files
+ * 1. Opening the file picker for .3enotes and .snbx files
  * 2. Copying the file to local storage while the temporary permission is valid
  * 3. Returning the local file path to C++
  * 
@@ -34,6 +34,7 @@ public class ImportHelper {
     
     private static Activity sActivity;
     private static String sPendingDestDir;
+    private static String sLastViewUri;
     
     // Native callbacks to C++
     private static native void onPackageFilePicked(String localPath);
@@ -64,10 +65,61 @@ public class ImportHelper {
         // These flags grant read permission that persists until the Activity result is processed
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         
-        Log.d(TAG, "Opening file picker for .snbx packages (multi-select), destDir=" + destDir);
+        Log.d(TAG, "Opening file picker for .3enotes projects (multi-select), destDir=" + destDir);
         activity.startActivityForResult(intent, REQUEST_CODE_PICK_SNBX);
     }
     
+
+    /**
+     * Handle a .3enotes file opened from Android Files, email, browser, or
+     * another application. The URI is copied into app-private storage before
+     * the same native import callback used by the in-app picker is invoked.
+     */
+    public static boolean handleViewIntent(Activity activity, Intent intent) {
+        if (activity == null || intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) {
+            return false;
+        }
+
+        Uri uri = intent.getData();
+        if (uri == null) return false;
+
+        String uriKey = uri.toString();
+        if (uriKey.equals(sLastViewUri)) {
+            Log.d(TAG, "Ignoring duplicate VIEW intent: " + uriKey);
+            return true;
+        }
+
+        String filename = getFileName(activity, uri);
+        String lower = filename == null ? "" : filename.toLowerCase();
+        String mime = intent.getType();
+        boolean supported = lower.endsWith(".3enotes") || lower.endsWith(".snbx")
+                || "application/x-3enotes".equals(mime);
+        if (!supported) {
+            Log.w(TAG, "Unsupported VIEW intent file: " + filename + " mime=" + mime);
+            return false;
+        }
+
+        File importsDir = new File(activity.getFilesDir(), "imports");
+        String localPath = copyUriToLocal(activity, uri, importsDir.getAbsolutePath());
+        if (localPath == null) {
+            Log.e(TAG, "Could not import VIEW intent: " + uriKey);
+            return true;
+        }
+
+        try {
+            sLastViewUri = uriKey;
+            onPackageFilePicked(localPath);
+            Log.d(TAG, "Imported VIEW intent to: " + localPath);
+        } catch (UnsatisfiedLinkError error) {
+            // Qt may still be loading during a cold start. Leave the URI
+            // unmarked so SpeedyNoteActivity can retry shortly.
+            Log.w(TAG, "Native importer not ready yet; will retry", error);
+            new File(localPath).delete();
+            return false;
+        }
+        return true;
+    }
+
     /**
      * Called from SpeedyNoteActivity's onActivityResult.
      * Must be called from the UI thread.
@@ -126,9 +178,9 @@ public class ImportHelper {
             
             // Validate that the file looks like a .snbx package
             String filename = getFileName(sActivity, uri);
-            if (filename == null || !filename.toLowerCase().endsWith(".snbx")) {
-                Log.w(TAG, "Selected file is not a .snbx package: " + filename + ", skipping");
-                continue;  // Skip non-.snbx files
+            if (filename == null || !(filename.toLowerCase().endsWith(".3enotes") || filename.toLowerCase().endsWith(".snbx"))) {
+                Log.w(TAG, "Selected file is not a 3ENotes project: " + filename + ", skipping");
+                continue;  // Skip unsupported files
             }
             
             // Copy file to local storage while permission is still valid
@@ -144,7 +196,7 @@ public class ImportHelper {
         
         // Call appropriate callback based on result count
         if (localPaths.isEmpty()) {
-            Log.e(TAG, "No .snbx files were successfully copied");
+            Log.e(TAG, "No 3ENotes project files were successfully copied");
             onPackagePickCancelled();
         } else if (localPaths.size() == 1) {
             // Single file - use original callback for compatibility
@@ -179,12 +231,13 @@ public class ImportHelper {
         // Get the original filename
         String filename = getFileName(context, uri);
         if (filename == null || filename.isEmpty()) {
-            filename = "imported_" + System.currentTimeMillis() + ".snbx";
+            filename = "imported_" + System.currentTimeMillis() + ".3enotes";
         }
         
-        // Ensure it ends with .snbx
-        if (!filename.toLowerCase().endsWith(".snbx")) {
-            filename = filename + ".snbx";
+        // Preserve legacy .snbx names; otherwise use the new portable extension.
+        String lowerName = filename.toLowerCase();
+        if (!(lowerName.endsWith(".3enotes") || lowerName.endsWith(".snbx"))) {
+            filename = filename + ".3enotes";
         }
         
         // Ensure destination directory exists
@@ -199,10 +252,12 @@ public class ImportHelper {
         // Generate unique filename if needed
         File destFile = new File(destDir, filename);
         if (destFile.exists()) {
-            String baseName = filename.substring(0, filename.length() - 5); // Remove .snbx
+            int dotIndex = filename.lastIndexOf('.');
+            String baseName = dotIndex > 0 ? filename.substring(0, dotIndex) : filename;
+            String extension = dotIndex > 0 ? filename.substring(dotIndex) : ".3enotes";
             int counter = 1;
             while (destFile.exists()) {
-                filename = baseName + "_" + counter + ".snbx";
+                filename = baseName + "_" + counter + extension;
                 destFile = new File(destDir, filename);
                 counter++;
                 

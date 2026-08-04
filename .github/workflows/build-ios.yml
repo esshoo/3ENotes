@@ -3,8 +3,6 @@ name: Build 3ENotes iOS IPA
 on:
   workflow_dispatch:
   push:
-    branches:
-      - feature/rebrand-arabic
     tags:
       - 'v*'
 
