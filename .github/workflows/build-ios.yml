@@ -86,11 +86,27 @@ jobs:
         run: |
           set -euo pipefail
           brew list ldid >/dev/null 2>&1 || brew install ldid
+          brew list librsvg >/dev/null 2>&1 || brew install librsvg
           command -v cmake
           command -v make
           command -v pod
           command -v ldid
+          command -v rsvg-convert
           command -v zip
+
+      - name: Generate iOS app icon asset catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ios/generate-icons.sh
+          ./ios/generate-icons.sh
+
+          test -f ios/Assets.xcassets/Contents.json
+          test -f ios/Assets.xcassets/AppIcon.appiconset/Contents.json
+          test -f ios/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+
+          echo "Generated iOS asset catalog:"
+          find ios/Assets.xcassets -maxdepth 3 -type f -print
 
       - name: Cache MuPDF for iOS
         id: cache-mupdf
