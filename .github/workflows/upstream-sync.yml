@@ -1,0 +1,221 @@
+﻿name: Check SpeedyNote upstream updates
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "15 9 * * *"
+      timezone: "Asia/Riyadh"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  check-upstream:
+    name: Check SpeedyNote Updates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout 3ENotes
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Check and prepare upstream update
+        id: sync
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream \
+            https://github.com/alpha-liu-01/SpeedyNote.git \
+            2>/dev/null || \
+          git remote set-url upstream \
+            https://github.com/alpha-liu-01/SpeedyNote.git
+
+          git fetch origin main --prune
+          git fetch upstream main --prune
+
+          UPSTREAM_SHA="$(git rev-parse upstream/main)"
+
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream commit: $UPSTREAM_SHA"
+
+          if git merge-base --is-ancestor upstream/main origin/main; then
+            echo "No new upstream updates."
+            echo "updates=false" >> "$GITHUB_OUTPUT"
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          REJECTED_PR="$(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state closed \
+              --limit 100 \
+              --json number,mergedAt,body \
+              --jq ".[] |
+                select(
+                  .mergedAt == null and
+                  ((.body // \"\") |
+                  contains(\"Upstream-SHA: ${UPSTREAM_SHA}\"))
+                ) |
+                .number" |
+            head -n 1
+          )"
+
+          if [ -n "$REJECTED_PR" ]; then
+            echo "This upstream revision was previously rejected in PR #$REJECTED_PR."
+            echo "updates=false" >> "$GITHUB_OUTPUT"
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git switch -C automation/upstream-sync origin/main
+
+          if ! git merge --no-edit upstream/main; then
+            git merge --abort || true
+
+            echo "Upstream update has merge conflicts."
+            echo "updates=true" >> "$GITHUB_OUTPUT"
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --quiet origin/main..HEAD; then
+            echo "Merge produced no file changes."
+            echo "updates=false" >> "$GITHUB_OUTPUT"
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git push \
+            --force-with-lease \
+            origin \
+            HEAD:automation/upstream-sync
+
+          echo "updates=true" >> "$GITHUB_OUTPUT"
+          echo "conflict=false" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update the Pull Request
+        if: >
+          steps.sync.outputs.updates == 'true' &&
+          steps.sync.outputs.conflict == 'false'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+
+          PR_BODY="$(cat <<EOF
+          توجد تحديثات جديدة في المشروع الأصلي SpeedyNote.
+
+          راجع الملفات والتغييرات قبل الدمج.
+
+          قبول التحديث:
+          ادمج Pull Request.
+
+          رفض التحديث:
+          أغلق Pull Request بدون دمج.
+
+          المشروع الأصلي:
+          alpha-liu-01/SpeedyNote
+
+          Upstream-SHA: ${UPSTREAM_SHA}
+          EOF
+          )"
+
+          OPEN_PR="$(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --base main \
+              --head automation/upstream-sync \
+              --json number \
+              --jq '.[0].number // empty'
+          )"
+
+          if [ -z "$OPEN_PR" ]; then
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head automation/upstream-sync \
+              --title "chore: update from SpeedyNote upstream" \
+              --body "$PR_BODY"
+
+            OPEN_PR="$(
+              gh pr list \
+                --repo "$GITHUB_REPOSITORY" \
+                --state open \
+                --base main \
+                --head automation/upstream-sync \
+                --json number \
+                --jq '.[0].number // empty'
+            )"
+          else
+            gh pr edit "$OPEN_PR" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "chore: update from SpeedyNote upstream" \
+              --body "$PR_BODY"
+          fi
+
+          if [ -n "$OPEN_PR" ]; then
+            gh pr edit "$OPEN_PR" \
+              --repo "$GITHUB_REPOSITORY" \
+              --add-assignee esshoo || true
+          fi
+
+      - name: Create conflict notification
+        if: steps.sync.outputs.conflict == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+
+          ISSUE_TITLE="Upstream update needs manual merge"
+
+          OPEN_ISSUE="$(
+            gh issue list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --limit 100 \
+              --json number,title \
+              --jq ".[] |
+                select(.title == \"${ISSUE_TITLE}\") |
+                .number" |
+            head -n 1
+          )"
+
+          MESSAGE="SpeedyNote has a new update, but it conflicts with changes in 3ENotes.
+
+          Upstream commit:
+          ${UPSTREAM_SHA}
+
+          The update was not merged automatically."
+
+          if [ -z "$OPEN_ISSUE" ]; then
+            gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" \
+              --body "$MESSAGE" \
+              --assignee esshoo
+          else
+            gh issue comment "$OPEN_ISSUE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body "$MESSAGE"
+          fi
