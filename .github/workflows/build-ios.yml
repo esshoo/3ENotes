@@ -1,0 +1,186 @@
+name: Build 3ENotes iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/rebrand-arabic
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-ios-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-ios-ipa:
+    name: Build iPadOS IPA (TrollStore)
+    runs-on: macos-15-intel
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show Apple build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -m
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      # The iOS kit contains the target libraries and qt-cmake.
+      # A separate desktop kit supplies host tools such as lrelease.
+      - name: Install Qt 6.9.3 host tools
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.3'
+          host: mac
+          target: desktop
+          arch: clang_64
+          dir: '${{ github.workspace }}'
+          cache: true
+          cache-key-prefix: qt-6.9.3-macos-host
+          setup-python: true
+
+      - name: Install Qt 6.9.3 for iOS
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.3'
+          host: mac
+          target: ios
+          arch: ios
+          dir: '${{ github.workspace }}'
+          cache: true
+          cache-key-prefix: qt-6.9.3-ios
+          setup-python: true
+
+      - name: Prepare Qt paths expected by project scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          QT_BASE="${GITHUB_WORKSPACE}/Qt/6.9.3"
+          test -d "${QT_BASE}/ios"
+          test -d "${QT_BASE}/macos"
+
+          mkdir -p "${HOME}/Qt/6.9.3"
+          ln -sfn "${QT_BASE}/ios" "${HOME}/Qt/6.9.3/ios"
+          ln -sfn "${QT_BASE}/macos" "${HOME}/Qt/6.9.3/macos"
+
+          test -x "${HOME}/Qt/6.9.3/ios/bin/qt-cmake"
+          test -x "${HOME}/Qt/6.9.3/macos/bin/lrelease"
+
+          echo "Qt iOS: ${HOME}/Qt/6.9.3/ios"
+          echo "Qt host: ${HOME}/Qt/6.9.3/macos"
+          "${HOME}/Qt/6.9.3/macos/bin/lrelease" -version
+
+      - name: Install iOS packaging dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew list ldid >/dev/null 2>&1 || brew install ldid
+          command -v cmake
+          command -v make
+          command -v pod
+          command -v ldid
+          command -v zip
+
+      - name: Cache MuPDF for iOS
+        id: cache-mupdf
+        uses: actions/cache@v4
+        with:
+          path: ios/mupdf-build
+          key: ios-mupdf-1.24.10-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ios/build-mupdf.sh') }}
+
+      - name: Build MuPDF for iOS device
+        if: steps.cache-mupdf.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ios/build-mupdf.sh
+          ./ios/build-mupdf.sh
+
+      - name: Verify MuPDF output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ios/mupdf-build/lib/libmupdf.a
+          test -f ios/mupdf-build/lib/libmupdf-third.a
+          test -d ios/mupdf-build/include/mupdf
+          lipo -info ios/mupdf-build/lib/libmupdf.a
+
+      - name: Cache ML Kit frameworks
+        id: cache-mlkit
+        uses: actions/cache@v4
+        with:
+          path: ios/mlkit-build
+          key: ios-mlkit-8.0.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ios/fetch-mlkit.sh') }}
+
+      - name: Fetch and prepare ML Kit for iOS
+        if: steps.cache-mlkit.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ios/fetch-mlkit.sh
+          ./ios/fetch-mlkit.sh
+
+      - name: Verify ML Kit output
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d ios/mlkit-build/Frameworks
+          FRAMEWORK_COUNT="$(find ios/mlkit-build/Frameworks -maxdepth 1 -name '*.xcframework' | wc -l | tr -d ' ')"
+          echo "ML Kit xcframework count: ${FRAMEWORK_COUNT}"
+          test "${FRAMEWORK_COUNT}" -gt 0
+
+      - name: Build 3ENotes for a real iPad
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ios/build-device.sh ios/build-ipa.sh
+          ./ios/build-device.sh --clean
+          ./ios/build-ipa.sh
+
+      - name: Verify IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA="$(find ios/dist -maxdepth 1 -name '3ENotes_*.ipa' -type f | head -n 1)"
+          test -n "${IPA}"
+          test -f "${IPA}"
+
+          echo "IPA: ${IPA}"
+          du -h "${IPA}"
+          unzip -l "${IPA}" | head -40
+
+          rm -rf /tmp/3enotes-ipa-check
+          mkdir -p /tmp/3enotes-ipa-check
+          unzip -q "${IPA}" -d /tmp/3enotes-ipa-check
+
+          APP="/tmp/3enotes-ipa-check/Payload/3ENotes.app"
+          test -d "${APP}"
+          test -f "${APP}/speedynote"
+          lipo -info "${APP}/speedynote"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "${APP}/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${APP}/Info.plist"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3ENotes-iOS-TrollStore-IPA
+          path: ios/dist/3ENotes_*.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload IPA to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ios/dist/3ENotes_*.ipa
