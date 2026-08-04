@@ -140,6 +140,9 @@ static QThreadStorage<ThreadPdfCache> s_threadPdfCache;
 DocumentViewport::DocumentViewport(QWidget* parent)
     : QWidget(parent)
 {
+    // The surrounding interface may be right-to-left, but document/canvas
+    // coordinates must remain left-to-right and must never be mirrored.
+    setLayoutDirection(Qt::LeftToRight);
     // Enable mouse tracking for hover effects (future)
     setMouseTracking(true);
     

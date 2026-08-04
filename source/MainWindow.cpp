@@ -245,7 +245,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Initial fallback before widgets are wired; the canonical title comes
     // from updateWindowTitle() at the end of the ctor and on every active-
     // viewport / current-tab change thereafter.
-    setWindowTitle(QStringLiteral("SpeedyNote"));
+    setWindowTitle(QStringLiteral("3ENotes"));
 
     // Phase 3.1: Always using new DocumentViewport architecture
 
@@ -730,7 +730,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Seed the window title + nav-bar filename from whatever state the
-    // ctor ended in (typically: no tabs yet -> "SpeedyNote" / "Untitled").
+    // ctor ended in (typically: no tabs yet -> "3ENotes" / "Untitled").
     updateWindowTitle();
 }
 
@@ -1374,7 +1374,7 @@ void MainWindow::setupUi() {
 
     // Restore persisted sidebar widths
     {
-        QSettings s("SpeedyNote", "App");
+        QSettings s("3E", "3ENotes");
         int leftW  = qBound(180, s.value("ui/leftSidebarWidth",  250).toInt(), 500);
         int rightW = qBound(220, s.value("ui/rightSidebarWidth", 300).toInt(), 600);
         m_contentSplitter->setSizes({leftW, /*canvas=*/1, rightW});
@@ -1385,7 +1385,7 @@ void MainWindow::setupUi() {
     m_sidebarWidthSaveTimer->setSingleShot(true);
     m_sidebarWidthSaveTimer->setInterval(300);
     connect(m_sidebarWidthSaveTimer, &QTimer::timeout, this, [this]() {
-        QSettings s("SpeedyNote", "App");
+        QSettings s("3E", "3ENotes");
         // Guard against persisting a stale 0 when either panel is hidden
         // (QSplitter reports width 0 for hidden children).  With two splitter
         // handles, dragging the right handle also fires splitterMoved, which
@@ -3384,7 +3384,7 @@ void MainWindow::showPdfExportDialog()
         options.annotationsOnly = dialog.annotationsOnly();
         options.darkModeBackground = dialog.darkModeBackground();
         options.darkenStrokes = dialog.darkenStrokes();
-        options.skipImageMasking = QSettings("SpeedyNote", "App")
+        options.skipImageMasking = QSettings("3E", "3ENotes")
             .value("display/skipImageMasking", false).toBool();
         
         // Create exporter and export
@@ -3658,7 +3658,7 @@ bool MainWindow::saveNewDocumentWithDialog(Document* doc)
     }
 #else
     // Desktop: Use standard file dialog
-    QSettings saveSettings("SpeedyNote", "App");
+    QSettings saveSettings("3E", "3ENotes");
     QString lastSaveDir = saveSettings.value("FileDialogs/lastSaveDirectory").toString();
     if (lastSaveDir.isEmpty() || !QDir(lastSaveDir).exists()) {
         lastSaveDir = QDir::homePath();
@@ -3669,7 +3669,7 @@ bool MainWindow::saveNewDocumentWithDialog(Document* doc)
         this,
         isEdgeless ? tr("Save Canvas") : tr("Save Document"),
         defaultPath,
-        tr("SpeedyNote Bundle (*.snb)")
+        tr("3ENotes Bundle (*.snb)")
     );
     
     if (filePath.isEmpty()) {
@@ -3921,13 +3921,13 @@ void MainWindow::loadDocument()
 #else
     // Open file dialog for file selection
     // Phase O1.7.6: Unified .snb bundle format
-    QSettings openSettings("SpeedyNote", "App");
+    QSettings openSettings("3E", "3ENotes");
     QString lastOpenDir = openSettings.value("FileDialogs/lastOpenDirectory").toString();
     if (lastOpenDir.isEmpty() || !QDir(lastOpenDir).exists()) {
         lastOpenDir = QDir::homePath();
     }
     
-    QString filter = tr("SpeedyNote Files (*.snb *.pdf);;SpeedyNote Bundle (*.snb);;PDF Documents (*.pdf);;All Files (*)");
+    QString filter = tr("3ENotes Files (*.snb *.pdf);;3ENotes Bundle (*.snb);;PDF Documents (*.pdf);;All Files (*)");
     filePath = QFileDialog::getOpenFileName(
         this,
         tr("Open Document"),
@@ -4461,7 +4461,7 @@ void MainWindow::openPdfDocument(const QString &filePath)
         });
         return;
 #else
-        QSettings pdfSettings("SpeedyNote", "App");
+        QSettings pdfSettings("3E", "3ENotes");
         QString lastPdfDir = pdfSettings.value("FileDialogs/lastOpenDirectory").toString();
         if (lastPdfDir.isEmpty() || !QDir(lastPdfDir).exists()) {
             lastPdfDir = QDir::homePath();
@@ -4539,7 +4539,7 @@ void MainWindow::addNewTab() {
     
     // Apply default page size and background settings from user preferences
     {
-        QSettings settings("SpeedyNote", "App");
+        QSettings settings("3E", "3ENotes");
         
         // Load page size (default: US Letter at 96 DPI)
         qreal pageWidth = settings.value("page/width", 816).toReal();
@@ -4606,7 +4606,7 @@ void MainWindow::addNewEdgelessTab()
     // Apply default background settings from user preferences (dark-mode-aware defaults)
     // Default: Grid with 32px spacing (32 divides evenly into 1024px tiles)
     {
-        QSettings settings("SpeedyNote", "App");
+        QSettings settings("3E", "3ENotes");
         bool dark = isDarkMode();
         Page::BackgroundType defaultStyle = static_cast<Page::BackgroundType>(
             settings.value("background/type", static_cast<int>(Page::BackgroundType::Grid)).toInt());
@@ -4664,7 +4664,7 @@ void MainWindow::loadFolderDocument()
 #endif
     
     // Show directory dialog to select .snb bundle folder
-    QSettings bundleSettings("SpeedyNote", "App");
+    QSettings bundleSettings("3E", "3ENotes");
     QString lastBundleDir = bundleSettings.value("FileDialogs/lastOpenDirectory").toString();
     if (lastBundleDir.isEmpty() || !QDir(lastBundleDir).exists()) {
         lastBundleDir = QDir::homePath();
@@ -4672,7 +4672,7 @@ void MainWindow::loadFolderDocument()
     
     QString bundlePath = QFileDialog::getExistingDirectory(
         this,
-        tr("Open SpeedyNote Bundle (.snb folder)"),
+        tr("Open 3ENotes Bundle (.snb folder)"),
         lastBundleDir,
         QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks
     );
@@ -4689,7 +4689,7 @@ void MainWindow::loadFolderDocument()
     QString manifestPath = bundlePath + "/document.json";
     if (!QFile::exists(manifestPath)) {
         QMessageBox::critical(this, tr("Load Error"),
-            tr("Selected folder is not a valid SpeedyNote bundle.\n"
+            tr("Selected folder is not a valid 3ENotes bundle.\n"
                "Missing document.json manifest.\n\n%1").arg(bundlePath));
         return;
     }
@@ -5059,13 +5059,13 @@ void MainWindow::setSkipImageMasking(bool /*skip*/) {
 bool MainWindow::resolvePdfDarkMode(Document* doc) const {
     if (doc && doc->pdfInvertDarkOverride >= 0)
         return doc->pdfInvertDarkOverride == 1;
-    return QSettings("SpeedyNote", "App").value("display/pdfDarkMode", true).toBool();
+    return QSettings("3E", "3ENotes").value("display/pdfDarkMode", true).toBool();
 }
 
 bool MainWindow::resolvePdfInvertIncludeImages(Document* doc) const {
     if (doc && doc->pdfInvertIncludeImagesOverride >= 0)
         return doc->pdfInvertIncludeImagesOverride == 1;
-    return QSettings("SpeedyNote", "App").value("display/skipImageMasking", false).toBool();
+    return QSettings("3E", "3ENotes").value("display/skipImageMasking", false).toBool();
 }
 
 void MainWindow::refreshPdfDisplaySettingsForDocument(Document* doc) {
@@ -5298,7 +5298,7 @@ void MainWindow::updateTheme() {
 }
     
 void MainWindow::saveThemeSettings() {
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     settings.setValue("useCustomAccentColor", useCustomAccentColor);
     if (customAccentColor.isValid()) {
         settings.setValue("customAccentColor", customAccentColor.name());
@@ -5306,7 +5306,7 @@ void MainWindow::saveThemeSettings() {
 }
 
 void MainWindow::loadThemeSettings() {
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     useCustomAccentColor = settings.value("useCustomAccentColor", false).toBool();
     QString colorName = settings.value("customAccentColor", "#316882").toString();
     customAccentColor = QColor(colorName);
@@ -5362,7 +5362,7 @@ void MainWindow::setTouchGestureMode(TouchGestureMode mode) {
     // TODO: Apply to all viewports when TabManager supports iteration
     // For now, each new viewport gets the mode applied in openDocumentInNewTab()
     
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     settings.setValue("touchGestureMode", static_cast<int>(mode));
 }
 
@@ -5382,7 +5382,7 @@ void MainWindow::cycleTouchGestureMode() {
 }
 
 void MainWindow::loadUserSettings() {
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
 
     // Load touch gesture mode (default to Full for backwards compatibility)
     int savedMode = settings.value("touchGestureMode", static_cast<int>(TouchGestureMode::Full)).toInt();
@@ -5418,7 +5418,7 @@ void MainWindow::setPalmRejectionEnabled(bool enabled) {
         }
     }
     
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     settings.setValue("palmRejection/enabled", enabled);
 }
 
@@ -5429,7 +5429,7 @@ int MainWindow::getPalmRejectionDelay() const {
 void MainWindow::setPalmRejectionDelay(int delayMs) {
     m_palmRejectionDelayMs = delayMs;
     
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     settings.setValue("palmRejection/delayMs", delayMs);
 }
 
@@ -6932,7 +6932,7 @@ void MainWindow::syncOcrTextObjects(Page* page, const QVector<OcrTextBlock>& blo
     bool pageSnap = doc && doc->ocrSnapToBackground && (isGrid || isLines);
     bool pageCjk = false;
     if (pageSnap && isGrid) {
-        QSettings settings("SpeedyNote", "App");
+        QSettings settings("3E", "3ENotes");
         if (settings.value("ocrCjkGridMode", false).toBool()) {
             pageCjk = isCjkOcrLanguage(resolveOcrLanguage(doc));
         }
@@ -6982,7 +6982,7 @@ void MainWindow::setOcrTextVisibility(bool visible)
     bool snapEnabled = doc->ocrSnapToBackground;
     bool cjkGlobal = false;
     if (snapEnabled) {
-        QSettings snapSettings("SpeedyNote", "App");
+        QSettings snapSettings("3E", "3ENotes");
         cjkGlobal = snapSettings.value("ocrCjkGridMode", false).toBool();
     }
 
@@ -7059,7 +7059,7 @@ QString MainWindow::resolveOcrLanguage(Document* doc) const
 {
     if (doc && !doc->ocrLanguage.isEmpty())
         return doc->ocrLanguage;
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     return settings.value("ocrLanguage").toString();
 }
 
@@ -7069,7 +7069,7 @@ OcrSnapParams MainWindow::buildOcrSnapParams(Document* doc, Page* page) const
     if (!doc || !page) return snap;
 
     snap.enabled = doc->ocrSnapToBackground;
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     // Grid-cell snapping exists only for CJK: it requires both the toggle AND a
     // CJK OCR language. For every non-CJK language we fall back to line snapping
     // regardless of background (see OcrWorker grouping).
@@ -7170,7 +7170,7 @@ void MainWindow::updateWindowTitle()
     }
 
     if (displayName.isEmpty()) {
-        setWindowTitle(QStringLiteral("SpeedyNote"));
+        setWindowTitle(QStringLiteral("3ENotes"));
         setWindowModified(false);
     } else {
 #ifdef Q_OS_MACOS
@@ -7178,7 +7178,7 @@ void MainWindow::updateWindowTitle()
         // drives the bullet edit-marker on the close button.
         setWindowTitle(tr("%1[*]").arg(displayName));
 #else
-        setWindowTitle(tr("%1[*] \xE2\x80\x94 SpeedyNote").arg(displayName));
+        setWindowTitle(tr("%1[*] \xE2\x80\x94 3ENotes").arg(displayName));
 #endif
         setWindowModified(modified);
     }
@@ -8597,7 +8597,7 @@ void MainWindow::toggleMarkdownNotesSidebar() {
     // size the splitter last computed for it (often the minimum, if the
     // canvas got narrow while the panel was hidden).
     if (makeVisible && m_contentSplitter) {
-        QSettings s("SpeedyNote", "App");
+        QSettings s("3E", "3ENotes");
         int rightW = qBound(220, s.value("ui/rightSidebarWidth", 300).toInt(), 600);
         QList<int> sizes = m_contentSplitter->sizes();
         if (sizes.size() == 3) {
@@ -9063,7 +9063,7 @@ void MainWindow::dropEvent(QDropEvent *event)
 
 void MainWindow::saveSessionTabs()
 {
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
 
     if (!m_splitViewManager || !m_documentManager || m_splitViewManager->totalTabCount() == 0) {
         settings.remove("session/lastOpenTabs");

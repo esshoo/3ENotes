@@ -4337,9 +4337,9 @@ std::unique_ptr<Document> Document::loadBundle(const QString& path)
     // Phase P.1.1: Check bundle format version for forward compatibility
     int bundleVersion = obj["bundle_format_version"].toInt(1);
     if (bundleVersion > BUNDLE_FORMAT_VERSION) {
-        qWarning() << "Bundle was created with a newer version of SpeedyNote (format version"
+        qWarning() << "Bundle was created with a newer version of 3ENotes (format version"
                    << bundleVersion << ", current version" << BUNDLE_FORMAT_VERSION << ")."
-                   << "Some features may not work correctly. Please update SpeedyNote.";
+                   << "Some features may not work correctly. Please update 3ENotes.";
     }
     
     // Load document metadata
@@ -5168,7 +5168,7 @@ void Document::materializeOcrTextObjects(Page* page) const
     bool pageSnap = ocrSnapToBackground && (isGrid || isLines);
     bool pageCjk = false;
     if (pageSnap && isGrid) {
-        QSettings settings("SpeedyNote", "App");
+        QSettings settings("3E", "3ENotes");
         if (settings.value("ocrCjkGridMode", false).toBool()) {
             QString lang = ocrLanguage.isEmpty()
                 ? settings.value("ocrLanguage").toString()

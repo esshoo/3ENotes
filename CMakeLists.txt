@@ -668,6 +668,7 @@ endif()
 # the compile.ps1 $supportedQtbase array, and the qtbase_files arrays in
 # build-package.sh (helper + spec/PKGBUILD/APKBUILD heredocs).
 set(_SUPPORTED_QTBASE_QM
+    qtbase_ar.qm
     qtbase_de.qm
     qtbase_es.qm
     qtbase_fr.qm
@@ -1091,6 +1092,7 @@ elseif(IOS)
     set_target_properties(speedynote PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/ios/Info.plist"
+        MACOSX_BUNDLE_BUNDLE_NAME "3ENotes"
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.speedynote.speedynote"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"

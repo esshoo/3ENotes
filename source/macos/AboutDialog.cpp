@@ -17,7 +17,7 @@
 
 AboutDialog::AboutDialog(QWidget* parent) : QDialog(parent)
 {
-    setWindowTitle(tr("About SpeedyNote"));
+    setWindowTitle(tr("About 3ENotes"));
     setWindowIcon(QIcon(":/resources/icons/mainicon.svg"));
     setFixedSize(360, 420);
 
@@ -48,7 +48,7 @@ AboutDialog::AboutDialog(QWidget* parent) : QDialog(parent)
 
     layout->addSpacing(10);
 
-    auto* appNameLabel = new QLabel(tr("SpeedyNote"), this);
+    auto* appNameLabel = new QLabel(tr("3ENotes"), this);
     appNameLabel->setAlignment(Qt::AlignCenter);
     appNameLabel->setStyleSheet("font-size: 24px; font-weight: bold;");
     layout->addWidget(appNameLabel);
@@ -82,7 +82,7 @@ AboutDialog::AboutDialog(QWidget* parent) : QDialog(parent)
 
     layout->addSpacing(10);
 
-    auto* copyrightLabel = new QLabel(tr("© 2026 SpeedyNote. All rights reserved."), this);
+    auto* copyrightLabel = new QLabel(tr("3ENotes is based on SpeedyNote and distributed under GPLv3."), this);
     copyrightLabel->setAlignment(Qt::AlignCenter);
     copyrightLabel->setStyleSheet("font-size: 10px; color: #95a5a6;");
     layout->addWidget(copyrightLabel);

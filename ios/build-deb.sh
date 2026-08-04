@@ -14,7 +14,7 @@
 #   ./ios/build-deb.sh
 #
 # Output:
-#   ios/dist/SpeedyNote_<version>_iphoneos-arm64.deb
+#   ios/dist/3ENotes_<version>_iphoneos-arm64.deb
 # ============================================================================
 
 set -euo pipefail
@@ -31,10 +31,10 @@ if [ -z "${VERSION}" ]; then
     VERSION="0.0.0"
 fi
 
-DEB_NAME="SpeedyNote_${VERSION}_iphoneos-arm64.deb"
+DEB_NAME="3ENotes_${VERSION}_iphoneos-arm64.deb"
 
 # ---------- Preflight checks ----------
-echo "=== SpeedyNote .deb Packaging ==="
+echo "=== 3ENotes .deb Packaging ==="
 echo ""
 echo "Version: ${VERSION}"
 echo "Output:  ${DIST_DIR}/${DEB_NAME}"
@@ -72,7 +72,7 @@ trap 'rm -rf "${STAGING}"' EXIT
 echo "--- Creating .deb structure ---"
 
 # App payload (rootless path)
-APP_DEST="${STAGING}/var/jb/Applications/SpeedyNote.app"
+APP_DEST="${STAGING}/var/jb/Applications/3ENotes.app"
 mkdir -p "${APP_DEST}"
 cp -R "${APP_PATH}/" "${APP_DEST}/"
 
@@ -81,25 +81,25 @@ mkdir -p "${STAGING}/DEBIAN"
 
 cat > "${STAGING}/DEBIAN/control" << EOF
 Package: org.speedynote.speedynote
-Name: SpeedyNote
+Name: 3ENotes
 Version: ${VERSION}
 Architecture: iphoneos-arm64
 Description: Stylus-focused note-taking app for iPad with Apple Pencil support.
-Maintainer: SpeedyNote <info@speedynote.org>
+Maintainer: 3ENotes maintainers <https://github.com/esshoo/3ENotes>
 Section: Productivity
 Depends: firmware (>= 16.0)
 EOF
 
 cat > "${STAGING}/DEBIAN/postinst" << 'EOF'
 #!/bin/bash
-uicache -p /var/jb/Applications/SpeedyNote.app
+uicache -p /var/jb/Applications/3ENotes.app
 exit 0
 EOF
 chmod 755 "${STAGING}/DEBIAN/postinst"
 
 cat > "${STAGING}/DEBIAN/postrm" << 'EOF'
 #!/bin/bash
-uicache -p /var/jb/Applications/SpeedyNote.app
+uicache -p /var/jb/Applications/3ENotes.app
 exit 0
 EOF
 chmod 755 "${STAGING}/DEBIAN/postrm"

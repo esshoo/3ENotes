@@ -1,8 +1,8 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=SpeedyNote
-GenericName=Note-Taking Application
+Name=3ENotes
+GenericName=Digital Note-Taking Application
 Comment=A fast note-taking application with PDF annotation, PDF export, and stylus support
 Exec=speedynote %F
 Icon=org.speedynote.SpeedyNote

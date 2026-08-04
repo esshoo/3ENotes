@@ -85,7 +85,7 @@ void MacMenuBar::buildAppMenu()
 {
     // About SpeedyNote — opens the standalone AboutDialog. Qt's AboutRole
     // moves this to the top of the App menu regardless of insertion order.
-    QAction* aboutAction = new QAction(tr("About SpeedyNote"), this);
+    QAction* aboutAction = new QAction(tr("About 3ENotes"), this);
     aboutAction->setMenuRole(QAction::AboutRole);
     connect(aboutAction, &QAction::triggered, this, []() {
         AboutDialog dlg(MainWindow::activeMainWindow());
@@ -192,12 +192,12 @@ void MacMenuBar::populateHelpMenu()
 
     QAction* visit = m_helpMenu->addAction(tr("Visit GitHub"));
     connect(visit, &QAction::triggered, this, []() {
-        QDesktopServices::openUrl(QUrl("https://github.com/alpha-liu-01/SpeedyNote"));
+        QDesktopServices::openUrl(QUrl("https://github.com/esshoo/3ENotes"));
     });
 
     QAction* report = m_helpMenu->addAction(tr("Report a Bug..."));
     connect(report, &QAction::triggered, this, []() {
-        QDesktopServices::openUrl(QUrl("https://github.com/alpha-liu-01/SpeedyNote/issues/new"));
+        QDesktopServices::openUrl(QUrl("https://github.com/esshoo/3ENotes/issues/new"));
     });
 
     // The macOS system Help-menu search field is auto-injected at the top by

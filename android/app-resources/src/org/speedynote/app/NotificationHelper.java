@@ -140,7 +140,7 @@ public class NotificationHelper {
             
             NotificationCompat.Builder builder = new NotificationCompat.Builder(activity, CHANNEL_ID)
                 .setSmallIcon(iconRes)
-                .setContentTitle(title != null ? title : "SpeedyNote")
+                .setContentTitle(title != null ? title : "3ENotes")
                 .setContentText(message != null ? message : "")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setContentIntent(pendingIntent)

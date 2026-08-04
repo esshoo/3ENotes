@@ -64,6 +64,7 @@ struct LanguageEntry {
 QString overrideDisplayName(const QString& code) {
     static const QHash<QString, QString> overrides = {
         {QStringLiteral("en"), QStringLiteral("English")},
+        {QStringLiteral("ar"), QStringLiteral("العربية")},
         {QStringLiteral("zh"), QStringLiteral("中文 (Chinese Simplified)")},
         {QStringLiteral("pt"), QStringLiteral("Português (Portuguese, Brazil)")},
     };
@@ -254,7 +255,7 @@ void ControlPanelDialog::done(int result)
 
 void ControlPanelDialog::loadSettings()
 {
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     
     // Load page size setting
     // Default: US Letter (816 × 1056 px at 96 DPI)
@@ -328,7 +329,7 @@ void ControlPanelDialog::applyChanges()
 {
     if (!mainWindowRef) return;
     
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     
     // Apply page size settings to QSettings (for new documents only)
     QSizeF selectedPageSize = pageSizeCombo->currentData().toSizeF();
@@ -494,7 +495,7 @@ void ControlPanelDialog::applyChanges() {
         }
         
         // ✅ Apply language settings
-        QSettings settings("SpeedyNote", "App");
+        QSettings settings("3E", "3ENotes");
         settings.setValue("useSystemLanguage", useSystemLanguageCheckbox->isChecked());
         if (!useSystemLanguageCheckbox->isChecked()) {
             QString selectedLang = languageCombo->currentData().toString();
@@ -1096,7 +1097,7 @@ void ControlPanelDialog::createToolsTab()
     toolsTab = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(toolsTab);
 
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
 
     // The old global "Minimum stroke width" row has moved to the Pen
     // thickness-preset editor (each preset owns its own min width now).
@@ -1710,7 +1711,7 @@ void ControlPanelDialog::createAboutTab() {
     layout->addSpacing(10);
     
     // Application name
-    QLabel *appNameLabel = new QLabel(tr("SpeedyNote"), aboutTab);
+    QLabel *appNameLabel = new QLabel(tr("3ENotes"), aboutTab);
     appNameLabel->setAlignment(Qt::AlignCenter);
     appNameLabel->setStyleSheet("font-size: 24px; font-weight: bold");
     layout->addWidget(appNameLabel);
@@ -1743,7 +1744,7 @@ void ControlPanelDialog::createAboutTab() {
     layout->addSpacing(10);
     
     // Copyright
-    QLabel *copyrightLabel = new QLabel(tr("© 2026 SpeedyNote. All rights reserved."), aboutTab);
+    QLabel *copyrightLabel = new QLabel(tr("3ENotes is based on SpeedyNote and distributed under GPLv3."), aboutTab);
     copyrightLabel->setAlignment(Qt::AlignCenter);
     copyrightLabel->setStyleSheet("font-size: 10px; color: #95a5a6;");
     layout->addWidget(copyrightLabel);
@@ -1779,7 +1780,7 @@ void ControlPanelDialog::createCacheTab() {
 
     // Description
     QLabel *descriptionLabel = new QLabel(
-        tr("SpeedyNote uses temporary folders to work with notebook files.\n"
+        tr("3ENotes uses temporary folders to work with notebook files.\n"
            "These folders are normally cleaned up when you close a notebook,\n"
            "but crashes or force-close can leave orphaned files behind."),
         cacheTab
@@ -1886,7 +1887,7 @@ void ControlPanelDialog::createLanguageTab() {
     useSystemLanguageCheckbox = new QCheckBox(tr("Use System Language (Auto-detect)"), languageTab);
     layout->addWidget(useSystemLanguageCheckbox);
     
-    QLabel *systemNote = new QLabel(tr("When enabled, SpeedyNote will automatically detect and use your system's language setting."), languageTab);
+    QLabel *systemNote = new QLabel(tr("When enabled, 3ENotes will automatically detect and use your system's language setting."), languageTab);
     systemNote->setWordWrap(true);
     systemNote->setStyleSheet("color: gray; font-size: 11px; margin-bottom: 15px;");
     layout->addWidget(systemNote);
@@ -1898,7 +1899,7 @@ void ControlPanelDialog::createLanguageTab() {
     
     // Read saved language settings once — used both for combo population (so
     // a saved-but-uninstalled language still appears) and for initial state.
-    QSettings settings(QStringLiteral("SpeedyNote"), QStringLiteral("App"));
+    QSettings settings(QStringLiteral("3E"), QStringLiteral("3ENotes"));
     const bool useSystemLang   = settings.value(QStringLiteral("useSystemLanguage"), true).toBool();
     const QString overrideLang = settings.value(QStringLiteral("languageOverride"),
                                                 QStringLiteral("en")).toString();
@@ -1985,7 +1986,7 @@ void ControlPanelDialog::createLanguageTab() {
     layout->addWidget(ocrLanguageCombo);
 
     if (mainWindowRef) {
-        QSettings settings("SpeedyNote", "App");
+        QSettings settings("3E", "3ENotes");
         QString savedOcrLang = settings.value("ocrLanguage").toString();
         int ocrIdx = ocrLanguageCombo->findData(savedOcrLang);
         if (ocrIdx >= 0)
@@ -2079,7 +2080,7 @@ void ControlPanelDialog::createCompatibilityTab() {
     layout->addWidget(folderSectionLabel);
     
     QLabel *folderDescriptionLabel = new QLabel(tr("This feature allows you to manually select a save folder for your notes. "
-                                                  "SpeedyNote uses .snb folder bundles for notebook storage."), compatibilityTab);
+                                                  "3ENotes uses .snb folder bundles for notebook storage."), compatibilityTab);
     folderDescriptionLabel->setWordWrap(true);
     folderDescriptionLabel->setStyleSheet("font-size: 11px; margin-bottom: 10px;");
     layout->addWidget(folderDescriptionLabel);

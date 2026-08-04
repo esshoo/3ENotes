@@ -456,8 +456,8 @@ private slots:
      *   - macOS: "<doc>[*]" (Apple HIG; bullet + close-button "edited" dot
      *     come from setWindowModified). Also calls setWindowFilePath() so
      *     the title bar gets the document proxy icon.
-     *   - Other:  "<doc>[*] \xE2\x80\x94 SpeedyNote".
-     *   - No doc: just "SpeedyNote", with setWindowModified(false).
+     *   - Other:  "<doc>[*] \xE2\x80\x94 3ENotes".
+     *   - No doc: just "3ENotes", with setWindowModified(false).
      *
      * Connected to SplitViewManager::activeViewportChanged (active pane /
      * tab switches) and TabManager::currentTabDisplayChanged (rename,

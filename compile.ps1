@@ -298,7 +298,7 @@ if ($qtTranslationsPath -and (Test-Path $qtTranslationsPath)) {
     # APKBUILD heredocs). When a new app language is added all four sites
     # need to be extended.
     $supportedQtbase = @(
-        'qtbase_de.qm','qtbase_es.qm','qtbase_fr.qm',
+        'qtbase_ar.qm','qtbase_de.qm','qtbase_es.qm','qtbase_fr.qm',
         'qtbase_pt_BR.qm','qtbase_zh_CN.qm','qtbase_en.qm'
     )
     $dest = ".\translations"

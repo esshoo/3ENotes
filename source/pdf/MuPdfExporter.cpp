@@ -1282,7 +1282,7 @@ bool MuPdfExporter::renderModifiedPage(int pageIndex)
     
     QSizeF pageSize = page->size;
     
-    // Convert page size from SpeedyNote units (96 DPI) to PDF points (72 DPI)
+    // Convert page size from 3ENotes units (96 DPI) to PDF points (72 DPI)
     float widthPt = pageSize.width() * SN_TO_PDF_SCALE;
     float heightPt = pageSize.height() * SN_TO_PDF_SCALE;
     
@@ -1552,7 +1552,7 @@ bool MuPdfExporter::renderModifiedPage(int pageIndex)
 /**
  * @brief Build PDF content stream for page background (color, grid, lines).
  * @param ctx MuPDF context
- * @param page SpeedyNote page with background settings
+ * @param page 3ENotes page with background settings
  * @param widthPt Page width in PDF points
  * @param heightPt Page height in PDF points
  * @return Buffer containing background content stream, or nullptr if no background needed
@@ -1632,7 +1632,7 @@ static fz_buffer* buildBackgroundContentStream(fz_context* ctx, const Page* page
                 }
                 
                 // Draw horizontal lines
-                // SpeedyNote: first line at y=spacing from top
+                // 3ENotes: first line at y=spacing from top
                 // PDF: y=0 is at bottom, so first line is at heightPt - spacingPt
                 for (float pdfY = heightPt - spacingPt; pdfY > 0; pdfY -= spacingPt) {
                     snprintf(cmd, sizeof(cmd), "0 %.4f m %.4f %.4f l S\n", pdfY, widthPt, pdfY);
@@ -1644,7 +1644,7 @@ static fz_buffer* buildBackgroundContentStream(fz_context* ctx, const Page* page
                 if (spacingPt < 1.0f) spacingPt = 10.0f;  // Minimum spacing
                 
                 // Draw horizontal lines only (ruled paper)
-                // SpeedyNote: first line at y=spacing from top
+                // 3ENotes: first line at y=spacing from top
                 // PDF: y=0 is at bottom, so first line is at heightPt - spacingPt
                 for (float pdfY = heightPt - spacingPt; pdfY > 0; pdfY -= spacingPt) {
                     snprintf(cmd, sizeof(cmd), "0 %.4f m %.4f %.4f l S\n", pdfY, widthPt, pdfY);
@@ -1672,7 +1672,7 @@ bool MuPdfExporter::renderBlankPage(int pageIndex)
     
     QSizeF pageSize = page->size;
     
-    // Convert page size from SpeedyNote units (96 DPI) to PDF points (72 DPI)
+    // Convert page size from 3ENotes units (96 DPI) to PDF points (72 DPI)
     float widthPt = pageSize.width() * SN_TO_PDF_SCALE;
     float heightPt = pageSize.height() * SN_TO_PDF_SCALE;
     
@@ -1913,7 +1913,7 @@ bool MuPdfExporter::renderBlankPage(int pageIndex)
 static constexpr float CIRCLE_KAPPA = 0.5522847498f;
 
 /**
- * @brief Transform a point from SpeedyNote coords to PDF coords.
+ * @brief Transform a point from 3ENotes coords to PDF coords.
  */
 static inline void transformPoint(float& x, float& y, qreal pageHeightSn)
 {
@@ -2031,7 +2031,7 @@ fz_path* MuPdfExporter::polygonToPath(const QPolygonF& polygon, qreal pageHeight
         path = fz_new_path(m_ctx);
         
         // Transform first point and move to it
-        // SpeedyNote: origin at top-left, 96 DPI
+        // 3ENotes: origin at top-left, 96 DPI
         // PDF: origin at bottom-left, 72 DPI (points)
         float x = static_cast<float>(polygon[0].x()) * SN_TO_PDF_SCALE;
         float y = static_cast<float>(pageHeightSn - polygon[0].y()) * SN_TO_PDF_SCALE;
@@ -2131,7 +2131,7 @@ static QString getOrCreateExtGState(fz_context* ctx, pdf_document* outputDoc,
  * @param buf Buffer to append to (must not be null)
  * @param resources Resources dictionary (for adding ExtGState entries)
  * @param layer The vector layer to render
- * @param pageHeightSn Page height in SpeedyNote coordinates (for Y-flip)
+ * @param pageHeightSn Page height in 3ENotes coordinates (for Y-flip)
  * @param gsIndex Current graphics state index counter (modified by function)
  * @param alphaToGsName Cache for ExtGState names by alpha value (for reuse)
  * 
@@ -2440,7 +2440,7 @@ static bool addImageToPage(fz_context* ctx, pdf_document* outputDoc,
     bool hasAlpha = qimg.hasAlphaChannel();
     
     // Calculate display size in PDF points
-    // SpeedyNote uses 96 DPI, PDF uses 72 DPI
+    // 3ENotes uses 96 DPI, PDF uses 72 DPI
     float displayWidthPt = static_cast<float>(img->size.width()) * SN_TO_PDF_SCALE;
     float displayHeightPt = static_cast<float>(img->size.height()) * SN_TO_PDF_SCALE;
     
@@ -2514,7 +2514,7 @@ static bool addImageToPage(fz_context* ctx, pdf_document* outputDoc,
             float centerY = pdfY + displayHeightPt / 2.0f;
             
             // Negate rotation angle to account for Y-axis flip
-            // SpeedyNote: Y increases downward, positive rotation = counterclockwise
+            // 3ENotes: Y increases downward, positive rotation = counterclockwise
             // PDF: Y increases upward, so we need to negate to preserve visual rotation direction
             float radians = static_cast<float>(-img->rotation * M_PI / 180.0);
             float cosR = cosf(radians);
@@ -2738,8 +2738,8 @@ bool MuPdfExporter::writeMetadata()
             }
         }
         
-        // Add/override Producer with SpeedyNote attribution
-        pdf_dict_put_text_string(m_ctx, info, PDF_NAME(Producer), "SpeedyNote 1.0");
+        // Add/override Producer with 3ENotes attribution
+        pdf_dict_put_text_string(m_ctx, info, PDF_NAME(Producer), "3ENotes 1.0");
         
         // Update ModDate to current time (PDF date format: D:YYYYMMDDHHmmSS)
         QDateTime now = QDateTime::currentDateTime();

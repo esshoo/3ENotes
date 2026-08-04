@@ -5,13 +5,13 @@
     <name>AboutDialog</name>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="20"/>
-        <source>About SpeedyNote</source>
-        <translation>Acerca de SpeedyNote</translation>
+        <source>About 3ENotes</source>
+        <translation>Acerca de 3ENotes</translation>
     </message>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="51"/>
-        <source>SpeedyNote</source>
-        <translation type="unfinished">SpeedyNote</translation>
+        <source>3ENotes</source>
+        <translation type="unfinished">3ENotes</translation>
     </message>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="58"/>
@@ -30,8 +30,8 @@
     </message>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="85"/>
-        <source>© 2026 SpeedyNote. All rights reserved.</source>
-        <translation type="unfinished">© 2026 SpeedyNote. Todos los derechos reservados.</translation>
+        <source>3ENotes is based on SpeedyNote and distributed under GPLv3.</source>
+        <translation type="unfinished">3ENotes is based on SpeedyNote and distributed under GPLv3.</translation>
     </message>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="92"/>
@@ -124,8 +124,8 @@
     </message>
     <message>
         <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="203"/>
-        <source>SpeedyNote Packages (*.snbx);;All Files (*)</source>
-        <translation>Paquetes de SpeedyNote (*.snbx);;Todos los archivos (*)</translation>
+        <source>3ENotes Packages (*.snbx);;All Files (*)</source>
+        <translation>Paquetes de 3ENotes (*.snbx);;Todos los archivos (*)</translation>
     </message>
     <message>
         <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="229"/>
@@ -545,8 +545,8 @@ Use un directorio como destino de salida, p. ej.: -o ~/Backup/</translation>
     </message>
     <message>
         <location filename="../../source/cli/CliParser.cpp" line="101"/>
-        <source>SpeedyNote - A fast note-taking application</source>
-        <translation>SpeedyNote - Una aplicación rápida para tomar notas</translation>
+        <source>3ENotes - A fast note-taking application</source>
+        <translation>3ENotes - Una aplicación rápida para tomar notas</translation>
     </message>
     <message>
         <location filename="../../source/cli/CliParser.cpp" line="113"/>
@@ -676,7 +676,7 @@ Use un directorio como destino de salida, p. ej.: -o ~/Backup/</translation>
         <location filename="../../source/cli/CliParser.cpp" line="285"/>
         <source>Usage: speedynote [command] [options] [files...]
 
-SpeedyNote - A fast note-taking application with PDF annotation support.
+3ENotes - A fast note-taking application with PDF annotation support.
 Includes a powerful CLI for batch operations, scripting, and automation.
 
 COMMANDS:
@@ -718,7 +718,7 @@ Run &apos;speedynote &lt;command&gt; --help&apos; for command-specific options.
 </source>
         <translation>Uso: speedynote [comando] [opciones] [archivos...]
 
-SpeedyNote - Una aplicación rápida para tomar notas con soporte para anotaciones en PDF.
+3ENotes - Una aplicación rápida para tomar notas con soporte para anotaciones en PDF.
 Incluye una potente CLI para operaciones por lotes, scripting y automatización.
 
 COMANDOS:
@@ -896,7 +896,7 @@ EXAMPLES:
   # Recursively backup with dry-run preview
   speedynote export-snbx ~/Notes/ -o ~/Backup/ --recursive --dry-run
 
-NOTE: .snbx packages can be imported on any device with SpeedyNote.
+NOTE: .snbx packages can be imported on any device with 3ENotes.
 </source>
         <translation>Uso: speedynote export-snbx [OPCIONES] &lt;entrada&gt;... -o &lt;salida&gt;
 
@@ -936,7 +936,7 @@ EJEMPLOS:
   # Copia de seguridad recursiva con previsualización (dry-run)
   speedynote export-snbx ~/Notes/ -o ~/Backup/ --recursive --dry-run
 
-NOTA: Los paquetes .snbx se pueden importar en cualquier dispositivo con SpeedyNote.</translation>
+NOTA: Los paquetes .snbx se pueden importar en cualquier dispositivo con 3ENotes.</translation>
     </message>
     <message>
         <location filename="../../source/cli/CliParser.cpp" line="421"/>
@@ -1509,8 +1509,8 @@ Esta acción no se puede deshacer.</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1713"/>
-        <source>SpeedyNote</source>
-        <translation>SpeedyNote</translation>
+        <source>3ENotes</source>
+        <translation>3ENotes</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1721"/>
@@ -1519,8 +1519,8 @@ Esta acción no se puede deshacer.</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1746"/>
-        <source>© 2026 SpeedyNote. All rights reserved.</source>
-        <translation>© 2026 SpeedyNote. Todos los derechos reservados.</translation>
+        <source>3ENotes is based on SpeedyNote and distributed under GPLv3.</source>
+        <translation type="unfinished">3ENotes is based on SpeedyNote and distributed under GPLv3.</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1773"/>
@@ -1529,10 +1529,10 @@ Esta acción no se puede deshacer.</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1782"/>
-        <source>SpeedyNote uses temporary folders to work with notebook files.
+        <source>3ENotes uses temporary folders to work with notebook files.
 These folders are normally cleaned up when you close a notebook,
 but crashes or force-close can leave orphaned files behind.</source>
-        <translation>SpeedyNote utiliza carpetas temporales para trabajar con los archivos de bloc de notas.
+        <translation>3ENotes utiliza carpetas temporales para trabajar con los archivos de bloc de notas.
 Normalmente, estas carpetas se limpian al cerrar un bloc de notas,
 pero los bloqueos o cierres forzados pueden dejar archivos huérfanos.</translation>
     </message>
@@ -1602,8 +1602,8 @@ Continue?</source>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1889"/>
-        <source>When enabled, SpeedyNote will automatically detect and use your system&apos;s language setting.</source>
-        <translation>Cuando está habilitado, SpeedyNote detectará y usará automáticamente la configuración de idioma de su sistema.</translation>
+        <source>When enabled, 3ENotes will automatically detect and use your system&apos;s language setting.</source>
+        <translation>Cuando está habilitado, 3ENotes detectará y usará automáticamente la configuración de idioma de su sistema.</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1895"/>
@@ -2554,8 +2554,8 @@ Esto ayuda a prevenir toques accidentales con la palma mientras escribe. Solo af
     <name>Launcher</name>
     <message>
         <location filename="../../source/ui/launcher/Launcher.cpp" line="203"/>
-        <source>SpeedyNote</source>
-        <translation>SpeedyNote</translation>
+        <source>3ENotes</source>
+        <translation>3ENotes</translation>
     </message>
     <message>
         <location filename="../../source/ui/launcher/Launcher.cpp" line="293"/>
@@ -3047,8 +3047,8 @@ Esta acción no se puede deshacer.</translation>
     </message>
     <message>
         <location filename="../../source/macos/MacMenuBar.cpp" line="88"/>
-        <source>About SpeedyNote</source>
-        <translation>Acerca de SpeedyNote</translation>
+        <source>About 3ENotes</source>
+        <translation>Acerca de 3ENotes</translation>
     </message>
     <message>
         <location filename="../../source/macos/MacMenuBar.cpp" line="160"/>
@@ -3249,8 +3249,8 @@ Esta acción no se puede deshacer.</translation>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="3672"/>
-        <source>SpeedyNote Bundle (*.snb)</source>
-        <translation>Paquete SpeedyNote (*.snb)</translation>
+        <source>3ENotes Bundle (*.snb)</source>
+        <translation>Paquete 3ENotes (*.snb)</translation>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="1002"/>
@@ -3277,8 +3277,8 @@ Esta acción no se puede deshacer.</translation>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="3930"/>
-        <source>SpeedyNote Files (*.snb *.pdf);;SpeedyNote Bundle (*.snb);;PDF Documents (*.pdf);;All Files (*)</source>
-        <translation>Archivos de SpeedyNote (*.snb *.pdf);;Paquete SpeedyNote (*.snb);;Documentos PDF (*.pdf);;Todos los archivos (*)</translation>
+        <source>3ENotes Files (*.snb *.pdf);;3ENotes Bundle (*.snb);;PDF Documents (*.pdf);;All Files (*)</source>
+        <translation>Archivos de 3ENotes (*.snb *.pdf);;Paquete 3ENotes (*.snb);;Documentos PDF (*.pdf);;Todos los archivos (*)</translation>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="3913"/>
@@ -3514,16 +3514,16 @@ Los documentos se guardan en:
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="4675"/>
-        <source>Open SpeedyNote Bundle (.snb folder)</source>
-        <translation>Abrir paquete de SpeedyNote (carpeta .snb)</translation>
+        <source>Open 3ENotes Bundle (.snb folder)</source>
+        <translation>Abrir paquete de 3ENotes (carpeta .snb)</translation>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="4692"/>
-        <source>Selected folder is not a valid SpeedyNote bundle.
+        <source>Selected folder is not a valid 3ENotes bundle.
 Missing document.json manifest.
 
 %1</source>
-        <translation>La carpeta seleccionada no es un paquete de SpeedyNote válido.
+        <translation>La carpeta seleccionada no es un paquete de 3ENotes válido.
 Falta el manifiesto document.json.
 
 %1</translation>
@@ -3594,8 +3594,8 @@ Falta el manifiesto document.json.
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="7181"/>
-        <source>%1[*] — SpeedyNote</source>
-        <translation>%1[*] — SpeedyNote</translation>
+        <source>%1[*] — 3ENotes</source>
+        <translation>%1[*] — 3ENotes</translation>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="7244"/>
@@ -4738,8 +4738,8 @@ Aún podrá usar el cuaderno para tomar notas, pero las funciones de anotación 
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="217"/>
         <location filename="../../source/batch/BatchOperations.cpp" line="386"/>
-        <source>Not a valid SpeedyNote bundle</source>
-        <translation>No es un paquete de SpeedyNote válido</translation>
+        <source>Not a valid 3ENotes bundle</source>
+        <translation>No es un paquete de 3ENotes válido</translation>
     </message>
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="227"/>

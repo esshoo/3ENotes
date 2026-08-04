@@ -12,7 +12,7 @@
 #   ./ios/build-ipa.sh
 #
 # Output:
-#   ios/dist/SpeedyNote_<version>.ipa
+#   ios/dist/3ENotes_<version>.ipa
 # ============================================================================
 
 set -euo pipefail
@@ -29,10 +29,10 @@ if [ -z "${VERSION}" ]; then
     VERSION="0.0.0"
 fi
 
-IPA_NAME="SpeedyNote_${VERSION}.ipa"
+IPA_NAME="3ENotes_${VERSION}.ipa"
 
 # ---------- Preflight checks ----------
-echo "=== SpeedyNote .ipa Packaging ==="
+echo "=== 3ENotes .ipa Packaging ==="
 echo ""
 echo "Version: ${VERSION}"
 echo "Output:  ${DIST_DIR}/${IPA_NAME}"
@@ -63,7 +63,7 @@ trap 'rm -rf "${PAYLOAD}"' EXIT
 
 echo "--- Creating Payload structure ---"
 mkdir -p "${PAYLOAD}/Payload"
-cp -R "${APP_PATH}" "${PAYLOAD}/Payload/SpeedyNote.app"
+cp -R "${APP_PATH}" "${PAYLOAD}/Payload/3ENotes.app"
 
 echo "--- Zipping into .ipa ---"
 mkdir -p "${DIST_DIR}"

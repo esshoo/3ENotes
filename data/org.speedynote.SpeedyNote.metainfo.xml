@@ -3,19 +3,19 @@
 <component type="desktop-application">
   <id>org.speedynote.SpeedyNote</id>
 
-  <name>SpeedyNote</name>
+  <name>3ENotes</name>
   <summary>Fast stylus note-taking app</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
 
   <developer id="org.speedynote">
-    <name>SpeedyNote Team</name>
+    <name>SpeedyNote contributors and 3ENotes maintainers</name>
   </developer>
 
   <description>
     <p>
-      SpeedyNote is a fast, open-source note-taking application designed for
+      3ENotes is a fast, open-source note-taking application designed for
       stylus users who need iPad-quality annotation on budget hardware. Built
       with native C++ and Qt, it delivers 360Hz stylus input on hardware as
       modest as an Intel Celeron N4000 at 1.1GHz — with no Electron bloat.
@@ -43,15 +43,15 @@
   <screenshots>
     <screenshot type="default">
       <image>https://i.imgur.com/mTpp0xk.png</image>
-      <caption>SpeedyNote pressure-sensitive stylus tools</caption>
+      <caption>3ENotes pressure-sensitive stylus tools</caption>
     </screenshot>
     <screenshot>
       <image>https://i.imgur.com/dzSVHki.png</image>
-      <caption>SpeedyNote PDF Annotations</caption>
+      <caption>3ENotes PDF Annotations</caption>
     </screenshot>
     <screenshot>
       <image>https://i.imgur.com/V2D8rPl.png</image>
-      <caption>SpeedyNote CLI support</caption>
+      <caption>3ENotes CLI support</caption>
     </screenshot>
   </screenshots>
 
@@ -60,9 +60,9 @@
     <color type="primary" scheme_preference="dark">#454666</color>
   </branding>
 
-  <url type="homepage">https://www.speedynote.org</url>
-  <url type="bugtracker">https://github.com/alpha-liu-01/SpeedyNote/issues</url>
-  <url type="vcs-browser">https://github.com/alpha-liu-01/SpeedyNote</url>
+  <url type="homepage">https://github.com/esshoo/3ENotes</url>
+  <url type="bugtracker">https://github.com/esshoo/3ENotes/issues</url>
+  <url type="vcs-browser">https://github.com/esshoo/3ENotes</url>
   <url type="donation">https://buymeacoffee.com/alphaliu01</url>
 
   <provides>

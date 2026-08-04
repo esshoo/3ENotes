@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# SpeedyNote Multi-Distribution Packaging Script
+# 3ENotes Multi-Distribution Packaging Script
 # This script automates the process of creating packages for multiple Linux distributions
 
 # Colors for output
@@ -21,9 +21,9 @@ if [ -z "$PKGVER" ]; then
 fi
 PKGREL="1"
 PKGARCH=$(uname -m)
-MAINTAINER="SpeedyNote Team <info@speedynote.org>"
+MAINTAINER="3ENotes maintainers <https://github.com/esshoo/3ENotes>"
 DESCRIPTION="A fast note-taking application with PDF annotation and PDF export"
-URL="https://github.com/alpha-liu-01/SpeedyNote"
+URL="https://github.com/esshoo/3ENotes"
 LICENSE="GPL-3.0-or-later"
 
 # Default values
@@ -85,7 +85,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo -e "${BLUE}SpeedyNote Multi-Distribution Packaging Script${NC}"
+echo -e "${BLUE}3ENotes Multi-Distribution Packaging Script${NC}"
 echo "=============================================="
 echo
 
@@ -182,7 +182,7 @@ copy_qt_translations() {
     # Keep in sync with the _SUPPORTED_QTBASE_QM list in CMakeLists.txt, the
     # $supportedQtbase array in compile.ps1, and the inline qtbase loops in
     # the rpm spec / Arch PKGBUILD / Alpine APKBUILD heredocs below.
-    local qtbase_files=(qtbase_de.qm qtbase_es.qm qtbase_fr.qm qtbase_pt_BR.qm qtbase_zh_CN.qm qtbase_en.qm)
+    local qtbase_files=(qtbase_ar.qm qtbase_de.qm qtbase_es.qm qtbase_fr.qm qtbase_pt_BR.qm qtbase_zh_CN.qm qtbase_en.qm)
     for f in "${qtbase_files[@]}"; do
         if [[ -f "$qt_tr_dir/$f" ]]; then
             cp "$qt_tr_dir/$f" "$dest_dir/" 2>/dev/null && copied=$((copied + 1))
@@ -212,8 +212,8 @@ detect_architecture() {
 # Function to check if we're in the right directory
 check_project_directory() {
     if [[ ! -f "CMakeLists.txt" ]]; then
-        echo -e "${RED}Error: This doesn't appear to be the SpeedyNote project directory${NC}"
-        echo "Please run this script from the SpeedyNote project root directory"
+        echo -e "${RED}Error: This doesn't appear to be the 3ENotes project directory${NC}"
+        echo "Please run this script from the 3ENotes project root directory"
         exit 1
     fi
 }
@@ -624,7 +624,7 @@ ensure_ocr_deps() {
 # other value lets CMake auto-enable it when the vendored deps are present.
 build_project() {
     local ocr_mode="${1:-auto}"
-    echo -e "${YELLOW}Building SpeedyNote...${NC}"
+    echo -e "${YELLOW}Building 3ENotes...${NC}"
     
     # Detect and display architecture
     local arch_type=$(detect_architecture)
@@ -722,7 +722,7 @@ Section: editors
 Priority: optional
 Homepage: $URL
 Description: $DESCRIPTION
- SpeedyNote is a fast and efficient note-taking application with PDF annotation
+ 3ENotes is a fast and efficient note-taking application with PDF annotation
  and PDF export support.
 EOF
     
@@ -874,7 +874,7 @@ Requires:       $(get_dependencies rpm)
 ${RPM_OCR_GLOBALS}
 
 %description
-SpeedyNote is a fast and efficient note-taking application with PDF annotation
+3ENotes is a fast and efficient note-taking application with PDF annotation
 and PDF export support.
 
 %prep
@@ -910,7 +910,7 @@ fi
 # Ship Qt's own qtbase_<lang>.qm catalogs so standard dialog buttons translate.
 # All \$-variables are escaped so they reach the spec literally and are
 # expanded by rpmbuild, not by the outer build-package.sh heredoc.
-for f in qtbase_de.qm qtbase_es.qm qtbase_fr.qm qtbase_pt_BR.qm qtbase_zh_CN.qm qtbase_en.qm; do
+for f in qtbase_ar.qm qtbase_de.qm qtbase_es.qm qtbase_fr.qm qtbase_pt_BR.qm qtbase_zh_CN.qm qtbase_en.qm; do
     for tr_dir in \$(qmake6 -query QT_INSTALL_TRANSLATIONS 2>/dev/null) \\
                   \$(qmake   -query QT_INSTALL_TRANSLATIONS 2>/dev/null) \\
                   /usr/share/qt6/translations /usr/share/qt5/translations \\
@@ -1030,7 +1030,7 @@ package() {
     # the rest of the UI. Escaped so makepkg, not the outer build script,
     # expands the variables.
     install -dm755 "\$pkgdir/usr/share/speedynote/translations"
-    for f in qtbase_de.qm qtbase_es.qm qtbase_fr.qm qtbase_pt_BR.qm qtbase_zh_CN.qm qtbase_en.qm; do
+    for f in qtbase_ar.qm qtbase_de.qm qtbase_es.qm qtbase_fr.qm qtbase_pt_BR.qm qtbase_zh_CN.qm qtbase_en.qm; do
         for tr_dir in \$(qmake6 -query QT_INSTALL_TRANSLATIONS 2>/dev/null) \\
                       \$(qmake   -query QT_INSTALL_TRANSLATIONS 2>/dev/null) \\
                       /usr/share/qt6/translations /usr/share/qt5/translations \\
@@ -1101,7 +1101,7 @@ create_apk_package() {
     # Verify pre-built binary exists
     if [[ ! -f "build/speedynote" ]]; then
         echo -e "${RED}Error: speedynote executable not found in build directory${NC}"
-        echo "Please compile SpeedyNote first (build step should have run)"
+        echo "Please compile 3ENotes first (build step should have run)"
         exit 1
     fi
     
@@ -1162,7 +1162,7 @@ package() {
     # standard buttons translate. Variables are escaped so abuild expands
     # them, not the outer build script.
     install -dm755 "\$pkgdir/usr/share/speedynote/translations"
-    for f in qtbase_de.qm qtbase_es.qm qtbase_fr.qm qtbase_pt_BR.qm qtbase_zh_CN.qm qtbase_en.qm; do
+    for f in qtbase_ar.qm qtbase_de.qm qtbase_es.qm qtbase_fr.qm qtbase_pt_BR.qm qtbase_zh_CN.qm qtbase_en.qm; do
         for tr_dir in \$(qmake6 -query QT_INSTALL_TRANSLATIONS 2>/dev/null) \\
                       \$(qmake   -query QT_INSTALL_TRANSLATIONS 2>/dev/null) \\
                       /usr/share/qt6/translations /usr/share/qt5/translations \\
@@ -1283,8 +1283,8 @@ show_package_info() {
     
     echo
     echo -e "${CYAN}=== File Association ===${NC}"
-    echo -e "✅ PDF Association: SpeedyNote available in 'Open with' menu for PDF files"
-    echo -e "✅ Launcher Integration: Use SpeedyNote launcher for creating and importing notebooks"
+    echo -e "✅ PDF Association: 3ENotes available in 'Open with' menu for PDF files"
+    echo -e "✅ Launcher Integration: Use 3ENotes launcher for creating and importing notebooks"
 }
 
 # Main execution

@@ -1,4 +1,4 @@
-name: Build SpeedyNote macOS
+name: Build 3ENotes macOS
 
 on:
   push:
@@ -71,9 +71,9 @@ jobs:
           echo "PKG_CONFIG_PATH=${HOMEBREW_PREFIX}/lib/pkgconfig:${HOMEBREW_PREFIX}/opt/qt@6/lib/pkgconfig" >> $GITHUB_ENV
           echo "HOMEBREW_PREFIX=${HOMEBREW_PREFIX}" >> $GITHUB_ENV
 
-      - name: Build SpeedyNote
+      - name: Build 3ENotes
         run: |
-          echo "Building SpeedyNote for ${{ matrix.arch }}..."
+          echo "Building 3ENotes for ${{ matrix.arch }}..."
           
           # Make script executable
           chmod +x compile-mac.sh
@@ -84,19 +84,19 @@ jobs:
       - name: Verify code signature
         run: |
           echo "=== Verifying code signature ==="
-          if [[ -d "SpeedyNote.app" ]]; then
-            echo "Checking SpeedyNote.app..."
-            codesign --verify --deep --strict --verbose=2 SpeedyNote.app 2>&1 || true
+          if [[ -d "3ENotes.app" ]]; then
+            echo "Checking 3ENotes.app..."
+            codesign --verify --deep --strict --verbose=2 3ENotes.app 2>&1 || true
             echo ""
             echo "Signature info:"
-            codesign -dvv SpeedyNote.app 2>&1 | head -20 || true
+            codesign -dvv 3ENotes.app 2>&1 | head -20 || true
           fi
 
       - name: List build artifacts
         run: |
           echo "=== Build artifacts ==="
           ls -la *.dmg 2>/dev/null || echo "No DMG files found"
-          ls -la SpeedyNote.app 2>/dev/null || echo "No app bundle found"
+          ls -la 3ENotes.app 2>/dev/null || echo "No app bundle found"
           
           # Show DMG info
           if ls *.dmg 1>/dev/null 2>&1; then
@@ -108,7 +108,7 @@ jobs:
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SpeedyNote-macOS-${{ matrix.artifact_suffix }}
+          name: 3ENotes-macOS-${{ matrix.artifact_suffix }}
           path: "*.dmg"
           if-no-files-found: error
 

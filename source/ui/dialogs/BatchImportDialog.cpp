@@ -47,7 +47,7 @@ BatchImportDialog::BatchImportDialog(QWidget* parent)
     } else {
         // Default to Documents/SpeedyNote
         QString defaultDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) 
-                            + "/SpeedyNote";
+                            + "/3ENotes";
         QDir().mkpath(defaultDir);
         m_destEdit->setText(defaultDir);
     }
@@ -200,7 +200,7 @@ void BatchImportDialog::onAddFilesClicked()
         this,
         tr("Select Notebook Files"),
         lastDir,
-        tr("SpeedyNote Packages (*.snbx);;All Files (*)")
+        tr("3ENotes Packages (*.snbx);;All Files (*)")
     );
     
     if (!files.isEmpty()) {

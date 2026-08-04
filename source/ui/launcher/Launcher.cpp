@@ -200,7 +200,7 @@ static QStringList pickSnbxFilesAndroid()
 Launcher::Launcher(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowTitle(tr("SpeedyNote"));
+    setWindowTitle(tr("3ENotes"));
     // Minimum size: 640x480 allows compact sidebar (60px) + content area (580px)
     // This supports screens as small as 1024x640 @ 125% DPI (= 820x512 logical)
     // with room for window chrome and taskbar
@@ -878,7 +878,7 @@ void Launcher::dropEvent(QDropEvent* event)
         }
 
         QString destDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-                          + "/SpeedyNote";
+                          + "/3ENotes";
         QDir().mkpath(destDir);
         performBatchImport(snbxFiles, destDir);
     }
@@ -1665,7 +1665,7 @@ void Launcher::showPdfExportDialog(const QStringList& bundlePaths)
             options.annotationsOnly = dialog.annotationsOnly();
             options.darkModeBackground = dialog.darkModeBackground();
             options.darkenStrokes = dialog.darkenStrokes();
-            options.skipImageMasking = QSettings("SpeedyNote", "App")
+            options.skipImageMasking = QSettings("3E", "3ENotes")
                 .value("display/skipImageMasking", false).toBool();
             options.preserveMetadata = dialog.includeMetadata();
             options.preserveOutline = dialog.includeOutline();
@@ -1876,7 +1876,7 @@ void Launcher::performBatchImport(const QStringList& snbxFiles, const QString& d
         importDestDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/notebooks";
 #else
         // Desktop: Use Documents/SpeedyNote as default
-        importDestDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/SpeedyNote";
+        importDestDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/3ENotes";
 #endif
     }
     QDir().mkpath(importDestDir);

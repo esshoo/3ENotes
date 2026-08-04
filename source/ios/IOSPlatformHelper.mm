@@ -114,7 +114,9 @@ void applyFonts(QApplication& app)
     QFont font(sysFontName, 14);
     font.setStyleHint(QFont::SansSerif);
 
-    if (locale.startsWith("zh_CN") || locale.startsWith("zh_Hans")) {
+    if (locale.startsWith("ar")) {
+        font.setFamilies({"SF Arabic", "Geeza Pro", sysFontName});
+    } else if (locale.startsWith("zh_CN") || locale.startsWith("zh_Hans")) {
         font.setFamilies({sysFontName, "PingFang SC",
                           "Heiti SC", "STHeitiSC-Light"});
     } else if (locale.startsWith("zh_TW") || locale.startsWith("zh_HK") || locale.startsWith("zh_Hant")) {

@@ -32,8 +32,8 @@
 #   - Docker container running (./android/docker-shell.sh)
 #
 # Output:
-#   android/SpeedyNote.apk  (if --apk or --both)
-#   android/SpeedyNote.aab  (if --aab or --both)
+#   android/3ENotes.apk  (if --apk or --both)
+#   android/3ENotes.aab  (if --aab or --both)
 #
 # =============================================================================
 set -e
@@ -355,8 +355,8 @@ if [ "$BUILD_APK" = true ]; then
         echo "APK: ${APK_PATH}"
         ls -lh "${APK_PATH}"
         
-        cp "${APK_PATH}" "${SCRIPT_DIR}/SpeedyNote.apk"
-        echo "Copied to: ${SCRIPT_DIR}/SpeedyNote.apk"
+        cp "${APK_PATH}" "${SCRIPT_DIR}/3ENotes.apk"
+        echo "Copied to: ${SCRIPT_DIR}/3ENotes.apk"
     else
         echo "WARNING: Could not find APK"
         echo "Check: ${BUILD_DIR}/android-build/build/outputs/apk/"
@@ -395,8 +395,8 @@ if [ "$BUILD_AAB" = true ]; then
         echo "AAB: ${AAB_PATH}"
         ls -lh "${AAB_PATH}"
         
-        cp "${AAB_PATH}" "${SCRIPT_DIR}/SpeedyNote.aab"
-        echo "Copied to: ${SCRIPT_DIR}/SpeedyNote.aab"
+        cp "${AAB_PATH}" "${SCRIPT_DIR}/3ENotes.aab"
+        echo "Copied to: ${SCRIPT_DIR}/3ENotes.aab"
     else
         echo "WARNING: Could not find AAB"
         echo "Check: ${BUILD_DIR}/android-build/build/outputs/bundle/"
@@ -418,13 +418,13 @@ else
 fi
 echo ""
 
-if [ "$BUILD_APK" = true ] && [ -f "${SCRIPT_DIR}/SpeedyNote.apk" ]; then
-    echo "APK: ${SCRIPT_DIR}/SpeedyNote.apk"
-    echo "  Install: adb install ${SCRIPT_DIR}/SpeedyNote.apk"
+if [ "$BUILD_APK" = true ] && [ -f "${SCRIPT_DIR}/3ENotes.apk" ]; then
+    echo "APK: ${SCRIPT_DIR}/3ENotes.apk"
+    echo "  Install: adb install ${SCRIPT_DIR}/3ENotes.apk"
 fi
 
-if [ "$BUILD_AAB" = true ] && [ -f "${SCRIPT_DIR}/SpeedyNote.aab" ]; then
-    echo "AAB: ${SCRIPT_DIR}/SpeedyNote.aab"
+if [ "$BUILD_AAB" = true ] && [ -f "${SCRIPT_DIR}/3ENotes.aab" ]; then
+    echo "AAB: ${SCRIPT_DIR}/3ENotes.aab"
     if [ "$USE_RELEASE_SIGNING" = true ]; then
         echo "  Ready for Google Play Console upload"
     else

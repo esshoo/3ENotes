@@ -5,12 +5,12 @@
     <name>AboutDialog</name>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="20"/>
-        <source>About SpeedyNote</source>
-        <translation type="unfinished">关于 SpeedyNote</translation>
+        <source>About 3ENotes</source>
+        <translation type="unfinished">关于 3ENotes</translation>
     </message>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="51"/>
-        <source>SpeedyNote</source>
+        <source>3ENotes</source>
         <translation type="unfinished">极疾记</translation>
     </message>
     <message>
@@ -30,8 +30,8 @@
     </message>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="85"/>
-        <source>© 2026 SpeedyNote. All rights reserved.</source>
-        <translation type="unfinished">© 2026 SpeedyNote 保留所有权利。</translation>
+        <source>3ENotes is based on SpeedyNote and distributed under GPLv3.</source>
+        <translation type="unfinished">3ENotes is based on SpeedyNote and distributed under GPLv3.</translation>
     </message>
     <message>
         <location filename="../../source/macos/AboutDialog.cpp" line="92"/>
@@ -124,7 +124,7 @@
     </message>
     <message>
         <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="203"/>
-        <source>SpeedyNote Packages (*.snbx);;All Files (*)</source>
+        <source>3ENotes Packages (*.snbx);;All Files (*)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -543,7 +543,7 @@ Use a directory as output destination, e.g.: -o ~/Backup/</source>
     </message>
     <message>
         <location filename="../../source/cli/CliParser.cpp" line="101"/>
-        <source>SpeedyNote - A fast note-taking application</source>
+        <source>3ENotes - A fast note-taking application</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -674,7 +674,7 @@ Use a directory as output destination, e.g.: -o ~/Backup/</source>
         <location filename="../../source/cli/CliParser.cpp" line="285"/>
         <source>Usage: speedynote [command] [options] [files...]
 
-SpeedyNote - A fast note-taking application with PDF annotation support.
+3ENotes - A fast note-taking application with PDF annotation support.
 Includes a powerful CLI for batch operations, scripting, and automation.
 
 COMMANDS:
@@ -808,7 +808,7 @@ EXAMPLES:
   # Recursively backup with dry-run preview
   speedynote export-snbx ~/Notes/ -o ~/Backup/ --recursive --dry-run
 
-NOTE: .snbx packages can be imported on any device with SpeedyNote.
+NOTE: .snbx packages can be imported on any device with 3ENotes.
 </source>
         <translation type="unfinished"></translation>
     </message>
@@ -1414,13 +1414,13 @@ This cannot be undone.</source>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1713"/>
-        <source>SpeedyNote</source>
+        <source>3ENotes</source>
         <translation type="unfinished">极疾记</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1746"/>
-        <source>© 2026 SpeedyNote. All rights reserved.</source>
-        <translation type="unfinished">© 2026 SpeedyNote 保留所有权利。</translation>
+        <source>3ENotes is based on SpeedyNote and distributed under GPLv3.</source>
+        <translation type="unfinished">3ENotes is based on SpeedyNote and distributed under GPLv3.</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1773"/>
@@ -1429,7 +1429,7 @@ This cannot be undone.</source>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1782"/>
-        <source>SpeedyNote uses temporary folders to work with notebook files.
+        <source>3ENotes uses temporary folders to work with notebook files.
 These folders are normally cleaned up when you close a notebook,
 but crashes or force-close can leave orphaned files behind.</source>
         <translation type="unfinished">极疾记使用临时文件夹来处理笔记本文件。
@@ -1502,8 +1502,8 @@ Continue?</source>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1889"/>
-        <source>When enabled, SpeedyNote will automatically detect and use your system&apos;s language setting.</source>
-        <translation type="unfinished">启用该选项后，SpeedyNote会自动使用系统默认语言。</translation>
+        <source>When enabled, 3ENotes will automatically detect and use your system&apos;s language setting.</source>
+        <translation type="unfinished">启用该选项后，3ENotes会自动使用系统默认语言。</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1895"/>
@@ -1518,7 +1518,7 @@ Continue?</source>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1922"/>
         <source>Select a specific language to override the system setting. Changes take effect after restarting the application.</source>
-        <translation type="unfinished">选择一个语言来代替系统默认语言。重启SpeedyNote后生效。</translation>
+        <translation type="unfinished">选择一个语言来代替系统默认语言。重启3ENotes后生效。</translation>
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="1928"/>
@@ -2388,7 +2388,7 @@ This helps prevent accidental palm touches while writing. Only affects Y-Axis On
     <name>Launcher</name>
     <message>
         <location filename="../../source/ui/launcher/Launcher.cpp" line="203"/>
-        <source>SpeedyNote</source>
+        <source>3ENotes</source>
         <translation type="unfinished">极疾记</translation>
     </message>
     <message>
@@ -2880,8 +2880,8 @@ This action cannot be undone.</source>
     </message>
     <message>
         <location filename="../../source/macos/MacMenuBar.cpp" line="88"/>
-        <source>About SpeedyNote</source>
-        <translation type="unfinished">关于 SpeedyNote</translation>
+        <source>About 3ENotes</source>
+        <translation type="unfinished">关于 3ENotes</translation>
     </message>
     <message>
         <location filename="../../source/macos/MacMenuBar.cpp" line="160"/>
@@ -3009,8 +3009,8 @@ This action cannot be undone.</source>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="3672"/>
-        <source>SpeedyNote Bundle (*.snb)</source>
-        <translation type="unfinished">SpeedyNote 包 (*.snb)</translation>
+        <source>3ENotes Bundle (*.snb)</source>
+        <translation type="unfinished">3ENotes 包 (*.snb)</translation>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="1002"/>
@@ -3037,7 +3037,7 @@ This action cannot be undone.</source>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="3930"/>
-        <source>SpeedyNote Files (*.snb *.pdf);;SpeedyNote Bundle (*.snb);;PDF Documents (*.pdf);;All Files (*)</source>
+        <source>3ENotes Files (*.snb *.pdf);;3ENotes Bundle (*.snb);;PDF Documents (*.pdf);;All Files (*)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3274,16 +3274,16 @@ Documents are saved to:
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="4675"/>
-        <source>Open SpeedyNote Bundle (.snb folder)</source>
-        <translation type="unfinished">打开SpeedyNote Bundle (.snb 文件夹)</translation>
+        <source>Open 3ENotes Bundle (.snb folder)</source>
+        <translation type="unfinished">打开3ENotes Bundle (.snb 文件夹)</translation>
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="4692"/>
-        <source>Selected folder is not a valid SpeedyNote bundle.
+        <source>Selected folder is not a valid 3ENotes bundle.
 Missing document.json manifest.
 
 %1</source>
-        <translation type="unfinished">选中的文件夹不是有效的SpeedyNote bundle.
+        <translation type="unfinished">选中的文件夹不是有效的3ENotes bundle.
 document.json manifest 缺失。
 
 %1</translation>
@@ -3353,7 +3353,7 @@ document.json manifest 缺失。
     </message>
     <message>
         <location filename="../../source/MainWindow.cpp" line="7181"/>
-        <source>%1[*] — SpeedyNote</source>
+        <source>%1[*] — 3ENotes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -4566,8 +4566,8 @@ You can still use the notebook for taking notes, but PDF annotation features wil
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="217"/>
         <location filename="../../source/batch/BatchOperations.cpp" line="386"/>
-        <source>Not a valid SpeedyNote bundle</source>
-        <translation type="unfinished">不是一个有效的SpeedyNote文件包</translation>
+        <source>Not a valid 3ENotes bundle</source>
+        <translation type="unfinished">不是一个有效的3ENotes文件包</translation>
     </message>
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="227"/>

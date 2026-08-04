@@ -7,7 +7,7 @@
 #include <QDialog>
 
 /**
- * @brief Standalone About dialog for the macOS App menu's "About SpeedyNote".
+ * @brief Standalone About dialog for the macOS App menu's "About 3ENotes".
  *
  * macOS-only per QA Q3.1 (user explicitly requested this dialog NOT appear in
  * Windows/Linux/Android/iPadOS builds; About info on those platforms remains

@@ -1,8 +1,8 @@
-# SpeedyNote
+# 3ENotes
 
 <div align="center">
 
-<img src="https://i.imgur.com/tesbk4U.png" width="200" alt="SpeedyNote Logo">
+<img src="https://i.imgur.com/tesbk4U.png" width="200" alt="3ENotes Logo">
 
 **A blazing-fast, cross-platform note-taking app for stylus users**
 
@@ -12,19 +12,17 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Android%20%7C%20iPadOS-brightgreen)]()
 [![Qt](https://img.shields.io/badge/Qt-6.x-41CD52?logo=qt)]()
 
-<a href="https://flathub.org/en/apps/org.speedynote.SpeedyNote"><img src="https://flathub.org/assets/badges/flathub-badge-i-en.png" alt="Get it on Flathub" height="54"></a>
-&nbsp;&nbsp;
-<a href="https://hellogithub.com/repository/alpha-liu-01/SpeedyNote"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=e86680d007424ab59d68d5e787ad5c12&claim_uid=e5oCIWstjbEUv9D" alt="Featured｜HelloGitHub" height="54"></a>
-
 [English](#features) • [中文](./docs/zh_Hans/README_zh_Hans.md)
 
 </div>
 
 ---
 
-## Why SpeedyNote?
+> **Fork notice:** 3ENotes is an independent GPLv3 fork of [SpeedyNote](https://github.com/alpha-liu-01/SpeedyNote). Original authorship and license notices are preserved.
 
-| The Problem                                        | SpeedyNote's Solution                                         |
+## Why 3ENotes?
+
+| The Problem                                        | 3ENotes Solution                                         |
 | -------------------------------------------------- | ------------------------------------------------------------- |
 | OneNote doesn't support PDF annotation             | Full PDF support with fast rendering                          |
 | Xournal++ is painfully slow on large PDFs          | 360Hz input on a Celeron N4000 (1.1GHz)                       |
@@ -109,7 +107,7 @@
 
 #### Windows / macOS / Linux
 
-Download the latest release from **[GitHub Releases](https://github.com/alpha-liu-01/SpeedyNote/releases)** or the official website.
+Download the latest release from **[GitHub Releases](https://github.com/esshoo/3ENotes/releases)** or the official website.
 
 | Platform      | Package                           |
 | ------------- | --------------------------------- |
@@ -128,8 +126,8 @@ Download the latest release from **[GitHub Releases](https://github.com/alpha-li
 
 #### iPadOS
 
-**Option 1: Sileo** (jailbroken iPads) - Add the SpeedyNote APT repository and install via Sileo  
-**Option 2: TrollStore** - Download the `.ipa` from [GitHub Releases](https://github.com/alpha-liu-01/SpeedyNote/releases) and install via TrollStore  
+**Option 1: Sileo** (jailbroken iPads) - Add the 3ENotes APT repository and install via Sileo
+**Option 2: TrollStore** - Download the `.ipa` from [GitHub Releases](https://github.com/esshoo/3ENotes/releases) and install via TrollStore
 **Option 3: Build from source** - See [iPadOS Build Guide](./docs/build_docs/IOS_BUILD_GUIDE.md)
 
 > iPadOS builds require a jailbroken device or TrollStore. App Store distribution is not available at this time.
@@ -153,8 +151,8 @@ Download the latest release from **[GitHub Releases](https://github.com/alpha-li
 
 ```bash
 # Clone the repository
-git clone https://github.com/alpha-liu-01/SpeedyNote.git
-cd SpeedyNote
+git clone https://github.com/esshoo/3ENotes.git
+cd 3ENotes
 
 # Windows (MSYS2 clang64 shell)
 ./compile.ps1
@@ -189,7 +187,7 @@ cd SpeedyNote
 
 ## Command Line Interface (Desktop)
 
-SpeedyNote includes a powerful CLI for batch operations on Windows and Linux. Perfect for scripting, automation, and syncing notes between devices.
+3ENotes includes a powerful CLI for batch operations on Windows and Linux. Perfect for scripting, automation, and syncing notes between devices.
 
 ### Quick Start
 
@@ -349,7 +347,7 @@ speedynote export-pdf "$LOCAL" -o "$HOME/PDFs/" --dpi 150
 
 ## Supported Languages
 
-SpeedyNote supports multiple languages:
+3ENotes supports multiple languages:
 
 - English
 - 简体中文 (Simplified Chinese)
@@ -366,7 +364,7 @@ SpeedyNote supports multiple languages:
 
 Contributions are welcome! Please feel free to:
 
-- Report bugs via [GitHub Issues](https://github.com/alpha-liu-01/SpeedyNote/issues)
+- Report bugs via [GitHub Issues](https://github.com/esshoo/3ENotes/issues)
 - Suggest features
 - Add translations
 - Submit pull requests
@@ -375,7 +373,7 @@ Contributions are welcome! Please feel free to:
 
 ## License
 
-SpeedyNote is licensed under the **GNU General Public License v3.0**.
+3ENotes is licensed under the **GNU General Public License v3.0**.
 
 - Free to use, modify, and distribute
 - Source code always available
@@ -397,7 +395,7 @@ See [LICENSE](./LICENSE) for details.
 
 ## Support the Project
 
-If SpeedyNote helps you, consider:
+If 3ENotes helps you, consider:
 
 - [Buy me a coffee](https://buymeacoffee.com/alphaliu01)
 - Starring this repository
@@ -411,6 +409,6 @@ If SpeedyNote helps you, consider:
 
 **Made for students who deserve better tools**
 
-*SpeedyNote v1.x*
+*3ENotes v1.x*
 
 </div>

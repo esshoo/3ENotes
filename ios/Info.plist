@@ -8,7 +8,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>SpeedyNote</string>
+    <string>3ENotes</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -16,7 +16,7 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>SpeedyNote</string>
+    <string>3ENotes</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -91,7 +91,7 @@
         <!-- SpeedyNote Package (.snbx) — ZIP archive for import/export -->
         <dict>
             <key>CFBundleTypeName</key>
-            <string>SpeedyNote Package</string>
+            <string>3ENotes Notebook Package</string>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
             <key>LSHandlerRank</key>
@@ -128,7 +128,7 @@
             <key>UTTypeIdentifier</key>
             <string>org.speedynote.snbx</string>
             <key>UTTypeDescription</key>
-            <string>SpeedyNote Package</string>
+            <string>3ENotes Notebook Package</string>
             <key>UTTypeConformsTo</key>
             <array>
                 <string>public.data</string>

@@ -226,7 +226,10 @@ static void applyAndroidFonts(QApplication& app)
     
     // Set up CJK fallback chain based on locale
     // The order matters - first matching font with the glyph wins
-    if (locale.startsWith("zh_CN") || locale.startsWith("zh_Hans")) {
+    if (locale.startsWith("ar")) {
+        font.setFamilies({"Roboto", "Noto Sans Arabic", "Noto Naskh Arabic",
+                          "Droid Arabic Naskh", "Arial"});
+    } else if (locale.startsWith("zh_CN") || locale.startsWith("zh_Hans")) {
         // Simplified Chinese - prioritize SC variant
         font.setFamilies({"Roboto", "Noto Sans CJK SC", "Noto Sans SC", 
                           "Source Han Sans SC", "Droid Sans Fallback"});
@@ -300,7 +303,7 @@ static void applyWindowsFonts(QApplication& app)
     // inconsistent character spacing from accumulated rounding errors.
     // Affects Qt5 (GDI engine) and Qt6 (DirectWrite) on older Windows versions.
     font.setHintingPreference(QFont::PreferNoHinting);
-    font.setFamilies({"Segoe UI", "Dengxian", "Microsoft YaHei", "SimHei"});
+    font.setFamilies({"Segoe UI", "Arial", "Noto Sans Arabic", "Dengxian", "Microsoft YaHei", "SimHei"});
     app.setFont(font);
 }
 
@@ -368,13 +371,32 @@ static void enableDebugConsole()
 }
 #endif // Q_OS_WIN
 
+// Import the previous SpeedyNote settings once so existing users keep their
+// preferences, recent files and session state after installing 3ENotes.
+static void migrateLegacySettings()
+{
+    QSettings current(QStringLiteral("3E"), QStringLiteral("3ENotes"));
+    const QString marker = QStringLiteral("migration/speedynoteSettingsImported");
+    if (current.value(marker, false).toBool())
+        return;
+
+    QSettings legacy(QStringLiteral("SpeedyNote"), QStringLiteral("App"));
+    const QStringList keys = legacy.allKeys();
+    for (const QString& key : keys) {
+        if (!current.contains(key))
+            current.setValue(key, legacy.value(key));
+    }
+    current.setValue(marker, true);
+    current.sync();
+}
+
 // ============================================================================
 // Translation Loading
 // ============================================================================
 
 static void loadTranslations(QApplication& app, QTranslator& translator)
 {
-    QSettings settings("SpeedyNote", "App");
+    QSettings settings("3E", "3ENotes");
     bool useSystemLanguage = settings.value("useSystemLanguage", true).toBool();
 
     // Preserve the full BCP-47 / region-tagged code when in system mode so the
@@ -387,9 +409,15 @@ static void loadTranslations(QApplication& app, QTranslator& translator)
         langCode   = fullLocale.section('_', 0, 0);
     } else {
         langCode   = settings.value("languageOverride", "en").toString();
-        fullLocale = langCode;
+        fullLocale = (langCode == QStringLiteral("ar"))
+                         ? QStringLiteral("ar_SA")
+                         : langCode;
     }
     QLocale uiLocale(fullLocale);
+    QLocale::setDefault(uiLocale);
+    app.setLayoutDirection(uiLocale.textDirection() == Qt::RightToLeft
+                               ? Qt::RightToLeft
+                               : Qt::LeftToRight);
 
     // Common search paths for Qt's own catalog. Order matters:
     //   1. Deployed/install layouts (so a packaged build never accidentally
@@ -849,8 +877,9 @@ int main(int argc, char* argv[])
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
     if (Cli::isCliMode(argc, argv)) {
         QGuiApplication app(argc, argv);
-        app.setOrganizationName("SpeedyNote");
-        app.setApplicationName("App");
+        app.setOrganizationName("3E");
+        app.setApplicationName("3ENotes");
+        migrateLegacySettings();
         return Cli::run(app, argc, argv);
     }
 #endif
@@ -870,8 +899,9 @@ int main(int argc, char* argv[])
 #endif
 
     QApplication app(argc, argv);
-    app.setOrganizationName("SpeedyNote");
-    app.setApplicationName("App");
+    app.setOrganizationName("3E");
+    app.setApplicationName("3ENotes");
+    migrateLegacySettings();
 
 #ifdef Q_OS_WIN
     applyWindowsPalette(app);
@@ -898,7 +928,7 @@ int main(int argc, char* argv[])
     // on PenSubToolbar.  The legacy `tools/minStrokeWidth` key is read there
     // as a one-shot migration seed and requires no bootstrap here.
     {
-        QSettings toolSettings("SpeedyNote", "App");
+        QSettings toolSettings("3E", "3ENotes");
         DocumentViewport::setWheelScrollSpeed(
             toolSettings.value("tools/wheelScrollSpeed", 40.0).toDouble());
     }
@@ -1013,7 +1043,7 @@ int main(int argc, char* argv[])
 #endif
 
     // ========== Session Restore ==========
-    QSettings sessionSettings("SpeedyNote", "App");
+    QSettings sessionSettings("3E", "3ENotes");
     QStringList sessionTabs = sessionSettings.value("session/lastOpenTabs").toStringList();
     int sessionActiveIndex = sessionSettings.value("session/activeTabIndex", 0).toInt();
 

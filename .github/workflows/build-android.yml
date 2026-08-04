@@ -1,4 +1,4 @@
-name: Build SpeedyNote Android
+name: Build 3ENotes Android
 
 on:
   push:
@@ -113,7 +113,7 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "App version: ${VERSION}"
 
-      - name: Build SpeedyNote APKs (arm64 + arm32)
+      - name: Build 3ENotes APKs (arm64 + arm32)
         run: |
           VERSION="${{ steps.version.outputs.version }}"
 
@@ -140,7 +140,7 @@ jobs:
               ${{ steps.docker-tag.outputs.tag }} \
               bash -c "rm -rf android/build-app/android-build && ./android/build-speedynote.sh --apk --${ARCH} ${SIGN_FLAG}"
 
-            mv android/SpeedyNote.apk "android/SpeedyNote-${VERSION}-${ARCH}.apk"
+            mv android/3ENotes.apk "android/3ENotes-${VERSION}-${ARCH}.apk"
           done
 
       - name: Remove release keystore
@@ -153,17 +153,17 @@ jobs:
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SpeedyNote-${{ steps.version.outputs.version }}-APKs
+          name: 3ENotes-${{ steps.version.outputs.version }}-APKs
           path: |
-            android/SpeedyNote-${{ steps.version.outputs.version }}-arm64.apk
-            android/SpeedyNote-${{ steps.version.outputs.version }}-arm32.apk
+            android/3ENotes-${{ steps.version.outputs.version }}-arm64.apk
+            android/3ENotes-${{ steps.version.outputs.version }}-arm32.apk
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            android/SpeedyNote-${{ steps.version.outputs.version }}-arm64.apk
-            android/SpeedyNote-${{ steps.version.outputs.version }}-arm32.apk
+            android/3ENotes-${{ steps.version.outputs.version }}-arm64.apk
+            android/3ENotes-${{ steps.version.outputs.version }}-arm32.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

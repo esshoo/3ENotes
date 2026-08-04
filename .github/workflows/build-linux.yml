@@ -1,4 +1,4 @@
-name: Build SpeedyNote Linux Packages
+name: Build 3ENotes Linux Packages
 
 on:
   push:
@@ -224,7 +224,7 @@ jobs:
       - name: Upload DEB package
         uses: actions/upload-artifact@v4
         with:
-          name: speedynote-deb-amd64
+          name: 3enotes-deb-amd64
           path: "*.deb"
 
       - name: Upload to Release
@@ -410,7 +410,7 @@ jobs:
       - name: Upload DEB package
         uses: actions/upload-artifact@v4
         with:
-          name: speedynote-deb-arm64
+          name: 3enotes-deb-arm64
           path: "*.deb"
 
       - name: Upload to Release
@@ -469,7 +469,7 @@ jobs:
       - name: Upload RPM package
         uses: actions/upload-artifact@v4
         with:
-          name: speedynote-rpm-x86_64
+          name: 3enotes-rpm-x86_64
           path: "*.rpm"
 
       - name: Upload to Release

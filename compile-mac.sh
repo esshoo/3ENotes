@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# SpeedyNote macOS Compilation and Packaging Script
+# 3ENotes macOS Compilation and Packaging Script
 # Supports both Intel (x86_64) and Apple Silicon (arm64)
 # Uses MuPDF exclusively for PDF rendering and export
 
@@ -15,7 +15,7 @@ MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Configuration
-PKGNAME="SpeedyNote"
+PKGNAME="3ENotes"
 APP_BUNDLE="${PKGNAME}.app"
 MIN_MACOS_VERSION="12.0"
 
@@ -94,8 +94,8 @@ command_exists() {
 
 check_project_directory() {
     if [[ ! -f "CMakeLists.txt" ]]; then
-        echo -e "${RED}Error: This doesn't appear to be the SpeedyNote project directory${NC}"
-        echo "Please run this script from the SpeedyNote project root directory"
+        echo -e "${RED}Error: This doesn't appear to be the 3ENotes project directory${NC}"
+        echo "Please run this script from the 3ENotes project root directory"
         exit 1
     fi
 }
@@ -186,7 +186,7 @@ setup_environment() {
 # ============================================================================
 
 build_project() {
-    echo -e "${YELLOW}Building SpeedyNote...${NC}"
+    echo -e "${YELLOW}Building 3ENotes...${NC}"
     
     local arch=$(detect_architecture)
     echo -e "${CYAN}Detected architecture: ${arch}${NC}"
@@ -268,7 +268,7 @@ create_app_bundle() {
     # Create macOS icon (.icns)
     echo -e "${CYAN}  → Creating macOS icon...${NC}"
     if [[ -f "resources/icons/mainicon.svg" ]]; then
-        local iconset_dir="SpeedyNote.iconset"
+        local iconset_dir="3ENotes.iconset"
         rm -rf "$iconset_dir"
         mkdir -p "$iconset_dir"
         
@@ -328,9 +328,9 @@ create_app_bundle() {
     <key>CFBundleIdentifier</key>
     <string>com.github.alpha-liu-01.SpeedyNote</string>
     <key>CFBundleName</key>
-    <string>SpeedyNote</string>
+    <string>3ENotes</string>
     <key>CFBundleDisplayName</key>
-    <string>SpeedyNote</string>
+    <string>3ENotes</string>
     <key>CFBundleVersion</key>
     <string>${version}</string>
     <key>CFBundleShortVersionString</key>
@@ -359,7 +359,7 @@ create_app_bundle() {
         </dict>
         <dict>
             <key>CFBundleTypeName</key>
-            <string>SpeedyNote Bundle Export</string>
+            <string>3ENotes Bundle Export</string>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
             <key>LSHandlerRank</key>
@@ -726,25 +726,25 @@ create_dmg() {
     
     # Create README
     cat > dmg_temp/README.txt << 'EOF'
-SpeedyNote for macOS
+3ENotes for macOS
 ====================
 
 Installation:
-1. Drag SpeedyNote.app to the Applications folder
+1. Drag 3ENotes.app to the Applications folder
 2. Double-click to launch
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IMPORTANT: Gatekeeper Security Warning
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-If you see "SpeedyNote is damaged and can't be opened"
+If you see "3ENotes is damaged and can't be opened"
 or a security warning, this is because the app is not
 signed with an Apple Developer certificate (it's open
 source software).
 
 FIX OPTION 1 - Terminal Command (Recommended):
   Open Terminal and run:
-  xattr -cr /Applications/SpeedyNote.app
+  xattr -cr /Applications/3ENotes.app
 
 FIX OPTION 2 - System Settings:
   1. Go to System Settings > Privacy & Security
@@ -759,7 +759,7 @@ EOF
     
     # Create DMG
     echo -e "${CYAN}  → Building DMG image...${NC}"
-    hdiutil create -volname "SpeedyNote" \
+    hdiutil create -volname "3ENotes" \
                    -srcfolder dmg_temp \
                    -ov \
                    -format UDZO \
@@ -891,7 +891,7 @@ install_cli_command() {
     
     # Create the wrapper script
     local wrapper_content="#!/bin/bash
-# SpeedyNote CLI wrapper
+# 3ENotes CLI wrapper
 # Enables 'speedynote' command from terminal
 
 APP_PATH=\"${app_executable}\"
@@ -899,10 +899,10 @@ APP_PATH=\"${app_executable}\"
 # Check if app exists at expected location
 if [[ ! -f \"\$APP_PATH\" ]]; then
     # Try Applications folder
-    if [[ -f \"/Applications/SpeedyNote.app/Contents/MacOS/speedynote\" ]]; then
-        APP_PATH=\"/Applications/SpeedyNote.app/Contents/MacOS/speedynote\"
+    if [[ -f \"/Applications/3ENotes.app/Contents/MacOS/speedynote\" ]]; then
+        APP_PATH=\"/Applications/3ENotes.app/Contents/MacOS/speedynote\"
     else
-        echo \"Error: SpeedyNote not found. Please reinstall the application.\" >&2
+        echo \"Error: 3ENotes not found. Please reinstall the application.\" >&2
         exit 1
     fi
 fi
@@ -931,7 +931,7 @@ main() {
     parse_arguments "$@"
     
     echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}   SpeedyNote macOS Build Script${NC}"
+    echo -e "${BLUE}   3ENotes macOS Build Script${NC}"
     echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
     echo
     
@@ -1008,7 +1008,7 @@ main() {
     echo -e "${GREEN}  Build completed successfully!${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
     echo
-    echo -e "${CYAN}To run SpeedyNote:${NC}"
+    echo -e "${CYAN}To run 3ENotes:${NC}"
     echo -e "  ${YELLOW}open ${APP_BUNDLE}${NC}"
     echo -e "  ${YELLOW}or: ./${APP_BUNDLE}/Contents/MacOS/speedynote${NC}"
     if [[ -L "/usr/local/bin/speedynote" ]] || [[ -f "/usr/local/bin/speedynote" ]]; then

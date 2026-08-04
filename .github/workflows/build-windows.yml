@@ -1,4 +1,4 @@
-name: Build SpeedyNote Windows Installer
+name: Build 3ENotes Windows Installer
 
 on:
   push:
@@ -280,7 +280,7 @@ jobs:
       - name: Upload Installer
         uses: actions/upload-artifact@v4
         with:
-          name: speedynote-windows-installer-x86_64
+          name: 3enotes-windows-installer-x86_64
           path: "Output/*.exe"
 
       - name: Upload to Release
@@ -562,7 +562,7 @@ jobs:
       - name: Upload Installer
         uses: actions/upload-artifact@v4
         with:
-          name: speedynote-windows-installer-arm64
+          name: 3enotes-windows-installer-arm64
           path: "Output/*.exe"
 
       - name: Upload to Release

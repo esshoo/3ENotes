@@ -98,7 +98,7 @@ QString commandName(Command cmd)
 void setupParser(QCommandLineParser& parser, Command cmd)
 {
     parser.setApplicationDescription(
-        QCoreApplication::translate("CLI", "SpeedyNote - A fast note-taking application"));
+        QCoreApplication::translate("CLI", "3ENotes - A fast note-taking application"));
     
     // Add standard help option (--help, -h)
     parser.addHelpOption();
@@ -285,7 +285,7 @@ void showHelp(const QCommandLineParser& parser, Command cmd)
         out << QCoreApplication::translate("CLI",
             "Usage: speedynote [command] [options] [files...]\n"
             "\n"
-            "SpeedyNote - A fast note-taking application with PDF annotation support.\n"
+            "3ENotes - A fast note-taking application with PDF annotation support.\n"
             "Includes a powerful CLI for batch operations, scripting, and automation.\n"
             "\n"
             "COMMANDS:\n"
@@ -415,7 +415,7 @@ void showHelp(const QCommandLineParser& parser, Command cmd)
             "  # Recursively backup with dry-run preview\n"
             "  speedynote export-snbx ~/Notes/ -o ~/Backup/ --recursive --dry-run\n"
             "\n"
-            "NOTE: .snbx packages can be imported on any device with SpeedyNote.\n");
+            "NOTE: .snbx packages can be imported on any device with 3ENotes.\n");
     } else if (cmd == Command::Import) {
         // Import help
         out << QCoreApplication::translate("CLI",
@@ -468,7 +468,7 @@ void showHelp(const QCommandLineParser& parser, Command cmd)
 void showVersion()
 {
     QTextStream out(stdout);
-    out << "SpeedyNote " << APP_VERSION << "\n";
+    out << "3ENotes " << APP_VERSION << "\n";
 }
 
 // =============================================================================

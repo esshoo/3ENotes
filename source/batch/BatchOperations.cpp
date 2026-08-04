@@ -214,7 +214,7 @@ BatchResult exportSnbxBatch(const QStringList& bundlePaths,
         // Validate bundle
         if (!isValidBundle(bundlePath)) {
             fr.status = FileStatus::Error;
-            fr.message = QObject::tr("Not a valid SpeedyNote bundle");
+            fr.message = QObject::tr("Not a valid 3ENotes bundle");
             result.errorCount++;
             emitResult(i, fr);
             continue;
@@ -383,7 +383,7 @@ BatchResult exportPdfBatch(const QStringList& bundlePaths,
         // Validate bundle before loading
         if (!isValidBundle(bundlePath)) {
             fr.status = FileStatus::Error;
-            fr.message = QObject::tr("Not a valid SpeedyNote bundle");
+            fr.message = QObject::tr("Not a valid 3ENotes bundle");
             result.errorCount++;
             emitResult(i, fr);
             continue;

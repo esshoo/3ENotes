@@ -233,7 +233,7 @@ void PdfRelinkDialog::onRelinkPdf()
     
     // If no original path or directory doesn't exist, try the last-used open directory
     if (startDir.isEmpty() || !QDir(startDir).exists()) {
-        QSettings settings("SpeedyNote", "App");
+        QSettings settings("3E", "3ENotes");
         startDir = settings.value("FileDialogs/lastOpenDirectory").toString();
         if (startDir.isEmpty() || !QDir(startDir).exists()) {
             startDir = QDir::homePath();

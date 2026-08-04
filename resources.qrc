@@ -154,6 +154,7 @@
     <!-- Translations: keep this list in sync with resources/translations/app_*.ts.
          When adding a new language, both compile-time embedding (this list) and
          install-time packaging (build-package.sh, etc.) need the .qm file. -->
+    <file>resources/translations/app_ar.qm</file>
     <file>resources/translations/app_zh.qm</file>
     <file>resources/translations/app_es.qm</file>
     <file>resources/translations/app_fr.qm</file>
