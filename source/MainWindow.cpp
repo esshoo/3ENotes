@@ -1265,10 +1265,31 @@ void MainWindow::setupUi() {
         }
     });
     connect(m_navigationBar, &NavigationBar::menuRequested, this, [this]() {
-        // Show overflow menu at menu button position
-        if (overflowMenu && m_navigationBar) {
-            overflowMenu->popup(m_navigationBar->mapToGlobal(
-                QPoint(m_navigationBar->width() - 10, m_navigationBar->height())));
+        // Anchor the overflow menu to the actual menu button. The navigation
+        // bar reverses its visual order in Arabic/RTL, so positioning from the
+        // bar's right edge makes the popup appear on the opposite side from
+        // the three-dot button.
+        if (overflowMenu && m_navigationBar && m_navigationBar->menuButton()) {
+            QWidget* button = m_navigationBar->menuButton();
+            overflowMenu->ensurePolished();
+
+            const int menuWidth = overflowMenu->sizeHint().width();
+            const int buttonHeight = button->height();
+            QPoint menuPos;
+
+            if (QApplication::isRightToLeft()) {
+                // In RTL the button is visually on the left; let the menu grow
+                // toward the available space on its right.
+                menuPos = button->mapToGlobal(QPoint(0, buttonHeight));
+            } else {
+                // In LTR the button is visually on the right; align right edges
+                // so the popup grows toward the available space on its left.
+                const QPoint bottomRight = button->mapToGlobal(
+                    QPoint(button->width(), buttonHeight));
+                menuPos = QPoint(bottomRight.x() - menuWidth, bottomRight.y());
+            }
+
+            overflowMenu->popup(menuPos);
         }
     });
     // ------------------ End of NavigationBar signal connections ------------------

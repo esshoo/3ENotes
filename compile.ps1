@@ -173,8 +173,12 @@ if ($lreleaseExe) {
     Write-Host "Compiling translation files using $lreleaseExe..." -ForegroundColor Cyan
     # Discover all translation sources so newly-added languages are compiled automatically.
     $tsFiles = Get-ChildItem -Path ".\resources\translations\app_*.ts" -ErrorAction SilentlyContinue
-    if ($tsFiles) {
-        & $lreleaseExe @($tsFiles | ForEach-Object { $_.FullName })
+    foreach ($tsFile in $tsFiles) {
+        $qmPath = [System.IO.Path]::ChangeExtension($tsFile.FullName, ".qm")
+        & $lreleaseExe $tsFile.FullName -qm $qmPath
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $qmPath)) {
+            throw "Failed to compile translation: $($tsFile.FullName)"
+        }
     }
     Copy-Item -Path ".\resources\translations\*.qm" -Destination ".\build" -Force
 } else {

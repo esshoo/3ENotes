@@ -59,6 +59,12 @@ public:
      */
     QWidget* addButton() const { return m_addButton; }
 
+    /**
+     * Get the overflow/menu button for positioning its popup directly below
+     * the visible button in both LTR and RTL layouts.
+     */
+    QWidget* menuButton() const { return m_menuButton; }
+
 signals:
     // Left side
     void launcherClicked();
