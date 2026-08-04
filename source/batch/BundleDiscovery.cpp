@@ -15,6 +15,17 @@
 
 namespace BatchOps {
 
+namespace {
+
+bool isSupportedProjectPackage(const QString& path)
+{
+    return path.endsWith(QStringLiteral(".3en"), Qt::CaseInsensitive)
+        || path.endsWith(QStringLiteral(".3enotes"), Qt::CaseInsensitive)
+        || path.endsWith(QStringLiteral(".snbx"), Qt::CaseInsensitive);
+}
+
+} // namespace
+
 // ============================================================================
 // Bundle Validation
 // ============================================================================
@@ -119,21 +130,16 @@ QStringList discoverPackages(const QString& directory, bool recursive)
     QString absPath = dir.absolutePath();
     
     if (recursive) {
-        // Recursive search
-        QDirIterator it(absPath, QStringList() << "*.3enotes" << "*.snbx",
-                        QDir::Files, QDirIterator::Subdirectories);
-        
+        QDirIterator it(absPath, QDir::Files, QDirIterator::Subdirectories);
         while (it.hasNext()) {
-            results.append(it.next());
+            const QString path = it.next();
+            if (isSupportedProjectPackage(path)) results.append(path);
         }
     } else {
-        // Non-recursive: only check immediate directory
-        QStringList filters;
-        filters << "*.3enotes" << "*.snbx";
-        
-        QStringList files = dir.entryList(filters, QDir::Files);
+        const QStringList files = dir.entryList(QDir::Files);
         for (const QString& file : files) {
-            results.append(absPath + "/" + file);
+            const QString path = absPath + "/" + file;
+            if (isSupportedProjectPackage(path)) results.append(path);
         }
     }
     
@@ -217,14 +223,14 @@ QStringList expandPackagePaths(const QStringList& inputPaths, bool recursive)
                 }
             }
         } else if (info.isFile()) {
-            // Check if it's a .snbx file
-            if (absPath.endsWith(".snbx", Qt::CaseInsensitive) || absPath.endsWith(".3enotes", Qt::CaseInsensitive)) {
+            // Check if it is a supported portable 3ENotes project.
+            if (isSupportedProjectPackage(absPath)) {
                 if (!seen.contains(absPath)) {
                     seen.insert(absPath);
                     results.append(absPath);
                 }
             } else {
-                qWarning() << "[BundleDiscovery] Not an SNBX file, skipping:" << inputPath;
+                qWarning() << "[BundleDiscovery] Not a supported 3ENotes project, skipping:" << inputPath;
             }
         }
     }

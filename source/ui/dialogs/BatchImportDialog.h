@@ -3,12 +3,12 @@
 
 /**
  * @file BatchImportDialog.h
- * @brief Dialog for batch importing .snbx notebook packages (Desktop only).
+ * @brief Dialog for batch importing .3EN projects and legacy packages (Desktop only).
  * 
  * Part of Phase 3: Launcher UI Integration for batch operations.
  * 
  * Features:
- * - File list showing selected .snbx files
+ * - File list showing selected .3EN/.3enotes/.snbx files
  * - "Add Files..." button to select individual files
  * - "Add Folder..." button to scan a directory for .snbx files
  * - Destination directory picker
@@ -31,11 +31,11 @@ class QLineEdit;
 class QPushButton;
 
 /**
- * @brief Dialog for selecting and importing multiple .snbx files.
+ * @brief Dialog for selecting and importing multiple portable 3ENotes project files.
  * 
  * Desktop-only dialog that allows users to:
- * - Add individual .snbx files
- * - Scan a folder for .snbx files
+ * - Add individual project files
+ * - Scan a folder for supported project files
  * - Choose destination directory for imported notebooks
  * 
  * Usage:
@@ -60,8 +60,8 @@ public:
     explicit BatchImportDialog(QWidget* parent = nullptr);
     
     /**
-     * @brief Get the list of selected .snbx files.
-     * @return List of absolute paths to .snbx files
+     * @brief Get the list of selected project files.
+     * @return List of absolute paths to .3EN/.3enotes/.snbx files
      */
     QStringList selectedFiles() const { return m_selectedFiles; }
     

@@ -620,7 +620,7 @@ endif()
 # ============================================================================
 # Third-party Libraries (cross-platform)
 # ============================================================================
-# miniz: ZIP library for .snbx package export/import (MIT license)
+# miniz: ZIP library for .3EN project export/import (MIT license)
 include_directories(${CMAKE_SOURCE_DIR}/thirdparty/miniz)
 
 # ============================================================================
@@ -925,7 +925,7 @@ set(PDF_SOURCES
 )
 message(STATUS "   PDF provider: MuPDF (all platforms)")
 
-# Sharing module (cross-platform .snbx package export/import)
+# Sharing module (cross-platform .3EN project export/import)
 # Uses miniz library for ZIP creation/extraction (MIT license, thirdparty/miniz/)
 set(SHARING_SOURCES
     source/sharing/NotebookExporter.cpp

@@ -166,7 +166,7 @@ Java_org_speedynote_app_ImportHelper_onPackagePickCancelled(JNIEnv * /*env*/, jc
     }
 }
 
-// Helper function to pick .3enotes project file(s) on Android via SAF
+// Helper function to pick .3EN project file(s) on Android via SAF
 // Supports multi-file selection (Phase 3: Batch Import)
 static QStringList pickSnbxFilesAndroid()
 {
@@ -816,7 +816,7 @@ void Launcher::showEvent(QShowEvent* event)
 static bool isSupportedDropFile(const QString& path)
 {
     if (path.endsWith(".pdf", Qt::CaseInsensitive)) return true;
-    if (path.endsWith(".snbx", Qt::CaseInsensitive) || path.endsWith(".3enotes", Qt::CaseInsensitive)) return true;
+    if (path.endsWith(".3en", Qt::CaseInsensitive) || path.endsWith(".3enotes", Qt::CaseInsensitive) || path.endsWith(".snbx", Qt::CaseInsensitive)) return true;
     if (path.endsWith(".snb", Qt::CaseInsensitive) && QFileInfo(path).isDir()) return true;
     return false;
 }
@@ -868,7 +868,7 @@ void Launcher::dropEvent(QDropEvent* event)
             directOpenFiles.append(filePath);
         } else if (filePath.endsWith(".snb", Qt::CaseInsensitive) && QFileInfo(filePath).isDir()) {
             directOpenFiles.append(filePath);
-        } else if ((filePath.endsWith(".snbx", Qt::CaseInsensitive) || filePath.endsWith(".3enotes", Qt::CaseInsensitive)) && QFile::exists(filePath)) {
+        } else if ((filePath.endsWith(".3en", Qt::CaseInsensitive) || filePath.endsWith(".3enotes", Qt::CaseInsensitive) || filePath.endsWith(".snbx", Qt::CaseInsensitive)) && QFile::exists(filePath)) {
             snbxFiles.append(filePath);
         }
     }
@@ -885,7 +885,7 @@ void Launcher::dropEvent(QDropEvent* event)
         emit notebookSelected(path);
     }
 
-    // Import .3enotes projects via the batch import flow
+    // Import .3EN projects via the batch import flow
     if (!snbxFiles.isEmpty()) {
         if (snbxFiles.size() > 1) {
             QString message = tr("Import %1 notebooks?").arg(snbxFiles.size());
@@ -1817,7 +1817,7 @@ void Launcher::onExportJobComplete(const BatchOps::BatchResult& result, const QS
             chooserTitle = successfulOutputs.size() == 1 
                 ? tr("Share PDF") 
                 : tr("Share %1 PDFs").arg(successfulOutputs.size());
-        } else if ((firstOutput.endsWith(".snbx", Qt::CaseInsensitive) || firstOutput.endsWith(".3enotes", Qt::CaseInsensitive))) {
+        } else if ((firstOutput.endsWith(".3en", Qt::CaseInsensitive) || firstOutput.endsWith(".3enotes", Qt::CaseInsensitive) || firstOutput.endsWith(".snbx", Qt::CaseInsensitive))) {
             mimeType = "application/x-3enotes";
             chooserTitle = successfulOutputs.size() == 1
                 ? tr("Share 3ENotes Project")
@@ -1837,7 +1837,7 @@ void Launcher::onExportJobComplete(const BatchOps::BatchResult& result, const QS
             title = successfulOutputs.size() == 1
                 ? tr("Share PDF")
                 : tr("Share %1 PDFs").arg(successfulOutputs.size());
-        } else if ((firstOutput.endsWith(".snbx", Qt::CaseInsensitive) || firstOutput.endsWith(".3enotes", Qt::CaseInsensitive))) {
+        } else if ((firstOutput.endsWith(".3en", Qt::CaseInsensitive) || firstOutput.endsWith(".3enotes", Qt::CaseInsensitive) || firstOutput.endsWith(".snbx", Qt::CaseInsensitive))) {
             mimeType = "application/x-3enotes";
             title = successfulOutputs.size() == 1
                 ? tr("Share 3ENotes Project")
@@ -2033,7 +2033,7 @@ QString Launcher::findImportedPdfPath(const QString& bundlePath)
     
     // Check if the PDF is in our sandbox directories:
     // 1. /files/pdfs/ - Direct PDF imports via SAF (BUG-A003)
-    // 2. /files/notebooks/embedded/ - PDFs extracted from .3enotes projects (Phase 2)
+    // 2. /files/notebooks/embedded/ - PDFs extracted from .3EN projects (Phase 2)
     QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QString sandboxPdfDir = appDataDir + "/pdfs";
     QString embeddedDir = appDataDir + "/notebooks/embedded";

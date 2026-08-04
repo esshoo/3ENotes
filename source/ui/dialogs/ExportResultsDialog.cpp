@@ -419,7 +419,10 @@ QString ExportResultsDialog::extractDisplayName(const QString& path) const
     if (name.endsWith(".snb", Qt::CaseInsensitive)) {
         name.chop(4);
     }
-    // Remove .snbx extension for packages
+    // Remove portable project extensions.
+    else if (name.endsWith(".3en", Qt::CaseInsensitive)) {
+        name.chop(4);
+    }
     else if (name.endsWith(".3enotes", Qt::CaseInsensitive)) {
         name.chop(8);
     }

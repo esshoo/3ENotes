@@ -359,14 +359,21 @@ create_app_bundle() {
         </dict>
         <dict>
             <key>CFBundleTypeName</key>
-            <string>3ENotes Bundle Export</string>
+            <string>3ENotes Project</string>
             <key>CFBundleTypeRole</key>
             <string>Editor</string>
             <key>LSHandlerRank</key>
             <string>Owner</string>
             <key>CFBundleTypeExtensions</key>
             <array>
+                <string>3EN</string>
+                <string>3en</string>
+                <string>3enotes</string>
                 <string>snbx</string>
+            </array>
+            <key>CFBundleTypeMIMETypes</key>
+            <array>
+                <string>application/x-3enotes</string>
             </array>
         </dict>
     </array>

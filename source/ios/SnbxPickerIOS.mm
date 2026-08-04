@@ -150,7 +150,7 @@ void pickSnbxFiles(const QString& destDir, std::function<void(const QStringList&
     pickerWindow.rootViewController.view.backgroundColor = [UIColor clearColor];
     [pickerWindow makeKeyAndVisible];
 
-    UTType *projectType = [UTType typeWithIdentifier:@"com.3e.3enotes.project"];
+    UTType *projectType = [UTType typeWithIdentifier:@"com.3e.3EN.project"];
     UTType *legacyType = [UTType typeWithIdentifier:@"org.speedynote.snbx"];
     NSMutableArray<UTType *> *types = [NSMutableArray array];
     if (projectType) [types addObject:projectType];

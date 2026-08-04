@@ -17,10 +17,10 @@ import java.util.ArrayList;
 import android.content.ClipData;
 
 /**
- * Helper class for picking and importing .3enotes project files and legacy .snbx packages on Android.
+ * Helper class for picking and importing .3EN project files and legacy .3enotes/.snbx packages on Android.
  * 
  * This class handles the Storage Access Framework (SAF) properly by:
- * 1. Opening the file picker for .3enotes and .snbx files
+ * 1. Opening the file picker for .3EN, .3enotes, and .snbx files
  * 2. Copying the file to local storage while the temporary permission is valid
  * 3. Returning the local file path to C++
  * 
@@ -65,13 +65,13 @@ public class ImportHelper {
         // These flags grant read permission that persists until the Activity result is processed
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         
-        Log.d(TAG, "Opening file picker for .3enotes projects (multi-select), destDir=" + destDir);
+        Log.d(TAG, "Opening file picker for .3EN projects (multi-select), destDir=" + destDir);
         activity.startActivityForResult(intent, REQUEST_CODE_PICK_SNBX);
     }
     
 
     /**
-     * Handle a .3enotes file opened from Android Files, email, browser, or
+     * Handle a .3EN project opened from Android Files, email, browser, or
      * another application. The URI is copied into app-private storage before
      * the same native import callback used by the in-app picker is invoked.
      */
@@ -92,7 +92,7 @@ public class ImportHelper {
         String filename = getFileName(activity, uri);
         String lower = filename == null ? "" : filename.toLowerCase();
         String mime = intent.getType();
-        boolean supported = lower.endsWith(".3enotes") || lower.endsWith(".snbx")
+        boolean supported = lower.endsWith(".3en") || lower.endsWith(".3enotes") || lower.endsWith(".snbx")
                 || "application/x-3enotes".equals(mime);
         if (!supported) {
             Log.w(TAG, "Unsupported VIEW intent file: " + filename + " mime=" + mime);
@@ -178,7 +178,7 @@ public class ImportHelper {
             
             // Validate that the file looks like a .snbx package
             String filename = getFileName(sActivity, uri);
-            if (filename == null || !(filename.toLowerCase().endsWith(".3enotes") || filename.toLowerCase().endsWith(".snbx"))) {
+            if (filename == null || !(filename.toLowerCase().endsWith(".3en") || filename.toLowerCase().endsWith(".3enotes") || filename.toLowerCase().endsWith(".snbx"))) {
                 Log.w(TAG, "Selected file is not a 3ENotes project: " + filename + ", skipping");
                 continue;  // Skip unsupported files
             }
@@ -231,13 +231,13 @@ public class ImportHelper {
         // Get the original filename
         String filename = getFileName(context, uri);
         if (filename == null || filename.isEmpty()) {
-            filename = "imported_" + System.currentTimeMillis() + ".3enotes";
+            filename = "imported_" + System.currentTimeMillis() + ".3EN";
         }
         
         // Preserve legacy .snbx names; otherwise use the new portable extension.
         String lowerName = filename.toLowerCase();
-        if (!(lowerName.endsWith(".3enotes") || lowerName.endsWith(".snbx"))) {
-            filename = filename + ".3enotes";
+        if (!(lowerName.endsWith(".3en") || lowerName.endsWith(".3enotes") || lowerName.endsWith(".snbx"))) {
+            filename = filename + ".3EN";
         }
         
         // Ensure destination directory exists
@@ -254,7 +254,7 @@ public class ImportHelper {
         if (destFile.exists()) {
             int dotIndex = filename.lastIndexOf('.');
             String baseName = dotIndex > 0 ? filename.substring(0, dotIndex) : filename;
-            String extension = dotIndex > 0 ? filename.substring(dotIndex) : ".3enotes";
+            String extension = dotIndex > 0 ? filename.substring(dotIndex) : ".3EN";
             int counter = 1;
             while (destFile.exists()) {
                 filename = baseName + "_" + counter + extension;

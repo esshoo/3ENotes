@@ -2,6 +2,8 @@
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-3enotes">
     <comment>3ENotes Project</comment>
+    <glob pattern="*.3EN"/>
+    <glob pattern="*.3en"/>
     <glob pattern="*.3enotes"/>
     <sub-class-of type="application/zip"/>
   </mime-type>

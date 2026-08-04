@@ -84,11 +84,11 @@
     <!--                                                                  -->
     <!-- NOTE: .snb is a directory bundle (loose folder), not a file.     -->
     <!-- It lives in app-private storage and is NOT registered here.      -->
-    <!-- The preferred portable format is .3enotes; .snbx remains legacy-compatible.        -->
+    <!-- The preferred portable format is .3EN; .3enotes and .snbx remain legacy-compatible.        -->
     <!-- ================================================================ -->
     <key>CFBundleDocumentTypes</key>
     <array>
-        <!-- 3ENotes project (.3enotes), with legacy .snbx compatibility -->
+        <!-- 3ENotes project (.3EN), with legacy .3enotes/.snbx compatibility -->
         <dict>
             <key>CFBundleTypeName</key>
             <string>3ENotes Notebook Package</string>
@@ -138,6 +138,8 @@
             <dict>
                 <key>public.filename-extension</key>
                 <array>
+                    <string>3EN</string>
+                    <string>3en</string>
                     <string>3enotes</string>
                 </array>
                 <key>public.mime-type</key>

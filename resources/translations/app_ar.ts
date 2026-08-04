@@ -45,352 +45,33 @@
     </context>
     <context>
         <name>BatchImportDialog</name>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="33" />
-            <source>Import Notebooks</source>
-            <translation>استيراد دفاتر الملاحظات</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="82" />
-            <source>Select Notebooks to Import</source>
-            <translation>حدد دفاتر الملاحظات للاستيراد</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="91" />
-            <source>Add .snbx notebook packages to import. You can add individual files or scan a folder for notebooks.</source>
-            <translation type="unfinished">Add .snbx notebook packages to import. You can add individual files or scan a folder for notebooks.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="98" />
-            <source>Files to Import</source>
-            <translation>الملفات المطلوب استيرادها</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="103" />
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="363" />
-            <source>No files selected</source>
-            <translation>لم يتم تحديد ملفات</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="118" />
-            <source>Add Files...</source>
-            <translation>إضافة ملفات...</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="123" />
-            <source>Add Folder...</source>
-            <translation>إضافة مجلد...</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="130" />
-            <source>Remove</source>
-            <translation>إزالة</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="138" />
-            <source>Clear All</source>
-            <translation>مسح الكل</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="147" />
-            <source>Import To</source>
-            <translation>الاستيراد إلى</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="152" />
-            <source>Choose destination folder...</source>
-            <translation>اختر مجلد الوجهة...</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="156" />
-            <source>Browse...</source>
-            <translation>استعراض...</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="169" />
-            <source>Cancel</source>
-            <translation>إلغاء</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="174" />
-            <source>Import</source>
-            <translation>استيراد</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="201" />
-            <source>Select Notebook Files</source>
-            <translation>تحديد دفتر ملاحظات ملفs</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="203" />
-            <source>3ENotes Packages (*.snbx);;All Files (*)</source>
-            <translation>حزم 3ENotes (*.snbx);;كل الملفات (*)</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="229" />
-            <source>Select Folder to Scan</source>
-            <translation>تحديد مجلد to Scan</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="248" />
-            <source>No Notebooks Found</source>
-            <translation>لم يتم العثور على دفاتر</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="249" />
-            <source>No .snbx notebook files were found in the selected folder.</source>
-            <translation>لم يتم العثور على ملفات دفاتر .snbx في المجلد المحدد.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="285" />
-            <source>Select Destination Folder</source>
-            <translation>تحديد Destination مجلد</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="353" />
-            <source>1 file was already in the list and was skipped.</source>
-            <translation>كان ملف واحد موجودًا في القائمة وتم تخطيه.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="354" />
-            <source>%1 files were already in the list and were skipped.</source>
-            <translation type="unfinished">%1 files were already in the list and were skipped.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="355" />
-            <source>Duplicates Skipped</source>
-            <translation>تم تخطي المكررات</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="365" />
-            <source>1 file selected</source>
-            <translation>تم تحديد 1 file</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="367" />
-            <source>%1 files selected</source>
-            <translation>تم تحديد %1 files</translation>
-        </message>
-            <message>
-            <source>Add .3enotes projects or legacy .snbx packages to import. You can add individual files or scan a folder.</source>
-            <translation>أضف مشاريع ‎.3enotes أو حزم ‎.snbx القديمة لاستيرادها. يمكنك إضافة ملفات منفردة أو فحص مجلد.</translation>
-        </message>
-        <message>
-            <source>3ENotes Projects (*.3enotes *.snbx);;All Files (*)</source>
-            <translation>مشاريع 3ENotes (*.3enotes *.snbx);;كل الملفات (*)</translation>
-        </message>
-        <message>
-            <source>No .3enotes or .snbx files were found in the selected folder.</source>
-            <translation>لم يتم العثور على ملفات ‎.3enotes أو ‎.snbx داخل المجلد المحدد.</translation>
-        </message>
-</context>
-    <context>
-        <name>BatchPdfExportDialog</name>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="38" />
-            <source>Share as PDF</source>
-            <translation>مشاركة كملف PDF</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="40" />
-            <source>Export to PDF</source>
-            <translation>تصدير إلى PDF</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="142" />
-            <source>Output Folder</source>
-            <translation>مجلد الإخراج</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="147" />
-            <source>Select output folder...</source>
-            <translation>تحديد output folder...</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="153" />
-            <source>Browse...</source>
-            <translation>استعراض...</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="164" />
-            <source>Exported PDFs will be shared using Android's share sheet.</source>
-            <translation>ستتم مشاركة ملفات PDF المصدرة عبر نافذة المشاركة في Android.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="171" />
-            <source>Pages</source>
-            <translation>الصفحات</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="176" />
-            <source>All pages</source>
-            <translation>كل الصفحات</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="183" />
-            <source>Page range:</source>
-            <translation>نطاق الصفحات:</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="187" />
-            <source>e.g., 1-10, 15, 20-30</source>
-            <translation>مثال: 1-10، 15، 20-30</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="197" />
-            <source>Page range applies to all notebooks</source>
-            <translation>الصفحة range applies to all notebooks</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="213" />
-            <source>Quality</source>
-            <translation>الجودة</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="219" />
-            <source>96 DPI (Screen)</source>
-            <translation>96 DPI (شاشة)</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="220" />
-            <source>Smallest file size, for on-screen viewing</source>
-            <translation>أصغر حجم ملف للعرض على الشاشة</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="224" />
-            <source>150 DPI (Standard)</source>
-            <translation>150 DPI (قياسي)</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="225" />
-            <source>Good balance between quality and file size</source>
-            <translation>توازن جيد بين الجودة وحجم الملف</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="230" />
-            <source>300 DPI (Print)</source>
-            <translation>300 DPI (طباعة)</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="231" />
-            <source>High quality for printing</source>
-            <translation>جودة عالية للطباعة</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="238" />
-            <source>Custom:</source>
-            <translation>مخصص:</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="245" />
-            <source> DPI</source>
-            <translation> نقطة/بوصة</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="259" />
-            <source>Options</source>
-            <translation>الخيارات</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="263" />
-            <source>Annotations only (blank background)</source>
-            <translation>التعليقات فقط (خلفية فارغة)</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="265" />
-            <source>Export strokes and images only, without original PDF content or page backgrounds.</source>
-            <translation>تصدير strokes and images only, without original PDF content or page backgrounds.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="268" />
-            <source>Render PDF background in dark mode</source>
-            <translation>عرض خلفية PDF بالوضع الداكن</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="270" />
-            <source>Apply lightness inversion to the PDF background, producing a dark page similar to the on-canvas dark mode appearance.</source>
-            <translation type="unfinished">Apply lightness inversion to the PDF background, producing a dark page similar to the on-canvas dark mode appearance.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="283" />
-            <source>Darken light-coloured strokes for printing</source>
-            <translation>تغميق الخطوط الفاتحة للطباعة</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="285" />
-            <source>Convert light-coloured strokes (used for dark mode contrast) to darker equivalents so they remain visible on a white background when printed.</source>
-            <translation type="unfinished">Convert light-coloured strokes (used for dark mode contrast) to darker equivalents so they remain visible on a white background when printed.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="289" />
-            <source>Include PDF metadata</source>
-            <translation>تضمين بيانات PDF الوصفية</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="290" />
-            <source>Preserve title, author, and other metadata from source PDFs.</source>
-            <translation type="unfinished">Preserve title, author, and other metadata from source PDFs.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="294" />
-            <source>Include bookmarks/outline</source>
-            <translation>تضمين الإشارات المرجعية/المخطط</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="295" />
-            <source>Preserve PDF bookmarks and outline from source PDFs.</source>
-            <translation>الاحتفاظ بإشارات ومخطط ملفات PDF المصدر.</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="309" />
-            <source>Cancel</source>
-            <translation>إلغاء</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="316" />
-            <source>Share</source>
-            <translation>مشاركة</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="318" />
-            <source>Export</source>
-            <translation>تصدير</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="410" />
-            <source>Share Notebook as PDF</source>
-            <translation>مشاركة دفتر ملاحظات as PDF</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="412" />
-            <source>Share %1 Notebooks as PDF</source>
-            <translation>مشاركة %1 دفتر ملاحظاتs as PDF</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="416" />
-            <source>Export Notebook to PDF</source>
-            <translation>تصدير دفتر ملاحظات to PDF</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="418" />
-            <source>Export %1 Notebooks to PDF</source>
-            <translation>تصدير %1 دفتر ملاحظاتs to PDF</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="434" />
-            <source>⚠ 1 edgeless notebook will be skipped (edgeless notebooks cannot be exported to PDF).</source>
-            <translation type="unfinished">⚠ 1 edgeless notebook will be skipped (edgeless notebooks cannot be exported to PDF).</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="437" />
-            <source>⚠ %1 edgeless notebooks will be skipped (edgeless notebooks cannot be exported to PDF).</source>
-            <translation type="unfinished">⚠ %1 edgeless notebooks will be skipped (edgeless notebooks cannot be exported to PDF).</translation>
-        </message>
-        <message>
-            <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="456" />
-            <source>Select Output Folder</source>
-            <translation>تحديد Output مجلد</translation>
-        </message>
+        <message><source>Import 3ENotes Projects</source><translation>استيراد مشاريع 3ENotes</translation></message>
+        <message><source>Select 3ENotes Projects to Import</source><translation>اختر مشاريع 3ENotes لاستيرادها</translation></message>
+        <message><source>Choose .3EN projects or legacy .3enotes/.snbx files. Files placed in your 3ENotes library are listed automatically, or you can add files and folders manually.</source><translation>اختر مشاريع ‎.3EN أو ملفات ‎.3enotes و‎.snbx القديمة. تظهر الملفات الموجودة في مكتبة 3ENotes تلقائيًا، ويمكنك أيضًا إضافة ملفات أو مجلدات يدويًا.</translation></message>
+        <message><source>Files to Import</source><translation>الملفات المطلوب استيرادها</translation></message>
+        <message><source>No files selected</source><translation>لم يتم تحديد ملفات</translation></message>
+        <message><source>Add Files...</source><translation>إضافة ملفات...</translation></message>
+        <message><source>Add Folder...</source><translation>إضافة مجلد...</translation></message>
+        <message><source>Remove</source><translation>إزالة</translation></message>
+        <message><source>Clear All</source><translation>مسح الكل</translation></message>
+        <message><source>3ENotes Library</source><translation>مكتبة 3ENotes</translation></message>
+        <message><source>Choose the 3ENotes library folder...</source><translation>اختر مجلد مكتبة 3ENotes...</translation></message>
+        <message><source>Browse...</source><translation>استعراض...</translation></message>
+        <message><source>Default</source><translation>الافتراضي</translation></message>
+        <message><source>Imported notebooks are extracted into this library. The project files selected above remain in their original folders.</source><translation>تُستخرج دفاتر الملاحظات المستوردة داخل هذه المكتبة، بينما تظل ملفات المشاريع المحددة أعلاه في مجلداتها الأصلية.</translation></message>
+        <message><source>Cancel</source><translation>إلغاء</translation></message>
+        <message><source>Import</source><translation>استيراد</translation></message>
+        <message><source>Select Notebook Files</source><translation>اختر ملفات دفاتر الملاحظات</translation></message>
+        <message><source>3ENotes Projects (*.3EN *.3en *.3enotes *.snbx);;All Files (*)</source><translation>مشاريع 3ENotes (*.3EN *.3en *.3enotes *.snbx);;كل الملفات (*)</translation></message>
+        <message><source>Select Folder to Scan</source><translation>اختر مجلدًا لفحصه</translation></message>
+        <message><source>No Projects Found</source><translation>لم يتم العثور على مشاريع</translation></message>
+        <message><source>No .3EN, .3enotes, or .snbx files were found in the selected folder.</source><translation>لم يتم العثور على ملفات ‎.3EN أو ‎.3enotes أو ‎.snbx داخل المجلد المحدد.</translation></message>
+        <message><source>Select 3ENotes Library Folder</source><translation>اختر مجلد مكتبة 3ENotes</translation></message>
+        <message><source>1 file was already in the list and was skipped.</source><translation>كان هناك ملف واحد موجود بالفعل في القائمة وتم تخطيه.</translation></message>
+        <message><source>%1 files were already in the list and were skipped.</source><translation>كان هناك %1 من الملفات موجودة بالفعل في القائمة وتم تخطيها.</translation></message>
+        <message><source>Duplicates Skipped</source><translation>تم تخطي الملفات المكررة</translation></message>
+        <message><source>1 file selected</source><translation>تم تحديد ملف واحد</translation></message>
+        <message><source>%1 files selected</source><translation>تم تحديد %1 من الملفات</translation></message>
     </context>
     <context>
         <name>BatchSnbxExportDialog</name>
@@ -519,20 +200,20 @@ This makes the project larger but allows the recipient to view the original PDF.
 سيزيد ذلك حجم المشروع، لكنه يتيح للمستلم عرض ملف PDF الأصلي.</translation>
         </message>
         <message>
-            <source>Share the notebook as a .3enotes project that can be imported on another device.</source>
-            <translation>مشاركة المذكرة كمشروع ‎.3enotes يمكن استيراده على جهاز آخر.</translation>
+            <source>Share the notebook as a .3EN project that can be imported on another device.</source>
+            <translation>مشاركة المذكرة كمشروع ‎.3EN يمكن استيراده على جهاز آخر.</translation>
         </message>
         <message>
-            <source>Share %1 notebooks as .3enotes projects that can be imported on another device.</source>
-            <translation>مشاركة %1 من المذكرات كمشاريع ‎.3enotes يمكن استيرادها على جهاز آخر.</translation>
+            <source>Share %1 notebooks as .3EN projects that can be imported on another device.</source>
+            <translation>مشاركة %1 من المذكرات كمشاريع ‎.3EN يمكن استيرادها على جهاز آخر.</translation>
         </message>
         <message>
-            <source>Export the notebook as a .3enotes project that can be shared or transferred.</source>
-            <translation>تصدير المذكرة كمشروع ‎.3enotes يمكن مشاركته أو نقله.</translation>
+            <source>Export the notebook as a .3EN project that can be shared or transferred.</source>
+            <translation>تصدير المذكرة كمشروع ‎.3EN يمكن مشاركته أو نقله.</translation>
         </message>
         <message>
-            <source>Export %1 notebooks as .3enotes projects that can be shared or transferred.</source>
-            <translation>تصدير %1 من المذكرات كمشاريع ‎.3enotes يمكن مشاركتها أو نقلها.</translation>
+            <source>Export %1 notebooks as .3EN projects that can be shared or transferred.</source>
+            <translation>تصدير %1 من المذكرات كمشاريع ‎.3EN يمكن مشاركتها أو نقلها.</translation>
         </message>
 </context>
     <context>
@@ -2388,8 +2069,8 @@ This helps prevent accidental palm touches while writing. Only affects Y-Axis On
             <translation>استيراد Package (.snbx)</translation>
         </message>
             <message>
-            <source>Import 3ENotes Project (.3enotes / .snbx)</source>
-            <translation>استيراد مشروع 3ENotes ‏(.3enotes / .snbx)</translation>
+            <source>Import 3ENotes Project (.3EN / legacy)</source>
+            <translation>استيراد مشروع 3ENotes ‏(.3EN / صيغ قديمة)</translation>
         </message>
 </context>
     <context>

@@ -22,6 +22,58 @@
 #include <QStyle>
 #include <QScreen>
 #include <QGuiApplication>
+#include <QLocale>
+
+namespace {
+
+QString defaultLibraryDirectory()
+{
+    const QString path = QDir::cleanPath(
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/3ENotes"));
+    QDir().mkpath(path);
+    return path;
+}
+
+QString defaultImportsDirectory()
+{
+    const QString path = QDir::cleanPath(defaultLibraryDirectory() + QStringLiteral("/Imports"));
+    QDir().mkpath(path);
+    return path;
+}
+
+bool isSupportedProjectFile(const QString& filePath)
+{
+    return filePath.endsWith(QStringLiteral(".3en"), Qt::CaseInsensitive)
+        || filePath.endsWith(QStringLiteral(".3enotes"), Qt::CaseInsensitive)
+        || filePath.endsWith(QStringLiteral(".snbx"), Qt::CaseInsensitive);
+}
+
+QStringList findProjectFiles(const QString& folder)
+{
+    QStringList files;
+    if (folder.isEmpty() || !QDir(folder).exists()) return files;
+
+    QDirIterator it(folder, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString path = it.next();
+        if (isSupportedProjectFile(path)) files.append(path);
+    }
+    files.sort(Qt::CaseInsensitive);
+    return files;
+}
+
+bool samePath(const QString& left, const QString& right)
+{
+    const QString a = QDir::cleanPath(QFileInfo(left).absoluteFilePath());
+    const QString b = QDir::cleanPath(QFileInfo(right).absoluteFilePath());
+#ifdef Q_OS_WIN
+    return a.compare(b, Qt::CaseInsensitive) == 0;
+#else
+    return a == b;
+#endif
+}
+
+} // namespace
 
 // ============================================================================
 // Constructor
@@ -30,41 +82,50 @@
 BatchImportDialog::BatchImportDialog(QWidget* parent)
     : QDialog(parent)
 {
-    setWindowTitle(tr("Import Notebooks"));
+    setWindowTitle(tr("Import 3ENotes Projects"));
     setWindowIcon(QIcon(":/resources/icons/mainicon.svg"));
     setModal(true);
-    
-    setupUi();
-    
-    // Load last used destination directory
-    QSettings settings;
-    settings.beginGroup("BatchImport");
-    QString lastDestDir = settings.value("destinationDirectory").toString();
-    settings.endGroup();
-    
-    if (!lastDestDir.isEmpty() && QDir(lastDestDir).exists()) {
-        m_destEdit->setText(lastDestDir);
-    } else {
-        // Default to Documents/SpeedyNote
-        QString defaultDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) 
-                            + "/3ENotes";
-        QDir().mkpath(defaultDir);
-        m_destEdit->setText(defaultDir);
+    if (QLocale().textDirection() == Qt::RightToLeft) {
+        setLayoutDirection(Qt::RightToLeft);
     }
-    
+
+    setupUi();
+
+    const QString documentsDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    const QString libraryDir = defaultLibraryDirectory();
+    const QString importsDir = defaultImportsDirectory();
+
+    // Migrate the old default (Documents root) to Documents/3ENotes, while
+    // preserving any genuinely custom destination selected by the user.
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("BatchImport"));
+    QString lastDestDir = settings.value(QStringLiteral("destinationDirectory")).toString();
+    if (lastDestDir.isEmpty() || !QDir(lastDestDir).exists() || samePath(lastDestDir, documentsDir)) {
+        lastDestDir = libraryDir;
+        settings.setValue(QStringLiteral("destinationDirectory"), lastDestDir);
+    }
+
+    QString lastBrowseDir = settings.value(QStringLiteral("lastBrowseDirectory")).toString();
+    if (lastBrowseDir.isEmpty() || !QDir(lastBrowseDir).exists() || samePath(lastBrowseDir, documentsDir)) {
+        lastBrowseDir = importsDir;
+        settings.setValue(QStringLiteral("lastBrowseDirectory"), lastBrowseDir);
+    }
+    settings.endGroup();
+
+    m_destEdit->setText(lastDestDir);
+
+    // Files copied into Documents/3ENotes (including Imports/) are discovered
+    // automatically so the user does not have to select the same folder again.
+    addFiles(findProjectFiles(libraryDir));
     updateImportButton();
-    
-    // Size and position
+
     setMinimumSize(DIALOG_MIN_WIDTH, DIALOG_MIN_HEIGHT);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    
+
     if (parent) {
         move(parent->geometry().center() - rect().center());
-    } else {
-        QScreen* screen = QGuiApplication::primaryScreen();
-        if (screen) {
-            move(screen->geometry().center() - rect().center());
-        }
+    } else if (QScreen* screen = QGuiApplication::primaryScreen()) {
+        move(screen->geometry().center() - rect().center());
     }
 }
 
@@ -79,7 +140,7 @@ void BatchImportDialog::setupUi()
     mainLayout->setContentsMargins(24, 24, 24, 24);
     
     // ===== Title =====
-    m_titleLabel = new QLabel(tr("Select Notebooks to Import"));
+    m_titleLabel = new QLabel(tr("Select 3ENotes Projects to Import"));
     QFont titleFont = m_titleLabel->font();
     titleFont.setPointSize(16);
     titleFont.setBold(true);
@@ -88,8 +149,7 @@ void BatchImportDialog::setupUi()
     
     // ===== Description =====
     QLabel* descLabel = new QLabel(
-        tr("Add .3enotes projects or legacy .snbx packages to import. You can add individual files "
-           "or scan a folder for notebooks."));
+        tr("Choose .3EN projects or legacy .3enotes/.snbx files. Files placed in your 3ENotes library are listed automatically, or you can add files and folders manually."));
     descLabel->setWordWrap(true);
     descLabel->setStyleSheet("color: palette(placeholderText); font-size: 13px;");
     mainLayout->addWidget(descLabel);
@@ -143,20 +203,42 @@ void BatchImportDialog::setupUi()
     filesLayout->addLayout(fileButtonLayout);
     mainLayout->addWidget(filesGroup);
     
-    // ===== Destination Directory =====
-    QGroupBox* destGroup = new QGroupBox(tr("Import To"));
-    QHBoxLayout* destLayout = new QHBoxLayout(destGroup);
+    // ===== Destination Library =====
+    QGroupBox* destGroup = new QGroupBox(tr("3ENotes Library"));
+    QVBoxLayout* destGroupLayout = new QVBoxLayout(destGroup);
+    destGroupLayout->setSpacing(6);
+
+    QHBoxLayout* destLayout = new QHBoxLayout();
     destLayout->setSpacing(8);
-    
+
     m_destEdit = new QLineEdit();
-    m_destEdit->setPlaceholderText(tr("Choose destination folder..."));
+    m_destEdit->setPlaceholderText(tr("Choose the 3ENotes library folder..."));
     m_destEdit->setReadOnly(true);
     destLayout->addWidget(m_destEdit, 1);
-    
+
     m_destBrowseButton = new QPushButton(tr("Browse..."));
     connect(m_destBrowseButton, &QPushButton::clicked, this, &BatchImportDialog::onBrowseDestClicked);
     destLayout->addWidget(m_destBrowseButton);
-    
+
+    QPushButton* resetDestButton = new QPushButton(tr("Default"));
+    connect(resetDestButton, &QPushButton::clicked, this, [this]() {
+        const QString libraryDir = defaultLibraryDirectory();
+        m_destEdit->setText(libraryDir);
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("BatchImport"));
+        settings.setValue(QStringLiteral("destinationDirectory"), libraryDir);
+        settings.endGroup();
+        updateImportButton();
+    });
+    destLayout->addWidget(resetDestButton);
+    destGroupLayout->addLayout(destLayout);
+
+    QLabel* destNote = new QLabel(
+        tr("Imported notebooks are extracted into this library. The project files selected above remain in their original folders."));
+    destNote->setWordWrap(true);
+    destNote->setStyleSheet("color: palette(placeholderText); font-size: 11px;");
+    destGroupLayout->addWidget(destNote);
+
     mainLayout->addWidget(destGroup);
     
     // ===== Buttons =====
@@ -193,14 +275,14 @@ void BatchImportDialog::onAddFilesClicked()
     settings.endGroup();
     
     if (lastDir.isEmpty() || !QDir(lastDir).exists()) {
-        lastDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        lastDir = defaultImportsDirectory();
     }
     
     QStringList files = QFileDialog::getOpenFileNames(
         this,
         tr("Select Notebook Files"),
         lastDir,
-        tr("3ENotes Projects (*.3enotes *.snbx);;All Files (*)")
+        tr("3ENotes Projects (*.3EN *.3en *.3enotes *.snbx);;All Files (*)")
     );
     
     if (!files.isEmpty()) {
@@ -221,7 +303,7 @@ void BatchImportDialog::onAddFolderClicked()
     settings.endGroup();
     
     if (lastDir.isEmpty() || !QDir(lastDir).exists()) {
-        lastDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        lastDir = defaultImportsDirectory();
     }
     
     QString folder = QFileDialog::getExistingDirectory(
@@ -237,16 +319,11 @@ void BatchImportDialog::onAddFolderClicked()
         settings.setValue("lastBrowseDirectory", folder);
         settings.endGroup();
         
-        // Scan folder for .snbx files
-        QStringList foundFiles;
-        QDirIterator it(folder, QStringList() << "*.3enotes" << "*.snbx", QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            foundFiles.append(it.next());
-        }
-        
+        const QStringList foundFiles = findProjectFiles(folder);
+
         if (foundFiles.isEmpty()) {
-            QMessageBox::information(this, tr("No Notebooks Found"),
-                tr("No .3enotes or .snbx files were found in the selected folder."));
+            QMessageBox::information(this, tr("No Projects Found"),
+                tr("No .3EN, .3enotes, or .snbx files were found in the selected folder."));
         } else {
             addFiles(foundFiles);
         }
@@ -277,18 +354,22 @@ void BatchImportDialog::onBrowseDestClicked()
 {
     QString currentDir = m_destEdit->text();
     if (currentDir.isEmpty() || !QDir(currentDir).exists()) {
-        currentDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        currentDir = defaultLibraryDirectory();
     }
     
     QString folder = QFileDialog::getExistingDirectory(
         this,
-        tr("Select Destination Folder"),
+        tr("Select 3ENotes Library Folder"),
         currentDir,
         QFileDialog::ShowDirsOnly
     );
     
     if (!folder.isEmpty()) {
         m_destEdit->setText(folder);
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("BatchImport"));
+        settings.setValue(QStringLiteral("destinationDirectory"), folder);
+        settings.endGroup();
         updateImportButton();
     }
 }
@@ -321,8 +402,7 @@ void BatchImportDialog::addFiles(const QStringList& files)
     int duplicateCount = 0;
     
     for (const QString& file : files) {
-        // Skip non-.snbx files
-        if (!file.endsWith(".snbx", Qt::CaseInsensitive) && !file.endsWith(".3enotes", Qt::CaseInsensitive)) {
+        if (!isSupportedProjectFile(file)) {
             continue;
         }
         
@@ -383,7 +463,7 @@ bool BatchImportDialog::isDuplicate(const QString& filePath) const
 QString BatchImportDialog::extractDisplayName(const QString& filePath) const
 {
     QFileInfo info(filePath);
-    QString name = info.completeBaseName();  // Filename without .snbx
+    QString name = info.completeBaseName();  // Filename without the project extension
     
     // Add parent folder for context
     QString parentDir = info.dir().dirName();

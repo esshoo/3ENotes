@@ -74,6 +74,10 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:mimeType="application/x-3enotes"/>
                 <data android:mimeType="application/octet-stream"
+                      android:pathPattern=".*\\.3EN"/>
+                <data android:mimeType="application/octet-stream"
+                      android:pathPattern=".*\\.3en"/>
+                <data android:mimeType="application/octet-stream"
                       android:pathPattern=".*\\.3enotes"/>
                 <data android:mimeType="application/octet-stream"
                       android:pathPattern=".*\\.snbx"/>

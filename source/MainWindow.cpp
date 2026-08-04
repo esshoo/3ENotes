@@ -1155,7 +1155,7 @@ void MainWindow::setupUi() {
         toggleFullscreen();
     });
     connect(m_navigationBar, &NavigationBar::shareClicked, this, [this]() {
-        // Phase 3: Export notebook as .3enotes project using unified dialog
+        // Phase 3: Export notebook as .3EN project using unified dialog
         DocumentViewport* vp = currentViewport();
         Document* doc = vp ? vp->document() : nullptr;
         if (!doc) {
@@ -1181,7 +1181,7 @@ void MainWindow::setupUi() {
         // Single-file export: use direct export for immediate feedback
         // (ExportQueueManager is for batch exports from Launcher)
         QString outputDir = dialog.outputDirectory();
-        QString outputPath = outputDir + "/" + doc->name + ".3enotes";
+        QString outputPath = outputDir + "/" + doc->name + ".3EN";
         
         // Auto-rename if file exists (with safety limit to prevent infinite loop)
         if (QFile::exists(outputPath)) {
@@ -1189,7 +1189,7 @@ void MainWindow::setupUi() {
             QString baseName = doc->name;
             const int maxAttempts = 1000;  // Safety limit
             while (QFile::exists(outputPath) && counter <= maxAttempts) {
-                outputPath = outputDir + "/" + baseName + QString(" (%1).3enotes").arg(counter++);
+                outputPath = outputDir + "/" + baseName + QString(" (%1).3EN").arg(counter++);
             }
             if (counter > maxAttempts) {
                 QMessageBox::warning(this, tr("Export Failed"),
@@ -1204,7 +1204,7 @@ void MainWindow::setupUi() {
         
         QApplication::setOverrideCursor(Qt::WaitCursor);
         // Plan B2: materialize imported PDF sources into bundled mini-PDFs before the
-        // recursive zip so the .3enotes project is self-contained (updates document.json + pdfs/).
+        // recursive zip so the .3EN project is self-contained (updates document.json + pdfs/).
         if (doc->needsMaterialization()) {
             doc->saveBundle(bundlePath, /*finalize=*/true);
         }
@@ -9077,7 +9077,7 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, long *r
 static bool isSupportedDropFile(const QString& path)
 {
     if (path.endsWith(".pdf", Qt::CaseInsensitive)) return true;
-    if (path.endsWith(".snbx", Qt::CaseInsensitive) || path.endsWith(".3enotes", Qt::CaseInsensitive)) return true;
+    if (path.endsWith(".3en", Qt::CaseInsensitive) || path.endsWith(".3enotes", Qt::CaseInsensitive) || path.endsWith(".snbx", Qt::CaseInsensitive)) return true;
     if (path.endsWith(".snb", Qt::CaseInsensitive) && QFileInfo(path).isDir()) return true;
     return false;
 }

@@ -14,13 +14,13 @@ import org.qtproject.qt.android.bindings.QtActivity;
  * 
  * Extends QtActivity to:
  * 1. Handle Activity results from the PDF file picker (BUG-A003)
- * 2. Handle .3enotes/.snbx import and external-open intents (Phase 2)
+ * 2. Handle .3EN/.3enotes/.snbx import and external-open intents (Phase 2)
  * 3. Enable high-rate stylus input via requestUnbufferedDispatch() (BUG-A004)
  * 4. Provide system dark mode detection for theme synchronization (BUG-A007)
  * 
  * This is necessary because:
  * - PDF picker: We need to process the file picker result while SAF permission is valid
- * - Project importer: SAF handling for .3enotes and legacy .snbx files
+ * - Project importer: SAF handling for .3EN and legacy .3enotes/.snbx files
  * - Stylus input: Android batches touch events at 60Hz by default; we want 240Hz
  * - Dark mode: Qt doesn't automatically detect Android's system theme setting
  */
