@@ -170,6 +170,7 @@ ControlPanelDialog::ControlPanelDialog(MainWindow *mainWindow, QWidget *parent)
 #ifdef Q_OS_LINUX
     createStylusTab();
 #endif
+    createStorageRecoveryTab();
     createCacheTab();
     createAboutTab();
     
@@ -323,7 +324,29 @@ void ControlPanelDialog::loadSettings()
             break;
         }
     }
-}
+    // 3ENOTES_STORAGE_RECOVERY_TAB_V2
+    if (autoSaveEnabledCheckbox) {
+        autoSaveEnabledCheckbox->setChecked(
+            settings.value(QStringLiteral("autosave/enabled"), true).toBool());
+    }
+    if (autoSaveIntervalSpin) {
+        autoSaveIntervalSpin->setValue(qBound(
+            1,
+            settings.value(QStringLiteral("autosave/intervalMs"), 3000).toInt() / 1000,
+            60));
+    }
+    if (recoveryIntervalSpin) {
+        recoveryIntervalSpin->setValue(qBound(
+            10,
+            settings.value(QStringLiteral("recovery/snapshotIntervalMs"), 60000).toInt() / 1000,
+            3600));
+    }
+    if (recoveryKeepSpin) {
+        recoveryKeepSpin->setValue(qBound(
+            1,
+            settings.value(QStringLiteral("recovery/keepCount"), 5).toInt(),
+            20));
+    }}
 
 void ControlPanelDialog::applyChanges()
 {
@@ -392,6 +415,22 @@ void ControlPanelDialog::applyChanges()
     // Apply OCR language setting
     if (ocrLanguageCombo)
         settings.setValue("ocrLanguage", ocrLanguageCombo->currentData().toString());
+
+    // Storage & Recovery settings
+    if (autoSaveEnabledCheckbox)
+        settings.setValue(QStringLiteral("autosave/enabled"),
+                          autoSaveEnabledCheckbox->isChecked());
+    if (autoSaveIntervalSpin)
+        settings.setValue(QStringLiteral("autosave/intervalMs"),
+                          autoSaveIntervalSpin->value() * 1000);
+    if (recoveryIntervalSpin)
+        settings.setValue(QStringLiteral("recovery/snapshotIntervalMs"),
+                          recoveryIntervalSpin->value() * 1000);
+    if (recoveryKeepSpin)
+        settings.setValue(QStringLiteral("recovery/keepCount"),
+                          recoveryKeepSpin->value());
+
+    mainWindowRef->reloadAutoSaveSettings();
 }
 
 /*
@@ -926,6 +965,89 @@ void ControlPanelDialog::createMouseDialTab() {
 }
 */
 
+// ============================================================================
+// Storage & Recovery Tab
+// ============================================================================
+void ControlPanelDialog::createStorageRecoveryTab()
+{
+    // 3ENOTES_STORAGE_RECOVERY_TAB_V2
+    storageRecoveryTab = new QWidget(this);
+    auto* layout = new QVBoxLayout(storageRecoveryTab);
+
+    auto* title = new QLabel(tr("Storage & Recovery"), storageRecoveryTab);
+    QFont titleFont = title->font();
+    titleFont.setPointSize(16);
+    titleFont.setBold(true);
+    title->setFont(titleFont);
+    layout->addWidget(title);
+
+    auto* autoSaveGroup = new QGroupBox(tr("Auto Save"), storageRecoveryTab);
+    auto* autoSaveLayout = new QFormLayout(autoSaveGroup);
+
+    autoSaveEnabledCheckbox =
+        new QCheckBox(tr("Enable Auto Save"), autoSaveGroup);
+    autoSaveLayout->addRow(autoSaveEnabledCheckbox);
+
+    autoSaveIntervalSpin = new QSpinBox(autoSaveGroup);
+    autoSaveIntervalSpin->setRange(1, 60);
+    autoSaveIntervalSpin->setSuffix(tr(" seconds"));
+    autoSaveIntervalSpin->setValue(3);
+    autoSaveLayout->addRow(tr("Auto-save interval:"), autoSaveIntervalSpin);
+
+    auto* autoSaveNote = new QLabel(
+        tr("Only modified notebooks are written. Disabling Auto Save does not disable manual Save."),
+        autoSaveGroup);
+    autoSaveNote->setWordWrap(true);
+    autoSaveNote->setStyleSheet(
+        QStringLiteral("color: gray; font-size: 11px;"));
+    autoSaveLayout->addRow(autoSaveNote);
+
+    layout->addWidget(autoSaveGroup);
+
+    auto* recoveryGroup =
+        new QGroupBox(tr("Recovery Backups"), storageRecoveryTab);
+    auto* recoveryLayout = new QFormLayout(recoveryGroup);
+
+    recoveryIntervalSpin = new QSpinBox(recoveryGroup);
+    recoveryIntervalSpin->setRange(10, 3600);
+    recoveryIntervalSpin->setSuffix(tr(" seconds"));
+    recoveryIntervalSpin->setValue(60);
+    recoveryLayout->addRow(
+        tr("Recovery backup interval:"), recoveryIntervalSpin);
+
+    recoveryKeepSpin = new QSpinBox(recoveryGroup);
+    recoveryKeepSpin->setRange(1, 20);
+    recoveryKeepSpin->setValue(5);
+    recoveryLayout->addRow(
+        tr("Recovery copies to keep:"), recoveryKeepSpin);
+
+    openRecoveryCenterButton =
+        new QPushButton(tr("Open Recovery Center"), recoveryGroup);
+    connect(openRecoveryCenterButton, &QPushButton::clicked,
+            this, [this]() {
+                if (mainWindowRef) {
+                    mainWindowRef->showRecoveryCenter();
+                }
+            });
+    recoveryLayout->addRow(openRecoveryCenterButton);
+
+    auto* recoveryNote = new QLabel(
+        tr("Recovery copies are separate from your project. "
+           "Before a previous version is restored, the current saved version is kept as a safety copy."),
+        recoveryGroup);
+    recoveryNote->setWordWrap(true);
+    recoveryNote->setStyleSheet(
+        QStringLiteral("color: gray; font-size: 11px;"));
+    recoveryLayout->addRow(recoveryNote);
+
+    layout->addWidget(recoveryGroup);
+    layout->addStretch();
+
+    connect(autoSaveEnabledCheckbox, &QCheckBox::toggled,
+            autoSaveIntervalSpin, &QSpinBox::setEnabled);
+
+    tabWidget->addTab(storageRecoveryTab, tr("Storage"));
+}
 void ControlPanelDialog::createBackgroundTab() {
     backgroundTab = new QWidget(this);
     QVBoxLayout *layout = new QVBoxLayout(backgroundTab);

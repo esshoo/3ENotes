@@ -71,6 +71,7 @@
 #include <QRegularExpression>  // BUG-A002: For filename sanitization on Android
 #include <QSettings>
 #include <QMessageBox>
+#include <QStatusBar>
 #include <QComboBox>
 #include <QCompleter>
 #include <QDialogButtonBox>
@@ -124,7 +125,8 @@
 #endif // Q_OS_ANDROID / Q_OS_IOS
 // #include "HandwritingLineEdit.h"
 #include "ControlPanelDialog.h"  // Phase CP.1: Re-enabled with cleaned up tabs
-#include "ui/dialogs/DocumentSettingsDialog.h"  // Per-document override panel
+#include "ui/dialogs/DocumentSettingsDialog.h"
+#include "ui/dialogs/RecoveryCenterDialog.h"  // Per-document override panel
 #include "ui/dialogs/CopyPagesToDocDialog.h"  // Plan D1: cross-document page copy
 // #include "LauncherWindow.h" // Phase 3.1: Disconnected - LauncherWindow will be re-linked later
 
@@ -319,6 +321,78 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Phase 3.1.1: Initialize DocumentManager
     m_documentManager = new DocumentManager(this);
+    // 3ENOTES_AUTOSAVE_UI_V1
+    // 3ENOTES_AUTOSAVE_SETTINGS_V2
+    m_autoSaveTimer = new QTimer(this);
+    m_autoSaveTimer->setTimerType(Qt::CoarseTimer);
+
+    connect(m_autoSaveTimer, &QTimer::timeout, this, [this]() {
+        if (!m_documentManager) {
+            return;
+        }
+
+        bool hasChanges = false;
+        for (int i = 0; i < m_documentManager->documentCount(); ++i) {
+            Document* doc = m_documentManager->documentAt(i);
+            if (doc && m_documentManager->hasUnsavedChanges(doc)) {
+                hasChanges = true;
+                break;
+            }
+        }
+
+        if (!hasChanges) {
+            return;
+        }
+
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
+        statusBar()->showMessage(tr("Saving..."));
+#endif
+
+        syncAllDocumentPositions();
+        const int saved = m_documentManager->autoSaveModifiedDocuments();
+
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
+        if (saved > 0) {
+            statusBar()->showMessage(tr("Saved"), 1500);
+        } else {
+            statusBar()->showMessage(tr("Auto-save failed"), 3000);
+        }
+#endif
+    });
+
+    reloadAutoSaveSettings();
+    // An abnormal process termination leaves the recovery session marker
+    // behind. Offer the newest rolling snapshot without replacing the original.
+    if (m_documentManager->hadUncleanShutdown()) {
+        QTimer::singleShot(0, this, [this]() {
+            if (!m_documentManager) {
+                return;
+            }
+
+            const QString latestRecovery =
+                m_documentManager->latestRecoverySnapshot();
+            if (latestRecovery.isEmpty()) {
+                return;
+            }
+
+            QMessageBox box(this);
+            box.setIcon(QMessageBox::Warning);
+            box.setWindowTitle(tr("Recovery Available"));
+            box.setText(
+                tr("3ENotes detected that the previous session did not close normally."));
+            box.setInformativeText(
+                tr("A recovery copy is available. Opening it will not overwrite your original project."));
+
+            QAbstractButton* openRecoveryButton =
+                box.addButton(tr("Open Latest Recovery"), QMessageBox::AcceptRole);
+            box.addButton(tr("Not Now"), QMessageBox::RejectRole);
+            box.exec();
+
+            if (box.clickedButton() == openRecoveryButton) {
+                openFileInNewTab(latestRecovery);
+            }
+        });
+    }
     
     // Connect SplitViewManager signals (routes through active pane)
     connect(m_splitViewManager, &SplitViewManager::activeViewportChanged, this, [this](DocumentViewport* vp) {
@@ -5424,6 +5498,36 @@ void MainWindow::cycleTouchGestureMode() {
     }
 }
 
+void MainWindow::reloadAutoSaveSettings()
+{
+    if (!m_autoSaveTimer) {
+        return;
+    }
+
+    QSettings settings(QStringLiteral("3E"), QStringLiteral("3ENotes"));
+    const bool enabled =
+        settings.value(QStringLiteral("autosave/enabled"), true).toBool();
+    const int intervalMs = qBound(
+        1000,
+        settings.value(QStringLiteral("autosave/intervalMs"), 3000).toInt(),
+        60000);
+
+    m_autoSaveTimer->setInterval(intervalMs);
+
+    if (enabled) {
+        if (!m_autoSaveTimer->isActive()) {
+            m_autoSaveTimer->start();
+        }
+    } else {
+        m_autoSaveTimer->stop();
+    }
+}
+
+void MainWindow::showRecoveryCenter()
+{
+    RecoveryCenterDialog dialog(this, m_documentManager, this);
+    dialog.exec();
+}
 void MainWindow::loadUserSettings() {
     QSettings settings("3E", "3ENotes");
 

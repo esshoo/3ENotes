@@ -102,6 +102,21 @@ public:
      */
     int autoSaveModifiedDocuments();
 
+    // 3ENOTES_AUTOSAVE_RECOVERY_V1
+    // Crash-recovery session tracking and rolling recovery snapshots.
+    bool hadUncleanShutdown() const { return m_uncleanShutdownDetected; }
+    QString recoveryRootPath() const;
+    QStringList recoverySnapshots() const;
+    QString latestRecoverySnapshot() const;
+
+    // 3ENOTES_RECOVERY_CENTER_V2
+    QString recoveryOriginalPath(const QString& snapshotPath) const;
+    bool restoreRecoverySnapshot(const QString& snapshotPath,
+                                 QString* restoredPath = nullptr,
+                                 QString* errorMessage = nullptr);
+    bool deleteRecoverySnapshot(const QString& snapshotPath);
+    int clearRecoverySnapshots();
+
     /**
      * @brief Load a document from a file.
      * @param path Path to the file (.snb bundle or .pdf).
@@ -292,6 +307,8 @@ private:
     QMap<Document*, QString> m_documentPaths;     // Document → file path
     QMap<Document*, bool> m_modifiedFlags;        // Document → has unsaved changes
     QMap<Document*, QString> m_tempBundlePaths;   // Document → temp bundle path (for unsaved edgeless)
+    QMap<Document*, qint64> m_lastRecoverySnapshotMs;
+    bool m_uncleanShutdownDetected = false;
 
     // Recent documents
     QStringList m_recentPaths;
@@ -314,6 +331,12 @@ private:
     // Create a unique temp bundle path for a document (edgeless or paged)
     QString createTempBundlePath(Document* doc);
     
-    // Create a permanent auto-save path in app storage (for Android)
+    // Create a permanent auto-save path in app storage.
     QString createAutoSavePath(Document* doc);
+
+    // Recovery helpers.
+    QString recoverySessionMarkerPath() const;
+    bool copyDirectoryRecursively(const QString& sourcePath, const QString& destinationPath) const;
+    bool createRecoverySnapshot(Document* doc, const QString& bundlePath);
+    void pruneRecoverySnapshots(const QString& documentRecoveryRoot, int keepCount = 5) const;
 };

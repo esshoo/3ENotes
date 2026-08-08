@@ -102,6 +102,15 @@ private:
     QComboBox *ocrLanguageCombo = nullptr;
     void createLanguageTab();
 
+    // === Storage & Recovery tab ===
+    // 3ENOTES_STORAGE_RECOVERY_TAB_V2
+    QWidget *storageRecoveryTab = nullptr;
+    QCheckBox *autoSaveEnabledCheckbox = nullptr;
+    QSpinBox *autoSaveIntervalSpin = nullptr;
+    QSpinBox *recoveryIntervalSpin = nullptr;
+    QSpinBox *recoveryKeepSpin = nullptr;
+    QPushButton *openRecoveryCenterButton = nullptr;
+    void createStorageRecoveryTab();
     // === Cache tab ===
     QWidget *cacheTab;
     void createCacheTab();

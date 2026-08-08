@@ -19,6 +19,7 @@
 #include <QDateTime>
 #include <QRegularExpression>
 #include <QDebug>
+#include <algorithm>
 
 // Settings key for recent documents persistence
 const QString DocumentManager::SETTINGS_RECENT_KEY = QStringLiteral("RecentDocuments");
@@ -34,6 +35,19 @@ const QString DocumentManager::TEMP_PAGED_PREFIX = QStringLiteral("speedynote_pa
 DocumentManager::DocumentManager(QObject* parent)
     : QObject(parent)
 {
+    // 3ENOTES_AUTOSAVE_RECOVERY_V1
+    // A marker survives abnormal termination. A normal destructor removes it.
+    const QString markerPath = recoverySessionMarkerPath();
+    m_uncleanShutdownDetected = QFileInfo::exists(markerPath);
+
+    QFile markerFile(markerPath);
+    if (markerFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        markerFile.write(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toUtf8());
+        markerFile.close();
+    } else {
+        qWarning() << "DocumentManager: Could not create recovery session marker:" << markerPath;
+    }
+
     loadRecentFromSettings();
 }
 
@@ -53,6 +67,10 @@ DocumentManager::~DocumentManager()
     }
     m_documents.clear();
     m_tempBundlePaths.clear();
+    m_lastRecoverySnapshotMs.clear();
+
+    // Mark this session as clean only after normal shutdown reaches the manager destructor.
+    QFile::remove(recoverySessionMarkerPath());
 }
 
 // ============================================================================
@@ -163,7 +181,7 @@ Document* DocumentManager::loadDocument(const QString& path)
     }
     
     // Handle .snbx packages - extract and load the contained notebook
-    if (suffix == "snbx" || suffix == "3enotes") {
+    if (suffix == "snbx" || suffix == "3enotes" || suffix == "3en") {
         // Determine extraction destination
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
         // On Android/iOS, extract to app-private notebooks directory
@@ -506,6 +524,13 @@ bool DocumentManager::doSave(Document* doc, const QString& path)
         bundlePath += ".snb";
     }
     
+    if (QDir(bundlePath).exists()) {
+        if (!createRecoverySnapshot(doc, bundlePath)) {
+            qWarning() << "DocumentManager: Could not create pre-save recovery snapshot for"
+                       << bundlePath;
+        }
+    }
+
     if (!doc->saveBundle(bundlePath)) {
         qWarning() << "DocumentManager::doSave: Failed to save bundle:" << bundlePath;
         return false;
@@ -584,6 +609,411 @@ QString DocumentManager::createTempBundlePath(Document* doc)
     return tempPath;
 }
 
+// ============================================================================
+// 3ENotes Auto Save / Crash Recovery
+// ============================================================================
+
+QString DocumentManager::recoveryRootPath() const
+{
+    const QString root =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+        + QStringLiteral("/recovery");
+    QDir().mkpath(root);
+    return root;
+}
+
+QString DocumentManager::recoverySessionMarkerPath() const
+{
+    return recoveryRootPath() + QStringLiteral("/session.active");
+}
+
+bool DocumentManager::copyDirectoryRecursively(
+    const QString& sourcePath,
+    const QString& destinationPath) const
+{
+    QDir source(sourcePath);
+    if (!source.exists()) {
+        return false;
+    }
+
+    if (!QDir().mkpath(destinationPath)) {
+        return false;
+    }
+
+    const QFileInfoList entries = source.entryInfoList(
+        QDir::NoDotAndDotDot | QDir::AllEntries,
+        QDir::DirsFirst | QDir::Name);
+
+    for (const QFileInfo& entry : entries) {
+        const QString sourceItem = entry.absoluteFilePath();
+        const QString destinationItem =
+            QDir(destinationPath).filePath(entry.fileName());
+
+        if (entry.isDir()) {
+            if (!copyDirectoryRecursively(sourceItem, destinationItem)) {
+                return false;
+            }
+        } else if (entry.isFile()) {
+            QFile::remove(destinationItem);
+            if (!QFile::copy(sourceItem, destinationItem)) {
+                qWarning() << "DocumentManager: Recovery copy failed:"
+                           << sourceItem << "->" << destinationItem;
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+void DocumentManager::pruneRecoverySnapshots(
+    const QString& documentRecoveryRoot,
+    int keepCount) const
+{
+    QDir dir(documentRecoveryRoot);
+    if (!dir.exists()) {
+        return;
+    }
+
+    QFileInfoList snapshots = dir.entryInfoList(
+        QStringList() << QStringLiteral("*.snb"),
+        QDir::Dirs | QDir::NoDotAndDotDot,
+        QDir::Time);
+
+    std::sort(snapshots.begin(), snapshots.end(),
+              [](const QFileInfo& a, const QFileInfo& b) {
+                  return a.lastModified() > b.lastModified();
+              });
+
+    for (int i = qMax(keepCount, 0); i < snapshots.size(); ++i) {
+        QDir(snapshots.at(i).absoluteFilePath()).removeRecursively();
+    }
+}
+
+bool DocumentManager::createRecoverySnapshot(
+    Document* doc,
+    const QString& bundlePath)
+{
+    if (!doc || bundlePath.isEmpty() || !QDir(bundlePath).exists()) {
+        return false;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const qint64 lastMs = m_lastRecoverySnapshotMs.value(doc, 0);
+
+    QSettings recoverySettings(QStringLiteral("3E"), QStringLiteral("3ENotes"));
+    const int snapshotIntervalMs = qBound(
+        10000,
+        recoverySettings.value(QStringLiteral("recovery/snapshotIntervalMs"), 60000).toInt(),
+        3600000);
+
+    // Full bundle copies are throttled separately from the lightweight Auto Save.
+    if (lastMs > 0 && (nowMs - lastMs) < snapshotIntervalMs) {
+        return true;
+    }
+
+    QString documentKey = doc->id;
+    documentKey.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]")),
+                        QStringLiteral("_"));
+    if (documentKey.isEmpty()) {
+        documentKey = QStringLiteral("document");
+    }
+
+    const QString documentRoot =
+        recoveryRootPath() + QStringLiteral("/") + documentKey;
+    QDir().mkpath(documentRoot);
+
+    const QString snapshotName =
+        QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"))
+        + QStringLiteral(".snb");
+    const QString snapshotPath =
+        QDir(documentRoot).filePath(snapshotName);
+
+    if (QDir(snapshotPath).exists()) {
+        QDir(snapshotPath).removeRecursively();
+    }
+
+    if (!copyDirectoryRecursively(bundlePath, snapshotPath)) {
+        QDir(snapshotPath).removeRecursively();
+        return false;
+    }
+
+    QJsonObject metadata;
+    metadata[QStringLiteral("document_name")] = doc->name;
+    metadata[QStringLiteral("document_id")] = doc->id;
+    metadata[QStringLiteral("original_path")] = m_documentPaths.value(doc);
+    metadata[QStringLiteral("snapshot_utc")] =
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    metadata[QStringLiteral("recovery_format_version")] = 1;
+
+    QFile metadataFile(snapshotPath + QStringLiteral("/recovery.json"));
+    if (metadataFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        metadataFile.write(QJsonDocument(metadata).toJson(QJsonDocument::Indented));
+        metadataFile.close();
+    }
+
+    m_lastRecoverySnapshotMs[doc] = nowMs;
+    const int keepCount = qBound(
+        1,
+        recoverySettings.value(QStringLiteral("recovery/keepCount"), 5).toInt(),
+        20);
+    pruneRecoverySnapshots(documentRoot, keepCount);
+
+#ifdef SPEEDYNOTE_DEBUG
+    qDebug() << "DocumentManager: Created recovery snapshot:" << snapshotPath;
+#endif
+    return true;
+}
+
+QStringList DocumentManager::recoverySnapshots() const
+{
+    QStringList result;
+    QFileInfoList snapshotInfos;
+
+    const QDir root(recoveryRootPath());
+    const QFileInfoList documentDirs = root.entryInfoList(
+        QDir::Dirs | QDir::NoDotAndDotDot,
+        QDir::Name);
+
+    for (const QFileInfo& documentDirInfo : documentDirs) {
+        QDir documentDir(documentDirInfo.absoluteFilePath());
+        const QFileInfoList snapshots = documentDir.entryInfoList(
+            QStringList() << QStringLiteral("*.snb"),
+            QDir::Dirs | QDir::NoDotAndDotDot,
+            QDir::Time);
+        snapshotInfos.append(snapshots);
+    }
+
+    std::sort(snapshotInfos.begin(), snapshotInfos.end(),
+              [](const QFileInfo& a, const QFileInfo& b) {
+                  return a.lastModified() > b.lastModified();
+              });
+
+    for (const QFileInfo& info : snapshotInfos) {
+        result.append(info.absoluteFilePath());
+    }
+    return result;
+}
+
+QString DocumentManager::latestRecoverySnapshot() const
+{
+    const QStringList snapshots = recoverySnapshots();
+    return snapshots.isEmpty() ? QString() : snapshots.first();
+}
+// 3ENOTES_RECOVERY_CENTER_V2
+QString DocumentManager::recoveryOriginalPath(const QString& snapshotPath) const
+{
+    QFile metadataFile(QDir(snapshotPath).filePath(QStringLiteral("recovery.json")));
+    if (!metadataFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+
+    const QJsonDocument json = QJsonDocument::fromJson(metadataFile.readAll());
+    metadataFile.close();
+    if (!json.isObject()) {
+        return QString();
+    }
+
+    return QDir::cleanPath(
+        json.object().value(QStringLiteral("original_path")).toString());
+}
+
+bool DocumentManager::deleteRecoverySnapshot(const QString& snapshotPath)
+{
+    if (snapshotPath.isEmpty()) {
+        return false;
+    }
+
+    const QString root = QDir::cleanPath(QFileInfo(recoveryRootPath()).absoluteFilePath());
+    const QString candidate = QDir::cleanPath(QFileInfo(snapshotPath).absoluteFilePath());
+
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+
+    const QString rootPrefix = root + QDir::separator();
+    if (!candidate.startsWith(rootPrefix, cs) || candidate.compare(root, cs) == 0) {
+        qWarning() << "DocumentManager: Refusing to delete recovery path outside recovery root:"
+                   << candidate;
+        return false;
+    }
+
+    return QDir(candidate).removeRecursively();
+}
+
+int DocumentManager::clearRecoverySnapshots()
+{
+    int removed = 0;
+    QDir root(recoveryRootPath());
+    const QFileInfoList documentDirs = root.entryInfoList(
+        QDir::Dirs | QDir::NoDotAndDotDot,
+        QDir::Name);
+
+    for (const QFileInfo& info : documentDirs) {
+        if (QDir(info.absoluteFilePath()).removeRecursively()) {
+            ++removed;
+        }
+    }
+    return removed;
+}
+
+bool DocumentManager::restoreRecoverySnapshot(
+    const QString& snapshotPath,
+    QString* restoredPath,
+    QString* errorMessage)
+{
+    auto fail = [&](const QString& message) {
+        if (errorMessage) {
+            *errorMessage = message;
+        }
+        return false;
+    };
+
+    if (restoredPath) {
+        restoredPath->clear();
+    }
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+
+    if (snapshotPath.isEmpty() ||
+        !QDir(snapshotPath).exists() ||
+        !QFileInfo::exists(QDir(snapshotPath).filePath(QStringLiteral("document.json")))) {
+        return fail(tr("The selected recovery copy is incomplete or invalid."));
+    }
+
+    const QString targetPath = recoveryOriginalPath(snapshotPath);
+    if (targetPath.isEmpty()) {
+        return fail(tr("The recovery copy does not contain its original project path."));
+    }
+
+    auto normalized = [](const QString& p) {
+        return QDir::cleanPath(QFileInfo(p).absoluteFilePath());
+    };
+
+    const QString normalizedTarget = normalized(targetPath);
+    for (auto it = m_documentPaths.constBegin(); it != m_documentPaths.constEnd(); ++it) {
+        if (it.value().isEmpty()) {
+            continue;
+        }
+#ifdef Q_OS_WIN
+        if (normalized(it.value()).compare(normalizedTarget, Qt::CaseInsensitive) == 0) {
+#else
+        if (normalized(it.value()) == normalizedTarget) {
+#endif
+            return fail(tr("Close the project before restoring a previous version."));
+        }
+    }
+
+    QFileInfo targetInfo(targetPath);
+    const QString parentPath = targetInfo.absolutePath();
+    if (!QDir().mkpath(parentPath)) {
+        return fail(tr("Could not create the project folder for restoration."));
+    }
+
+    QDir parentDir(parentPath);
+    const QString targetName = targetInfo.fileName();
+    if (targetName.isEmpty()) {
+        return fail(tr("The original project path is invalid."));
+    }
+
+    const QString token =
+        QUuid::createUuid().toString(QUuid::WithoutBraces).left(8);
+    const QString tempName =
+        targetName + QStringLiteral(".3en-restore-tmp-") + token;
+    const QString tempPath = parentDir.filePath(tempName);
+    QDir(tempPath).removeRecursively();
+
+    if (!copyDirectoryRecursively(snapshotPath, tempPath)) {
+        QDir(tempPath).removeRecursively();
+        return fail(tr("Could not prepare the recovery copy."));
+    }
+
+    // Recovery metadata belongs to the backup system, not the restored notebook.
+    QFile::remove(QDir(tempPath).filePath(QStringLiteral("recovery.json")));
+
+    bool hadOriginal = QFileInfo::exists(targetPath);
+    QString backupName;
+    QString backupPath;
+
+    if (hadOriginal) {
+        if (!QFileInfo(targetPath).isDir()) {
+            QDir(tempPath).removeRecursively();
+            return fail(tr("The original project path is not a notebook folder."));
+        }
+
+        backupName =
+            targetName + QStringLiteral(".pre-restore-")
+            + QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"));
+        backupPath = parentDir.filePath(backupName);
+
+        if (!parentDir.rename(targetName, backupName)) {
+            QDir(tempPath).removeRecursively();
+            return fail(tr("Could not move the current project to a safety backup."));
+        }
+    }
+
+    if (!parentDir.rename(tempName, targetName)) {
+        if (hadOriginal) {
+            parentDir.rename(backupName, targetName);
+        }
+        QDir(tempPath).removeRecursively();
+        return fail(tr("Could not activate the restored project. The original project was kept."));
+    }
+
+    // Keep the pre-restore version inside Recovery Center as an additional
+    // safety point. If this copy fails, leave the sibling backup in place.
+    if (hadOriginal && !backupPath.isEmpty() && QDir(backupPath).exists()) {
+        const QString safetyPath =
+            QFileInfo(snapshotPath).absolutePath()
+            + QStringLiteral("/")
+            + QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"))
+            + QStringLiteral("-pre-restore.snb");
+
+        if (copyDirectoryRecursively(backupPath, safetyPath)) {
+            QJsonObject metadata;
+            metadata[QStringLiteral("document_name")] =
+                QFileInfo(targetPath).completeBaseName();
+            metadata[QStringLiteral("original_path")] = targetPath;
+            metadata[QStringLiteral("snapshot_utc")] =
+                QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+            metadata[QStringLiteral("recovery_format_version")] = 1;
+            metadata[QStringLiteral("snapshot_kind")] =
+                QStringLiteral("pre_restore");
+
+            QFile metadataFile(
+                QDir(safetyPath).filePath(QStringLiteral("recovery.json")));
+            if (metadataFile.open(
+                    QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+                metadataFile.write(
+                    QJsonDocument(metadata).toJson(QJsonDocument::Indented));
+                metadataFile.close();
+            }
+
+            QDir(backupPath).removeRecursively();
+
+            QSettings recoverySettings(
+                QStringLiteral("3E"), QStringLiteral("3ENotes"));
+            const int keepCount = qBound(
+                1,
+                recoverySettings.value(
+                    QStringLiteral("recovery/keepCount"), 5).toInt(),
+                20);
+            pruneRecoverySnapshots(QFileInfo(snapshotPath).absolutePath(), keepCount);
+        }
+    }
+
+    NotebookLibrary::instance()->addToRecent(targetPath);
+    NotebookLibrary::instance()->save();
+
+    if (restoredPath) {
+        *restoredPath = targetPath;
+    }
+
+    return true;
+}
 QString DocumentManager::createAutoSavePath(Document* doc)
 {
     if (!doc) {
@@ -681,70 +1111,79 @@ void DocumentManager::cleanupTempBundle(Document* doc)
 int DocumentManager::autoSaveModifiedDocuments()
 {
     int savedCount = 0;
-    
+
     for (Document* doc : m_documents) {
-        if (!doc) continue;
-        
-        // Check if document has unsaved changes
-        // IMPORTANT: Use hasUnsavedChanges() which checks both m_modifiedFlags
-        // AND doc->modified. User edits often set doc->modified directly
-        // (e.g., when writing strokes), not through DocumentManager::markModified()
-        if (!hasUnsavedChanges(doc)) {
-            continue;  // No changes to save
+        if (!doc) {
+            continue;
         }
-        
-        QString existingPath = m_documentPaths.value(doc);
-        bool isUsingTemp = isUsingTempBundle(doc);
-        bool hasPermPath = !existingPath.isEmpty() && !isUsingTemp;
-        
+
+        // User edits may set Document::modified directly, so always use
+        // hasUnsavedChanges() rather than relying only on manager signals.
+        if (!hasUnsavedChanges(doc)) {
+            continue;
+        }
+
+        const QString existingPath = m_documentPaths.value(doc);
+        const bool usingTemp = isUsingTempBundle(doc);
+        const bool hasPermanentPath = !existingPath.isEmpty() && !usingTemp;
+
         QString savePath;
         bool isNewDocument = false;
-        
-        if (hasPermPath) {
-            // Document has a permanent save path - save in-place
+
+        if (hasPermanentPath) {
             savePath = existingPath;
+
+            // Snapshot the previous good state before overwriting it. Failure to
+            // create a backup does not block the user's save.
+            if (!createRecoverySnapshot(doc, savePath)) {
+                qWarning() << "DocumentManager: Could not create pre-save recovery snapshot for"
+                           << savePath;
+            }
         } else {
-            // New document - create auto-save path in app storage
             savePath = createAutoSavePath(doc);
             isNewDocument = true;
-            
+
             if (savePath.isEmpty()) {
-                qWarning() << "DocumentManager: Failed to create auto-save path for" << doc->name;
+                qWarning() << "DocumentManager: Failed to create auto-save path for"
+                           << doc->name;
                 continue;
             }
         }
-        
-        // Perform the save
+
         if (doc->saveBundle(savePath)) {
-            // Update document path if this was a new save location
             if (isNewDocument) {
                 m_documentPaths[doc] = savePath;
-                
-                // Clean up temp bundle if it existed (edgeless docs)
                 cleanupTempBundle(doc);
+
+                // New documents have no pre-save version, so create their first
+                // recovery point immediately after the first successful save.
+                if (!createRecoverySnapshot(doc, savePath)) {
+                    qWarning() << "DocumentManager: Could not create initial recovery snapshot for"
+                               << savePath;
+                }
             }
-            
-            // Clear modified flag
+
             clearModified(doc);
-            
-            // Add to NotebookLibrary so it appears in Launcher
+            addToRecent(savePath);
             NotebookLibrary::instance()->addToRecent(savePath);
-            
             savedCount++;
-            
+
 #ifdef SPEEDYNOTE_DEBUG
             qDebug() << "DocumentManager: Auto-saved" << doc->name << "to" << savePath;
 #endif
         } else {
-            qWarning() << "DocumentManager: Failed to auto-save" << doc->name << "to" << savePath;
+            qWarning() << "DocumentManager: Failed to auto-save"
+                       << doc->name << "to" << savePath;
         }
     }
-    
-    // Flush NotebookLibrary to disk immediately
-    // Critical: without this, the library changes won't persist if app is killed
-    // Always save, even if savedCount is 0, to flush any pending library changes
-    // (e.g., documents opened during the session)
+
+    // Flush the launcher library even if this pass had nothing to save.
     NotebookLibrary::instance()->save();
-    
+
+#ifdef SPEEDYNOTE_DEBUG
+    qDebug() << "DocumentManager: Auto-save pass completed; saved"
+             << savedCount << "document(s)";
+#endif
+
     return savedCount;
 }

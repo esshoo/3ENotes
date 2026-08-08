@@ -1523,7 +1523,18 @@ This helps prevent accidental palm touches while writing. Only affects Y-Axis On
             <source>Default Background</source>
             <translation>الخلفية الافتراضية</translation>
         </message>
-    </context>
+            <message><source>Storage &amp; Recovery</source><translation>التخزين والاسترجاع</translation></message>
+        <message><source>Auto Save</source><translation>الحفظ التلقائي</translation></message>
+        <message><source>Enable Auto Save</source><translation>تفعيل الحفظ التلقائي</translation></message>
+        <message><source>Auto-save interval:</source><translation>فاصل الحفظ التلقائي:</translation></message>
+        <message><source> seconds</source><translation> ثانية</translation></message>
+        <message><source>Only modified notebooks are written. Disabling Auto Save does not disable manual Save.</source><translation>يتم حفظ الدفاتر المعدلة فقط. تعطيل الحفظ التلقائي لا يعطّل الحفظ اليدوي.</translation></message>
+        <message><source>Recovery Backups</source><translation>نسخ الاسترجاع الاحتياطية</translation></message>
+        <message><source>Recovery backup interval:</source><translation>فاصل إنشاء نسخة الاسترجاع:</translation></message>
+        <message><source>Recovery copies to keep:</source><translation>عدد نسخ الاسترجاع المحفوظة:</translation></message>
+        <message><source>Open Recovery Center</source><translation>فتح مركز الاسترجاع</translation></message>
+        <message><source>Recovery copies are separate from your project. Before a previous version is restored, the current saved version is kept as a safety copy.</source><translation>نسخ الاسترجاع منفصلة عن مشروعك. قبل استعادة إصدار سابق، يتم الاحتفاظ بالإصدار المحفوظ الحالي كنسخة أمان.</translation></message>
+        <message><source>Storage</source><translation>التخزين</translation></message></context>
     <context>
         <name>CopyPagesToDocDialog</name>
         <message>
@@ -2876,6 +2887,38 @@ This action cannot be undone.</translation>
     </context>
     <context>
         <name>MainWindow</name>
+        <message>
+            <source>Saving...</source>
+            <translation>جارٍ الحفظ...</translation>
+        </message>
+        <message>
+            <source>Saved</source>
+            <translation>تم الحفظ</translation>
+        </message>
+        <message>
+            <source>Auto-save failed</source>
+            <translation>فشل الحفظ التلقائي</translation>
+        </message>
+        <message>
+            <source>Recovery Available</source>
+            <translation>توجد نسخة قابلة للاسترجاع</translation>
+        </message>
+        <message>
+            <source>3ENotes detected that the previous session did not close normally.</source>
+            <translation>اكتشف 3ENotes أن الجلسة السابقة لم تُغلق بشكل طبيعي.</translation>
+        </message>
+        <message>
+            <source>A recovery copy is available. Opening it will not overwrite your original project.</source>
+            <translation>توجد نسخة استرجاع متاحة. فتحها لن يستبدل مشروعك الأصلي.</translation>
+        </message>
+        <message>
+            <source>Open Latest Recovery</source>
+            <translation>فتح أحدث نسخة استرجاع</translation>
+        </message>
+        <message>
+            <source>Not Now</source>
+            <translation>ليس الآن</translation>
+        </message>
         <message>
             <location filename="../../source/MainWindow.cpp" line="1161" />
             <location filename="../../source/MainWindow.cpp" line="1169" />
@@ -5763,5 +5806,38 @@ and select "Star" to add it here.</translation>
             <source>Not a valid 3ENotes bundle</source>
             <translation>ليست حزمة 3ENotes صالحة</translation>
         </message>
+    </context>
+    <context>
+        <name>RecoveryCenterDialog</name>
+        <message>
+            <source>Restore</source>
+            <translation>استعادة</translation>
+        </message>        <message><source>Recovery Center</source><translation>مركز الاسترجاع</translation></message>
+        <message><source>Recovery copies are stored separately from your projects. You can open a copy for inspection or restore an older version safely.</source><translation>يتم حفظ نسخ الاسترجاع بشكل منفصل عن مشاريعك. يمكنك فتح نسخة لمراجعتها أو استعادة إصدار أقدم بأمان.</translation></message>
+        <message><source>No recovery copies are available.</source><translation>لا توجد نسخ استرجاع متاحة.</translation></message>
+        <message><source>Open Recovery Copy</source><translation>فتح نسخة الاسترجاع</translation></message>
+        <message><source>Restore Previous Version</source><translation>استعادة إصدار سابق</translation></message>
+        <message><source>Delete Copy</source><translation>حذف النسخة</translation></message>
+        <message><source>Clear All</source><translation>مسح الكل</translation></message>
+        <message><source>Close</source><translation>إغلاق</translation></message>
+        <message><source>This will replace the saved project at:
+%1
+
+The current saved version will be kept as a safety recovery copy.</source><translation>سيؤدي هذا إلى استبدال المشروع المحفوظ في:
+%1
+
+سيتم الاحتفاظ بالإصدار المحفوظ الحالي كنسخة استرجاع آمنة.</translation></message>
+        <message><source>Restore Failed</source><translation>فشل الاسترجاع</translation></message>
+        <message><source>The project could not be restored.</source><translation>تعذر استعادة المشروع.</translation></message>
+        <message><source>Restore Complete</source><translation>اكتمل الاسترجاع</translation></message>
+        <message><source>The previous version was restored successfully.</source><translation>تمت استعادة الإصدار السابق بنجاح.</translation></message>
+        <message><source>Delete Recovery Copy</source><translation>حذف نسخة الاسترجاع</translation></message>
+        <message><source>Delete the selected recovery copy permanently?</source><translation>هل تريد حذف نسخة الاسترجاع المحددة نهائيًا؟</translation></message>
+        <message><source>Delete Failed</source><translation>فشل الحذف</translation></message>
+        <message><source>The selected recovery copy could not be deleted.</source><translation>تعذر حذف نسخة الاسترجاع المحددة.</translation></message>
+        <message><source>Clear Recovery Copies</source><translation>مسح نسخ الاسترجاع</translation></message>
+        <message><source>Delete all recovery copies? This cannot be undone.</source><translation>هل تريد حذف جميع نسخ الاسترجاع؟ لا يمكن التراجع عن ذلك.</translation></message>
+        <message><source>Recovered Project</source><translation>مشروع مسترجع</translation></message>
+        <message><source>Original project path unavailable</source><translation>مسار المشروع الأصلي غير متاح</translation></message>
     </context>
 </TS>

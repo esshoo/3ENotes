@@ -241,6 +241,10 @@ public:
     void saveThemeSettings();
     void loadThemeSettings();
     void updateTheme(); // Apply current theme settings
+
+    // 3ENOTES_AUTOSAVE_SETTINGS_V2
+    void reloadAutoSaveSettings();
+    void showRecoveryCenter();
     // REMOVED: updateTabSizes removed - tab sizing functionality deleted
     
     // REMOVED MW7.6: migrateOldButtonMappings and migrateOldActionString removed - old mapping system deleted
@@ -622,6 +626,7 @@ private:
     // Phase C.1.5: New tab system (QTabBar + QStackedWidget via TabManager)
     SplitViewManager *m_splitViewManager = nullptr;  // Manages split-view panes, tab bars, and viewports
     DocumentManager *m_documentManager = nullptr;  // Manages Document lifecycle
+    QTimer *m_autoSaveTimer = nullptr;             // 3ENotes Auto Save timer
     
     // Toolbar extraction: NavigationBar (Phase A)
     NavigationBar *m_navigationBar = nullptr;

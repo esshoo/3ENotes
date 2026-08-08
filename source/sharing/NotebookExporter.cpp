@@ -11,6 +11,7 @@
 #include <QDebug>
 #include <QDateTime>
 #include <QCoreApplication>
+#include <QUuid>
 
 // miniz - cross-platform ZIP library (MIT license)
 #include "miniz.h"
@@ -58,41 +59,39 @@ NotebookExporter::ExportResult NotebookExporter::exportPackage(
              << "to" << options.destPath
              << "(includePdf:" << options.includePdf << ")";
     #endif
-    // Create parent directory for destination if needed
-    QFileInfo destInfo(options.destPath);
+    // 3ENOTES_SAFE_EXPORT_V1
+    // Build the new portable package beside the final file. The existing
+    // .3EN is not touched unless the new ZIP has finalized successfully.
+    const QString finalDestPath = options.destPath;
+    const QString exportToken =
+        QUuid::createUuid().toString(QUuid::WithoutBraces).left(8);
+    const QString tempDestPath =
+        finalDestPath + QStringLiteral(".tmp-") + exportToken;
+
+    QFileInfo destInfo(finalDestPath);
     QDir destDir = destInfo.absoluteDir();
     if (!destDir.exists() && !destDir.mkpath(".")) {
         result.errorMessage = QObject::tr("Failed to create destination directory: %1")
                                 .arg(destDir.absolutePath());
         return result;
     }
-    
-    // Remove existing file if present
-    if (QFile::exists(options.destPath)) {
-        if (!QFile::remove(options.destPath)) {
-            result.errorMessage = QObject::tr("Failed to remove existing file: %1")
-                                    .arg(options.destPath);
-            return result;
-        }
-    }
-    
-    // Initialize miniz ZIP writer
+
+    QFile::remove(tempDestPath);
+
     mz_zip_archive zipArchive;
     memset(&zipArchive, 0, sizeof(zipArchive));
-    
-    QByteArray destPathUtf8 = options.destPath.toUtf8();
+
+    QByteArray destPathUtf8 = tempDestPath.toUtf8();
     if (!mz_zip_writer_init_file(&zipArchive, destPathUtf8.constData(), 0)) {
         result.errorMessage = QObject::tr("Failed to create ZIP file: %1")
-                                .arg(options.destPath);
+                                .arg(finalDestPath);
         return result;
     }
-    
-    // Helper lambda to clean up on error
+
     auto cleanupOnError = [&]() {
         mz_zip_writer_end(&zipArchive);
-        QFile::remove(options.destPath);
+        QFile::remove(tempDestPath);
     };
-    
     // Portable 3ENotes container metadata. Legacy .snbx importers ignore this
     // unknown root entry, while newer clients can use it for format migration.
     {
@@ -236,19 +235,70 @@ NotebookExporter::ExportResult NotebookExporter::exportPackage(
     }
     
     mz_zip_writer_end(&zipArchive);
-    
-    // Verify the export
-    QFileInfo exportedFile(options.destPath);
-    if (!exportedFile.exists()) {
+
+    // Verify the temporary archive before replacing an older project.
+    QFileInfo tempExportedFile(tempDestPath);
+    if (!tempExportedFile.exists() || tempExportedFile.size() <= 0) {
+        QFile::remove(tempDestPath);
         result.errorMessage = QObject::tr("Export failed - file was not created");
         return result;
     }
-    
-    // Success!
+
+    // Confirm miniz can reopen the finalized archive.
+    {
+        mz_zip_archive verifyArchive;
+        memset(&verifyArchive, 0, sizeof(verifyArchive));
+        const QByteArray verifyPathUtf8 = tempDestPath.toUtf8();
+        if (!mz_zip_reader_init_file(
+                &verifyArchive, verifyPathUtf8.constData(), 0)) {
+            QFile::remove(tempDestPath);
+            result.errorMessage =
+                QObject::tr("Export failed - generated package is invalid");
+            return result;
+        }
+        mz_zip_reader_end(&verifyArchive);
+    }
+
+    QString previousBackupPath;
+    if (QFile::exists(finalDestPath)) {
+        previousBackupPath =
+            finalDestPath + QStringLiteral(".previous-") + exportToken;
+        QFile::remove(previousBackupPath);
+
+        if (!QFile::rename(finalDestPath, previousBackupPath)) {
+            QFile::remove(tempDestPath);
+            result.errorMessage =
+                QObject::tr("Failed to preserve the existing project before replacement: %1")
+                    .arg(finalDestPath);
+            return result;
+        }
+    }
+
+    if (!QFile::rename(tempDestPath, finalDestPath)) {
+        if (!previousBackupPath.isEmpty()
+            && QFile::exists(previousBackupPath)) {
+            QFile::rename(previousBackupPath, finalDestPath);
+        }
+        QFile::remove(tempDestPath);
+        result.errorMessage =
+            QObject::tr("Failed to activate the newly exported project: %1")
+                .arg(finalDestPath);
+        return result;
+    }
+
+    if (!previousBackupPath.isEmpty()) {
+        QFile::remove(previousBackupPath);
+    }
+
+    QFileInfo exportedFile(finalDestPath);
+    if (!exportedFile.exists() || exportedFile.size() <= 0) {
+        result.errorMessage = QObject::tr("Export failed - file was not created");
+        return result;
+    }
+
     result.success = true;
-    result.exportedPath = options.destPath;
+    result.exportedPath = finalDestPath;
     result.fileSize = exportedFile.size();
-    
     #ifdef SPEEDYNOTE_DEBUG
     qDebug() << "NotebookExporter: Export successful!" 
              << "Size:" << result.fileSize << "bytes"

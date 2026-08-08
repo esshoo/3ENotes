@@ -23,6 +23,9 @@
 #include <QScreen>
 #include <QGuiApplication>
 #include <QLocale>
+#include <QFileSystemWatcher>
+#include <QTimer>
+#include <QSet>
 
 namespace {
 
@@ -62,6 +65,27 @@ QStringList findProjectFiles(const QString& folder)
     return files;
 }
 
+// Auto-discovery deliberately scans only the direct contents of the standard
+// drop folders. Recursively polling Documents/3ENotes would also walk every
+// extracted .snb notebook and becomes expensive as the library grows.
+QStringList findProjectFilesTopLevel(const QString& folder)
+{
+    QStringList files;
+    QDir dir(folder);
+    if (!dir.exists()) return files;
+
+    const QFileInfoList entries = dir.entryInfoList(
+        QDir::Files | QDir::NoDotAndDotDot,
+        QDir::Name | QDir::IgnoreCase);
+
+    for (const QFileInfo& info : entries) {
+        const QString path = info.absoluteFilePath();
+        if (isSupportedProjectFile(path)) files.append(path);
+    }
+
+    return files;
+}
+
 bool samePath(const QString& left, const QString& right)
 {
     const QString a = QDir::cleanPath(QFileInfo(left).absoluteFilePath());
@@ -71,6 +95,27 @@ bool samePath(const QString& left, const QString& right)
 #else
     return a == b;
 #endif
+}
+
+bool isInsideOrSameDirectory(const QString& filePath, const QString& directoryPath)
+{
+    if (filePath.isEmpty() || directoryPath.isEmpty()) return false;
+
+    QString file = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
+    QString dir = QDir::cleanPath(QFileInfo(directoryPath).absoluteFilePath());
+
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+
+    if (file.compare(dir, cs) == 0) return true;
+
+    if (!dir.endsWith(QDir::separator())) {
+        dir += QDir::separator();
+    }
+    return file.startsWith(dir, cs);
 }
 
 } // namespace
@@ -118,6 +163,36 @@ BatchImportDialog::BatchImportDialog(QWidget* parent)
     // automatically so the user does not have to select the same folder again.
     addFiles(findProjectFiles(libraryDir));
     updateImportButton();
+
+    // 3ENOTES_LIBRARY_WATCH_V1
+    // Keep the import dialog live while it is open. QFileSystemWatcher avoids
+    // continuously walking the full notebook library; a short debounce also
+    // prevents reacting to every chunk written during a large file copy.
+    m_watchedLibraryDir = libraryDir;
+    m_watchedImportsDir = importsDir;
+
+    m_libraryWatcher = new QFileSystemWatcher(this);
+    m_libraryRefreshTimer = new QTimer(this);
+    m_libraryRefreshTimer->setSingleShot(true);
+    m_libraryRefreshTimer->setInterval(900);
+
+    auto ensureWatchPath = [this](const QString& path) {
+        if (!path.isEmpty()
+            && QDir(path).exists()
+            && !m_libraryWatcher->directories().contains(path)) {
+            m_libraryWatcher->addPath(path);
+        }
+    };
+
+    ensureWatchPath(m_watchedLibraryDir);
+    ensureWatchPath(m_watchedImportsDir);
+
+    connect(m_libraryWatcher, &QFileSystemWatcher::directoryChanged,
+            this, [this](const QString&) {
+                m_libraryRefreshTimer->start();
+            });
+    connect(m_libraryRefreshTimer, &QTimer::timeout,
+            this, &BatchImportDialog::refreshWatchedLibrary);
 
     setMinimumSize(DIALOG_MIN_WIDTH, DIALOG_MIN_HEIGHT);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -385,6 +460,108 @@ void BatchImportDialog::onImportClicked()
     accept();
 }
 
+// ============================================================================
+// Live library auto-discovery
+// ============================================================================
+
+void BatchImportDialog::refreshWatchedLibrary()
+{
+    if (!m_libraryWatcher || !m_libraryRefreshTimer) {
+        return;
+    }
+
+    // QFileSystemWatcher stops watching a directory if it is removed.
+    // Re-add the standard paths when they exist again.
+    for (const QString& path : {m_watchedLibraryDir, m_watchedImportsDir}) {
+        if (!path.isEmpty()
+            && QDir(path).exists()
+            && !m_libraryWatcher->directories().contains(path)) {
+            m_libraryWatcher->addPath(path);
+        }
+    }
+
+    QStringList foundFiles = findProjectFilesTopLevel(m_watchedLibraryDir);
+    const QStringList importFiles = findProjectFilesTopLevel(m_watchedImportsDir);
+    for (const QString& file : importFiles) {
+        if (!foundFiles.contains(file)) {
+            foundFiles.append(file);
+        }
+    }
+
+    QSet<QString> foundAbsolutePaths;
+    QStringList stableNewFiles;
+    bool needsStabilityRecheck = false;
+
+    for (const QString& file : foundFiles) {
+        const QFileInfo info(file);
+        const QString absolutePath =
+            QDir::cleanPath(info.absoluteFilePath());
+        foundAbsolutePaths.insert(absolutePath);
+
+        if (isDuplicate(absolutePath)) {
+            // Already visible in the dialog; no need to keep size history.
+            m_observedProjectSizes.remove(absolutePath);
+            continue;
+        }
+
+        const qint64 currentSize = info.size();
+        const qint64 previousSize =
+            m_observedProjectSizes.value(absolutePath, -1);
+        m_observedProjectSizes.insert(absolutePath, currentSize);
+
+        // Require the same non-zero size on two scans. This avoids presenting
+        // a .3EN file while Windows/macOS/Linux is still copying it.
+        if (currentSize > 0 && previousSize == currentSize) {
+            stableNewFiles.append(absolutePath);
+            m_observedProjectSizes.remove(absolutePath);
+        } else {
+            needsStabilityRecheck = true;
+        }
+    }
+
+    // If a watched project file was removed/moved while this dialog was open,
+    // remove the stale entry automatically. Manually-selected external files
+    // are left untouched.
+    for (int i = m_selectedFiles.size() - 1; i >= 0; --i) {
+        const QString selectedPath = m_selectedFiles.at(i);
+        const bool watched =
+            isInsideOrSameDirectory(selectedPath, m_watchedLibraryDir)
+            || isInsideOrSameDirectory(selectedPath, m_watchedImportsDir);
+
+        if (!watched || QFileInfo::exists(selectedPath)) {
+            continue;
+        }
+
+        for (int row = m_fileList->count() - 1; row >= 0; --row) {
+            QListWidgetItem* item = m_fileList->item(row);
+            if (item && samePath(item->data(Qt::UserRole).toString(), selectedPath)) {
+                delete m_fileList->takeItem(row);
+            }
+        }
+        m_selectedFiles.removeAt(i);
+    }
+
+    // Forget size observations for files that disappeared.
+    const QList<QString> observedPaths = m_observedProjectSizes.keys();
+    for (const QString& observed : observedPaths) {
+        if (!foundAbsolutePaths.contains(observed)) {
+            m_observedProjectSizes.remove(observed);
+        }
+    }
+
+    if (!stableNewFiles.isEmpty()) {
+        // Only genuinely new files are passed to addFiles(), so its duplicate
+        // warning is never triggered by the automatic refresh.
+        addFiles(stableNewFiles);
+    } else {
+        updateFileCount();
+        updateImportButton();
+    }
+
+    if (needsStabilityRecheck) {
+        m_libraryRefreshTimer->start(1000);
+    }
+}
 void BatchImportDialog::updateImportButton()
 {
     bool canImport = !m_selectedFiles.isEmpty() && !destinationDirectory().isEmpty();

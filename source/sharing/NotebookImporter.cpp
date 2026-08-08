@@ -11,6 +11,52 @@
 // miniz - cross-platform ZIP library (MIT license)
 #include "miniz.h"
 
+// 3ENOTES_IMPORT_INTEGRITY_V1
+namespace {
+
+bool isSafeArchivePath(const QString& archivePath)
+{
+    if (archivePath.isEmpty()) return false;
+
+    QString normalized = archivePath;
+    normalized.replace('\\', '/');
+
+    if (normalized.startsWith('/')
+        || normalized.startsWith("//")
+        || (normalized.size() >= 2 && normalized.at(1) == ':')) {
+        return false;
+    }
+
+    const QStringList parts =
+        normalized.split('/', Qt::SkipEmptyParts);
+    for (const QString& part : parts) {
+        if (part == QStringLiteral("..")) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool pathStaysInside(const QString& candidatePath, const QString& rootPath)
+{
+    const QString candidate =
+        QDir::cleanPath(QFileInfo(candidatePath).absoluteFilePath());
+    QString root =
+        QDir::cleanPath(QFileInfo(rootPath).absoluteFilePath());
+
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+
+    if (!root.endsWith(QDir::separator())) {
+        root += QDir::separator();
+    }
+    return candidate.startsWith(root, cs);
+}
+
+} // namespace
 // ============================================================================
 // NotebookImporter Implementation
 // ============================================================================
@@ -63,27 +109,78 @@ NotebookImporter::ImportResult NotebookImporter::importPackage(
         mz_zip_reader_end(&zipArchive);
     };
     
-    // Find the .snb folder name inside the ZIP
-    // Expected structure: NotebookName.snb/document.json, NotebookName.snb/pages/, etc.
+    // Find the .snb folder name inside the ZIP.
     QString snbFolderName;
     int numFiles = static_cast<int>(mz_zip_reader_get_num_files(&zipArchive));
-    
+
+    // New .3EN packages contain metadata. Legacy .snbx packages are accepted
+    // without it for backwards compatibility.
+    int packageMetaIndex =
+        mz_zip_reader_locate_file(
+            &zipArchive, "3enotes-package.json", nullptr, 0);
+    if (packageMetaIndex >= 0) {
+        size_t metaSize = 0;
+        void* metaData =
+            mz_zip_reader_extract_to_heap(
+                &zipArchive, packageMetaIndex, &metaSize, 0);
+        if (!metaData) {
+            result.errorMessage = QObject::tr("Invalid package metadata");
+            cleanup();
+            return result;
+        }
+
+        QJsonParseError metaError;
+        const QByteArray metaBytes(
+            static_cast<const char*>(metaData),
+            static_cast<int>(metaSize));
+        const QJsonDocument metaJson =
+            QJsonDocument::fromJson(metaBytes, &metaError);
+        free(metaData);
+
+        if (metaError.error != QJsonParseError::NoError
+            || !metaJson.isObject()) {
+            result.errorMessage = QObject::tr("Invalid package metadata");
+            cleanup();
+            return result;
+        }
+
+        const QJsonObject meta = metaJson.object();
+        const QString format =
+            meta.value(QStringLiteral("format")).toString();
+        const int formatVersion =
+            meta.value(QStringLiteral("format_version")).toInt(-1);
+
+        if (format != QStringLiteral("3ENotes")
+            || formatVersion != 1) {
+            result.errorMessage =
+                QObject::tr("Unsupported or invalid 3ENotes package format");
+            cleanup();
+            return result;
+        }
+    }
+
     for (int i = 0; i < numFiles; i++) {
         mz_zip_archive_file_stat fileStat;
         if (!mz_zip_reader_file_stat(&zipArchive, i, &fileStat)) {
             continue;
         }
-        
-        QString entryName = QString::fromUtf8(fileStat.m_filename);
-        
-        // Look for a .snb folder (ends with .snb/)
+
+        const QString entryName =
+            QString::fromUtf8(fileStat.m_filename);
+
+        if (!isSafeArchivePath(entryName)) {
+            result.errorMessage =
+                QObject::tr("Invalid package: unsafe archive path detected");
+            cleanup();
+            return result;
+        }
+
         if (entryName.contains(".snb/")) {
             qsizetype snbIndex = entryName.indexOf(".snb/");
-            snbFolderName = entryName.left(snbIndex + 4);  // Include ".snb"
+            snbFolderName = entryName.left(snbIndex + 4);
             break;
         }
     }
-    
     if (snbFolderName.isEmpty()) {
         result.errorMessage = QObject::tr("Invalid package: no .snb folder found");
         cleanup();
@@ -129,6 +226,14 @@ NotebookImporter::ImportResult NotebookImporter::importPackage(
         }
         
         QString entryName = QString::fromUtf8(fileStat.m_filename);
+
+        if (!isSafeArchivePath(entryName)) {
+            result.errorMessage =
+                QObject::tr("Invalid package: unsafe archive path detected");
+            cleanup();
+            QDir(extractedSnbPath).removeRecursively();
+            return result;
+        }
         
         // Skip directory entries
         if (fileStat.m_is_directory) {
@@ -177,6 +282,13 @@ NotebookImporter::ImportResult NotebookImporter::importPackage(
             continue;
         }
         
+        if (!pathStaysInside(extractPath, destDir)) {
+            result.errorMessage =
+                QObject::tr("Invalid package: extraction path escapes the destination");
+            cleanup();
+            QDir(extractedSnbPath).removeRecursively();
+            return result;
+        }
         // Create parent directory for the file
         QFileInfo extractInfo(extractPath);
         QDir extractDir = extractInfo.absoluteDir();
@@ -243,6 +355,31 @@ NotebookImporter::ImportResult NotebookImporter::importPackage(
         return result;
     }
     
+    // document.json must exist and parse successfully before this package is
+    // considered a valid notebook.
+    {
+        QFile manifestFile(manifestPath);
+        if (!manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QDir(extractedSnbPath).removeRecursively();
+            result.errorMessage =
+                QObject::tr("Invalid package: document.json could not be read");
+            return result;
+        }
+
+        QJsonParseError manifestError;
+        const QJsonDocument manifestJson =
+            QJsonDocument::fromJson(
+                manifestFile.readAll(), &manifestError);
+        manifestFile.close();
+
+        if (manifestError.error != QJsonParseError::NoError
+            || !manifestJson.isObject()) {
+            QDir(extractedSnbPath).removeRecursively();
+            result.errorMessage =
+                QObject::tr("Invalid package: document.json is not valid JSON");
+            return result;
+        }
+    }
     // If we extracted an embedded PDF, update document.json to point to the renamed file
     // The exporter writes pdf_relative_path = "../embedded/filename.pdf" but we renamed
     // the file to "NotebookName_filename.pdf" to avoid collisions

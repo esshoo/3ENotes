@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16)
 cmake_policy(SET CMP0074 NEW)
 
 project(SpeedyNote VERSION 1.5.1 LANGUAGES C CXX)
@@ -887,6 +887,8 @@ set(UI_SOURCES
     source/ui/actionbars/TextSelectionActionBar.cpp
     source/ui/actionbars/ClipboardActionBar.cpp
     source/ui/actionbars/PagePanelActionBar.cpp
+    # Dialogs
+    source/ui/dialogs/RecoveryCenterDialog.cpp
     # Banners
     source/ui/banners/MissingPdfBanner.cpp
     # Launcher

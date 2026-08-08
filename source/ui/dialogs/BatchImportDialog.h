@@ -24,11 +24,14 @@
 
 #include <QDialog>
 #include <QStringList>
+#include <QHash>
 
 class QLabel;
 class QListWidget;
 class QLineEdit;
 class QPushButton;
+class QFileSystemWatcher;
+class QTimer;
 
 /**
  * @brief Dialog for selecting and importing multiple portable 3ENotes project files.
@@ -96,6 +99,7 @@ private slots:
     void onBrowseDestClicked();
     void onImportClicked();
     void updateImportButton();
+    void refreshWatchedLibrary();
 
 private:
     void setupUi();
@@ -107,6 +111,16 @@ private:
     // Data
     QStringList m_selectedFiles;
     bool m_darkMode = false;
+
+    // 3ENOTES_LIBRARY_WATCH_V1
+    // Watch the two normal drop locations without polling the full notebook
+    // library recursively. Candidate files must have a stable size across two
+    // refreshes before they are offered for import.
+    QFileSystemWatcher* m_libraryWatcher = nullptr;
+    QTimer* m_libraryRefreshTimer = nullptr;
+    QString m_watchedLibraryDir;
+    QString m_watchedImportsDir;
+    QHash<QString, qint64> m_observedProjectSizes;
     
     // UI elements
     QLabel* m_titleLabel = nullptr;
