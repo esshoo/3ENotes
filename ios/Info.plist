@@ -29,9 +29,10 @@
     <!-- ================================================================ -->
     <!-- Device and OS Requirements                                       -->
     <!-- ================================================================ -->
-    <!-- iPad only (2 = iPad). No iPhone support. -->
+    <!-- Universal iOS build: 1 = iPhone, 2 = iPad. -->
     <key>UIDeviceFamily</key>
     <array>
+        <integer>1</integer>
         <integer>2</integer>
     </array>
     <key>MinimumOSVersion</key>
@@ -45,6 +46,13 @@
     <!-- Orientation Support                                              -->
     <!-- ================================================================ -->
     <!-- Support all orientations — note-taking works in any rotation -->
+    <!-- iPhone orientations -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
     <key>UISupportedInterfaceOrientations~ipad</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>

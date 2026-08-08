@@ -2,7 +2,7 @@
 # ============================================================================
 # SpeedyNote iOS Device Build Script
 # ============================================================================
-# Configures and builds SpeedyNote for a real iPad using Qt 6.9.3.
+# Configures and builds 3ENotes for a real iPhone or iPad using Qt 6.9.3.
 # Supports two modes:
 #
 #   1. Provisioned (non-jailbroken device):
@@ -228,7 +228,7 @@ echo "App bundle: ${APP_PATH}"
 echo ""
 
 if [ -n "${TEAM_ID}" ]; then
-    echo "To install on a connected iPad:"
+    echo "To install on a connected iPhone or iPad:"
     echo "  ./ios/run-device.sh"
     echo ""
     echo "Or open the Xcode project to deploy directly:"

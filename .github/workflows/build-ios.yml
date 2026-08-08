@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build-ios-ipa:
-    name: Build iPadOS IPA (TrollStore)
+    name: Build iOS + iPadOS IPA (TrollStore)
     runs-on: macos-15-intel
     timeout-minutes: 180
 
@@ -154,7 +154,7 @@ jobs:
           echo "ML Kit xcframework count: ${FRAMEWORK_COUNT}"
           test "${FRAMEWORK_COUNT}" -gt 0
 
-      - name: Build 3ENotes for a real iPad
+      - name: Build 3ENotes for a real iPhone/iPad
         shell: bash
         run: |
           set -euo pipefail

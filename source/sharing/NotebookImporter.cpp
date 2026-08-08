@@ -39,10 +39,12 @@ bool isSafeArchivePath(const QString& archivePath)
 
 bool pathStaysInside(const QString& candidatePath, const QString& rootPath)
 {
-    const QString candidate =
-        QDir::cleanPath(QFileInfo(candidatePath).absoluteFilePath());
-    QString root =
-        QDir::cleanPath(QFileInfo(rootPath).absoluteFilePath());
+    // 3ENOTES_WINDOWS_PATH_CONTAINMENT_FIX_V1
+    // Normalize all Qt paths to forward slashes before containment checks.
+    const QString candidate = QDir::fromNativeSeparators(
+        QDir::cleanPath(QFileInfo(candidatePath).absoluteFilePath()));
+    QString root = QDir::fromNativeSeparators(
+        QDir::cleanPath(QFileInfo(rootPath).absoluteFilePath()));
 
 #ifdef Q_OS_WIN
     const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
@@ -50,9 +52,14 @@ bool pathStaysInside(const QString& candidatePath, const QString& rootPath)
     const Qt::CaseSensitivity cs = Qt::CaseSensitive;
 #endif
 
-    if (!root.endsWith(QDir::separator())) {
-        root += QDir::separator();
+    if (candidate.compare(root, cs) == 0) {
+        return true;
     }
+
+    if (!root.endsWith('/')) {
+        root += '/';
+    }
+
     return candidate.startsWith(root, cs);
 }
 
