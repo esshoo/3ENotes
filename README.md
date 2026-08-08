@@ -154,8 +154,11 @@ Download the latest release from **[GitHub Releases](https://github.com/esshoo/3
 git clone https://github.com/esshoo/3ENotes.git
 cd 3ENotes
 
-# Windows (MSYS2 clang64 shell)
+# Windows clean build (packaging-ready)
 ./compile.ps1
+
+# Windows incremental development build
+./compile.ps1 -dirty
 
 # macOS
 ./compile-mac.sh
