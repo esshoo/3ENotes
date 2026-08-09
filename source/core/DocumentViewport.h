@@ -3869,6 +3869,14 @@ private:
     void drawTileBoundaries(QPainter& painter, QRectF viewRect);
     
     /**
+     * @brief Return the minimum zoom allowed for the active document.
+     *
+     * Paged/PDF documents stop at Fit Current Page. Edgeless documents retain
+     * their existing tile-aware minimum.
+     */
+    qreal minimumZoomForCurrentDocument() const;
+
+    /**
      * @brief Calculate minimum zoom for edgeless mode.
      * @return Min zoom to ensure at most ~9 tiles (3x3 worst case) are visible.
      */

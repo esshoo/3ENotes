@@ -1226,10 +1226,55 @@ void DocumentViewport::setEraserMode(EraserMode mode)
 
 // ===== View State Setters =====
 
+qreal DocumentViewport::minimumZoomForCurrentDocument() const
+{
+    // 3ENOTES_PAGED_FIT_MIN_ZOOM_V1
+    //
+    // Product rule:
+    // - Edgeless / New Note keeps its existing infinite-canvas zoom policy.
+    // - Paged documents (PDF + New Page Document) may zoom in freely, but the
+    //   furthest zoom-out is Fit Current Page. The page must never collapse
+    //   into a tiny sheet floating inside a large viewport.
+    if (!m_document) {
+        return MIN_ZOOM;
+    }
+
+    if (m_document->isEdgeless()) {
+        return minZoomForEdgeless();
+    }
+
+    const int pageCount = m_document->pageCount();
+    if (pageCount <= 0 || width() <= 0 || height() <= 0) {
+        return MIN_ZOOM;
+    }
+
+    const int pageIndex = qBound(0, m_currentPageIndex, pageCount - 1);
+    const QSizeF pageSize = m_document->pageSizeAt(pageIndex);
+    if (pageSize.width() <= 0.0 || pageSize.height() <= 0.0) {
+        return MIN_ZOOM;
+    }
+
+    // Keep this identical to zoomToFit(): 5% breathing room on each side.
+    constexpr qreal marginFraction = 0.05;
+    const qreal availableWidth =
+        width() * (1.0 - 2.0 * marginFraction);
+    const qreal availableHeight =
+        height() * (1.0 - 2.0 * marginFraction);
+
+    if (availableWidth <= 0.0 || availableHeight <= 0.0) {
+        return MIN_ZOOM;
+    }
+
+    const qreal fitWidth = availableWidth / pageSize.width();
+    const qreal fitHeight = availableHeight / pageSize.height();
+    const qreal fitPageZoom = qMin(fitWidth, fitHeight);
+
+    return qBound(MIN_ZOOM, fitPageZoom, MAX_ZOOM);
+}
+
 void DocumentViewport::setZoomLevel(qreal zoom)
 {
-    qreal minZ = (m_document && m_document->isEdgeless())
-                 ? minZoomForEdgeless() : MIN_ZOOM;
+    const qreal minZ = minimumZoomForCurrentDocument();
     zoom = qBound(minZ, zoom, MAX_ZOOM);
 
     if (qFuzzyCompare(m_zoomLevel, zoom))
@@ -3350,6 +3395,16 @@ void DocumentViewport::resizeEvent(QResizeEvent* event)
             }
         }
         
+        // 3ENOTES_PAGED_FIT_RESIZE_V4
+        // First usable viewport dimensions: a paged/PDF document must already
+        // obey the Fit Current Page floor. New Note / Edgeless is untouched.
+        if (m_document && !m_document->isEdgeless()) {
+            const qreal resizedMinZoom = minimumZoomForCurrentDocument();
+            if (m_zoomLevel < resizedMinZoom &&
+                !qFuzzyCompare(m_zoomLevel, resizedMinZoom)) {
+                setZoomLevel(resizedMinZoom);
+            }
+        }
         clampPanOffset();
         update();
         emitScrollFractions();
@@ -3359,6 +3414,15 @@ void DocumentViewport::resizeEvent(QResizeEvent* event)
     // Calculate the document point that was at the center of the OLD viewport
     QPointF oldCenter(event->oldSize().width() / 2.0, event->oldSize().height() / 2.0);
     QPointF docPointAtOldCenter = oldCenter / m_zoomLevel + m_panOffset;
+    // A larger viewport (window maximize, rotation, sidebar close, etc.) can
+    // increase the Fit Current Page floor. Raise only paged/PDF documents.
+    if (!m_document->isEdgeless()) {
+        const qreal resizedMinZoom = minimumZoomForCurrentDocument();
+        if (m_zoomLevel < resizedMinZoom &&
+            !qFuzzyCompare(m_zoomLevel, resizedMinZoom)) {
+            setZoomLevel(resizedMinZoom);
+        }
+    }
     
     // Calculate where the NEW center is in viewport coordinates
     QPointF newCenter(width() / 2.0, height() / 2.0);
@@ -4060,9 +4124,9 @@ void DocumentViewport::zoomAtPoint(qreal newZoom, QPointF viewportPt)
     // Convert viewport point to document coordinates at current zoom
     QPointF docPt = viewportPt / m_zoomLevel + m_panOffset;
     
-    // Set new zoom
+    // Set new zoom using the same document-aware floor as every other route.
     qreal oldZoom = m_zoomLevel;
-    m_zoomLevel = qBound(MIN_ZOOM, newZoom, MAX_ZOOM);
+    m_zoomLevel = qBound(minimumZoomForCurrentDocument(), newZoom, MAX_ZOOM);
     
     // Calculate new pan offset to keep docPt at the same viewport position
     // viewportPt = (docPt - m_panOffset) * m_zoomLevel
@@ -4123,8 +4187,7 @@ void DocumentViewport::updateZoomGesture(qreal scaleFactor, QPointF centerPoint)
     if (m_gesture.activeType != ViewportGestureState::Zoom || m_gesture.startZoom <= 0.0)
         return;
 
-    const qreal minZ = (m_document && m_document->isEdgeless())
-                       ? minZoomForEdgeless() : MIN_ZOOM;
+    const qreal minZ = minimumZoomForCurrentDocument();
 
     m_gesture.targetZoom =
         qBound(minZ, m_gesture.targetZoom * scaleFactor, MAX_ZOOM);
