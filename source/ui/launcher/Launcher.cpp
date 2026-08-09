@@ -20,6 +20,7 @@
 #include "../../MainWindow.h"
 #include "../../core/NotebookLibrary.h"
 #include "../../core/Document.h"
+#include "../../core/ShortcutManager.h"  // 3ENOTES_LAUNCHER_NEW_COMMANDS_V1
 #include "../../batch/ExportQueueManager.h"
 #include "../../android/AndroidShareHelper.h"
 #include "../../platform/SystemNotification.h"
@@ -925,8 +926,60 @@ void Launcher::onTimelineItemClicked(const QModelIndex& index)
     }
 }
 
+static bool launcherMatchesManagedShortcut(const QKeyEvent* event, const QString& actionId)
+{
+    if (!event) {
+        return false;
+    }
+
+    const QKeySequence target =
+        ShortcutManager::instance()->keySequenceForAction(actionId);
+    if (target.isEmpty()) {
+        return false;
+    }
+
+    // Launcher creation shortcuts are single-chord commands. Use the effective
+    // ShortcutManager binding so user remaps continue to work.
+    const int chord = event->key() | static_cast<int>(event->modifiers());
+    const QKeySequence pressed(chord);
+    return target.matches(pressed) == QKeySequence::ExactMatch;
+}
+
+bool Launcher::event(QEvent* event)
+{
+    // 3ENOTES_LAUNCHER_NEW_COMMANDS_V1
+    //
+    // The Launcher is a separate top-level window and does not host the
+    // MainWindow QAction registry. Claim New Note / New Page Document here
+    // during ShortcutOverride so they cannot disappear just because there is
+    // no active MainWindow.
+    if (event && event->type() == QEvent::ShortcutOverride) {
+        auto* keyEvent = static_cast<QKeyEvent*>(event);
+        if (launcherMatchesManagedShortcut(keyEvent, QStringLiteral("file.new_edgeless")) ||
+            launcherMatchesManagedShortcut(keyEvent, QStringLiteral("file.new_paged"))) {
+            event->accept();
+            return true;
+        }
+    }
+
+    return QMainWindow::event(event);
+}
+
 void Launcher::keyPressEvent(QKeyEvent* event)
 {
+    // Managed creation commands must work while Launcher is the active window.
+    if (launcherMatchesManagedShortcut(event, QStringLiteral("file.new_edgeless"))) {
+        event->accept();
+        emit createNewEdgeless();
+        return;
+    }
+
+    if (launcherMatchesManagedShortcut(event, QStringLiteral("file.new_paged"))) {
+        event->accept();
+        emit createNewPaged();
+        return;
+    }
+
     // Escape key: first exit select mode if active, then return to MainWindow
     if (event->key() == Qt::Key_Escape) {
         // Check if any view is in batch select mode and exit it first
@@ -938,31 +991,26 @@ void Launcher::keyPressEvent(QKeyEvent* event)
             m_starredView->exitSelectMode();
             return;
         }
-        
+
         // No select mode active - request return to MainWindow
-        // MainWindow will check if there are open tabs before toggling
         emit returnToMainWindowRequested();
         return;
     }
-    
+
     // Ctrl+L also toggles (launcher shortcut)
     if (event->key() == Qt::Key_L && event->modifiers() == Qt::ControlModifier) {
         emit returnToMainWindowRequested();
         return;
     }
-    
+
     // Ctrl+F switches to search view
     if (event->key() == Qt::Key_F && event->modifiers() == Qt::ControlModifier) {
         switchToView(View::Search);
         return;
     }
-    
+
     QMainWindow::keyPressEvent(event);
 }
-
-// ============================================================================
-// Context Menus (Phase P.3.8)
-// ============================================================================
 
 void Launcher::showNotebookContextMenu(const QString& bundlePath, const QPoint& globalPos)
 {

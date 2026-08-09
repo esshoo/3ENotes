@@ -104,6 +104,7 @@ signals:
 protected:
     void closeEvent(QCloseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
+    bool event(QEvent* event) override;  // Managed Launcher shortcut routing
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
