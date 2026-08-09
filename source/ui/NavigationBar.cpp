@@ -40,7 +40,7 @@ void NavigationBar::setupUi()
     
     m_addButton = new ActionButton(this);
     m_addButton->setThemedIcon("addtab");
-    m_addButton->setToolTip(tr("New Document"));
+    m_addButton->setToolTip(tr("New Note"));
     mainLayout->addWidget(m_addButton);
     
     // === Center - Filename (with stretch on both sides) ===

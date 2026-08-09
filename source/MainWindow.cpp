@@ -1212,8 +1212,10 @@ void MainWindow::setupUi() {
     });
     connect(m_navigationBar, &NavigationBar::saveClicked, this, &MainWindow::saveDocument);
     connect(m_navigationBar, &NavigationBar::addClicked, this, [this]() {
-        // Phase P.4.3: Show dropdown menu for new document options
-        showAddMenu();
+        // 3ENOTES_NEW_NOTE_INFINITE_V1
+        // The primary creation action is a free-form note, not a sheet of paper.
+        // Fixed-page documents stay available through the explicit paged workflow.
+        addNewEdgelessTab();
     });
     connect(m_navigationBar, &NavigationBar::filenameClicked, this, [this]() {
         // Toggle tab bar visibility

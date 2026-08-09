@@ -598,37 +598,83 @@ void Page::renderBackgroundPattern(
 {
     // Fill background color
     painter.fillRect(rect, bgColor);
-    
+
+    // 3ENOTES_ADAPTIVE_GRID_LOD_V1
+    //
+    // At extreme zoom-out the normal 32-unit grid can become less than a pixel
+    // apart. Rendering every line then aliases into a flat tone or disappears.
+    // Keep the underlying logical grid unchanged, but display progressively
+    // coarser MAJOR lines (2x / 4x / 8x...) until they remain visibly spaced.
+    //
+    // Some callers pass already-zoomed spacing with an identity painter;
+    // edgeless/tile callers may use a scaled painter. Account for both.
+    const QTransform transform = painter.transform();
+    const qreal painterScale = qMax<qreal>(
+        0.0001,
+        qMax(qAbs(transform.m11()), qAbs(transform.m22()))
+    );
+
+    constexpr qreal MIN_VISIBLE_PATTERN_SPACING_PX = 10.0;
+
+    auto adaptiveSpacing = [painterScale](qreal spacing) -> qreal {
+        if (spacing <= 0.0) {
+            return spacing;
+        }
+
+        qreal displayed = spacing;
+        while (displayed * painterScale < MIN_VISIBLE_PATTERN_SPACING_PX) {
+            displayed *= 2.0;
+        }
+        return displayed;
+    };
+
+    const qreal displayedGridSpacing = adaptiveSpacing(gridSpacing);
+    const qreal displayedLineSpacing = adaptiveSpacing(lineSpacing);
+
     // Draw pattern based on type
     switch (bgType) {
         case BackgroundType::None:
         case BackgroundType::PDF:
         case BackgroundType::Custom:
-            // These are handled elsewhere (PDF/Custom need pixmaps)
             break;
-            
+
         case BackgroundType::Grid:
             {
                 painter.setPen(QPen(gridColor, penWidth));
-                
-                // Vertical lines
-                for (qreal x = rect.left() + gridSpacing; x < rect.right(); x += gridSpacing) {
+
+                if (displayedGridSpacing <= 0.0) {
+                    break;
+                }
+
+                // Align to the global spacing lattice rather than rect.left/top.
+                // This keeps adjacent edgeless tiles visually continuous.
+                const qreal firstX =
+                    qCeil(rect.left() / displayedGridSpacing) * displayedGridSpacing;
+                const qreal firstY =
+                    qCeil(rect.top() / displayedGridSpacing) * displayedGridSpacing;
+
+                for (qreal x = firstX; x <= rect.right(); x += displayedGridSpacing) {
                     painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()));
                 }
-                
-                // Horizontal lines
-                for (qreal y = rect.top() + gridSpacing; y < rect.bottom(); y += gridSpacing) {
+
+                for (qreal y = firstY; y <= rect.bottom(); y += displayedGridSpacing) {
                     painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y));
                 }
             }
             break;
-            
+
         case BackgroundType::Lines:
             {
                 painter.setPen(QPen(gridColor, penWidth));
-                
-                // Horizontal lines only
-                for (qreal y = rect.top() + lineSpacing; y < rect.bottom(); y += lineSpacing) {
+
+                if (displayedLineSpacing <= 0.0) {
+                    break;
+                }
+
+                const qreal firstY =
+                    qCeil(rect.top() / displayedLineSpacing) * displayedLineSpacing;
+
+                for (qreal y = firstY; y <= rect.bottom(); y += displayedLineSpacing) {
                     painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y));
                 }
             }
