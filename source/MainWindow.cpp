@@ -4658,7 +4658,7 @@ void MainWindow::addNewPagedTab() {
     }
     
     // Create a new blank document
-    Document* doc = m_documentManager->createDocument();
+    Document* doc = m_documentManager->createPagedDocument();
     if (!doc) {
         qWarning() << "addNewTab: Failed to create document";
         return;

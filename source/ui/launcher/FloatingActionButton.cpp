@@ -27,11 +27,12 @@ FloatingActionButton::FloatingActionButton(QWidget* parent)
 void FloatingActionButton::setupUi()
 {
     // Calculate total size needed
-    // 5 buttons on desktop, 4 on Android (Open Notebook hidden)
+    // 3ENOTES_CANONICAL_NEW_NOTE_FACTORY_V1
+    // Launcher exposes one blank-note concept: New Note = Infinite Canvas.
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
-    int numActionButtons = 4;  // Open Notebook hidden on Android
+    int numActionButtons = 3;  // New Note, PDF, Import
 #else
-    int numActionButtons = 5;
+    int numActionButtons = 4;  // New Note, PDF, Open, Import
 #endif
     int totalHeight = MAIN_BUTTON_SIZE + numActionButtons * (ACTION_BUTTON_SIZE + BUTTON_SPACING);
     int totalWidth = MAIN_BUTTON_SIZE;
@@ -68,7 +69,8 @@ void FloatingActionButton::setupUi()
     m_openBtn = createActionButton("folder", tr("Open Notebook (.snb)"));
     m_importBtn = createActionButton("import", tr("Import 3ENotes Project (.3EN / legacy)"));
     
-    m_actionButtons << m_edgelessBtn << m_pagedBtn << m_pdfBtn << m_openBtn << m_importBtn;
+    m_actionButtons << m_edgelessBtn << m_pdfBtn << m_openBtn << m_importBtn;
+    m_pagedBtn->setVisible(false);  // Page Document is intentionally not a Launcher action
     
     // Hide "Open Notebook" on Android - users should use Import Package instead
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)

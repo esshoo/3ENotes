@@ -52,7 +52,17 @@ public:
      * Creates a document with one blank page.
      * Emits documentCreated() signal.
      */
+    /**
+     * @brief Create the default new Note.
+     *
+     * Product rule: the default Note is an Edgeless / Infinite Canvas.
+     */
     Document* createDocument(const QString& name = QString());
+
+    /**
+     * @brief Create an explicit fixed-page blank document.
+     */
+    Document* createPagedDocument(const QString& name = QString());
     
     /**
      * @brief Create a new edgeless (infinite canvas) document.

@@ -79,20 +79,35 @@ DocumentManager::~DocumentManager()
 
 Document* DocumentManager::createDocument(const QString& name)
 {
-    // Create a new document with default settings
-    auto docPtr = Document::createNew(name.isEmpty() ? tr("Untitled") : name);
-    
+    // 3ENOTES_CANONICAL_NEW_NOTE_FACTORY_V1
+    //
+    // Product invariant:
+    // Generic New Document / New Note == Infinite Canvas.
+    // A bounded blank sheet must be requested explicitly.
+    return createEdgelessDocument(
+        name.isEmpty() ? tr("Untitled Note") : name
+    );
+}
+
+Document* DocumentManager::createPagedDocument(const QString& name)
+{
+    // Explicit fixed-page document.
+    auto docPtr = Document::createNew(
+        name.isEmpty() ? tr("Untitled Page") : name,
+        Document::Mode::Paged
+    );
+
     if (!docPtr) {
-        qWarning() << "DocumentManager::createDocument: Failed to create document";
+        qWarning() << "DocumentManager::createPagedDocument: Failed to create document";
         return nullptr;
     }
-    
-    Document* doc = docPtr.release();  // Transfer ownership to DocumentManager
-    
+
+    Document* doc = docPtr.release();
+
     m_documents.append(doc);
-    m_documentPaths[doc] = QString();  // New document has no path yet
-    m_modifiedFlags[doc] = false;      // New document is not modified
-    
+    m_documentPaths[doc] = QString();
+    m_modifiedFlags[doc] = false;
+
     emit documentCreated(doc);
     return doc;
 }

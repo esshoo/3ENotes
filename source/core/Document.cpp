@@ -2075,21 +2075,21 @@ const Page* Document::edgelessPage() const
 
 void Document::ensureMinimumPages()
 {
-    // Check if we already have pages
+    // 3ENOTES_EDGELESS_NO_PSEUDO_PAGE_V1
+    //
+    // Edgeless documents are tile-backed and intentionally keep the
+    // traditional page order empty. Do not contaminate Infinite Canvas
+    // with a synthetic fixed-size page.
+    if (isEdgeless()) {
+        return;
+    }
+
     if (!m_pageOrder.isEmpty()) {
         return;
     }
-    
+
     auto newPage = createDefaultPage();
-    
-    // For edgeless mode, mark the page as unbounded
-    if (mode == Mode::Edgeless) {
-        // Edgeless pages have no fixed size (effectively infinite)
-        // We use a large default but it can extend beyond
-        newPage->size = QSizeF(4096, 4096);
-    }
-    
-    // Use lazy loading mode from the start
+
     QString uuid = newPage->uuid;
     m_pageOrder.append(uuid);
     m_pageMetadata[uuid] = newPage->size;
