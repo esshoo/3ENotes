@@ -1228,52 +1228,33 @@ void DocumentViewport::setEraserMode(EraserMode mode)
 
 void DocumentViewport::setZoomLevel(qreal zoom)
 {
-    // Apply mode-specific minimum zoom
-    qreal minZ = (m_document && m_document->isEdgeless()) 
-                 ? minZoomForEdgeless() 
-                 : MIN_ZOOM;
-    
-    // Clamp to valid range
+    qreal minZ = (m_document && m_document->isEdgeless())
+                 ? minZoomForEdgeless() : MIN_ZOOM;
     zoom = qBound(minZ, zoom, MAX_ZOOM);
-    
-    if (qFuzzyCompare(m_zoomLevel, zoom)) {
-        return;
-    }
 
-    // Pan/zoom is in flight: suspend the focus cache so the next paint
-    // takes the cache-free Direct tier instead of rebuilding a viewport-
-    // clipped pixmap every frame. The 150 ms timer will re-enable Focus
-    // tier and request one more paint when the user stops moving.
+    if (qFuzzyCompare(m_zoomLevel, zoom))
+        return;
+
     if (m_focusRebuildTimer) {
         m_focusCacheSuspended = true;
         m_focusRebuildTimer->start(150);
     }
 
-    qreal oldDpi = effectivePdfDpi();
+    const qreal oldDpi = effectivePdfDpi();
     m_zoomLevel = zoom;
-    qreal newDpi = effectivePdfDpi();
-    
-    // Invalidate PDF cache if DPI changed significantly (Task 1.3.6)
-    if (!qFuzzyCompare(oldDpi, newDpi)) {
-        invalidatePdfCache();
-    }
-    
-    // Note: Stroke caches are zoom-aware and will rebuild automatically
-    // when ensureStrokeCacheValid() is called with the new zoom level.
-    // No explicit invalidation needed - just lazy rebuild on next paint.
+    const qreal newDpi = effectivePdfDpi();
 
-    // If we just zoomed back below the divisor-one threshold, no page on
-    // screen will pick the Focus tier this paint - so any allocated focus
-    // pixmaps are dead weight. Eagerly release them to claw memory back
-    // immediately rather than waiting for the next eviction sweep.
+    // 3ENOTES_PROGRESSIVE_VIEWPORT_V1:
+    // Keep the old PDF resolution visible while the new one is rendered.
     releaseFocusCachesBelowThreshold();
-
-    // Clamp pan offset (bounds change with zoom)
     clampPanOffset();
-    
+
     update();
     emit zoomChanged(m_zoomLevel);
     emitScrollFractions();
+
+    if (!qFuzzyCompare(oldDpi, newDpi))
+        preloadPdfCache();
 }
 
 void DocumentViewport::setPanOffset(QPointF offset, bool steppedScroll)
@@ -1302,24 +1283,20 @@ void DocumentViewport::setPanOffset(QPointF offset, bool steppedScroll)
 void DocumentViewport::onScrollActivity(bool steppedScroll)
 {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    // Qt6: behavior unchanged - always gate rendering to cache-only while
-    // scrolling (SP2). The discrete-step distinction below is Qt5-only.
     Q_UNUSED(steppedScroll);
     m_scrollActive = true;
 #else
-    // Qt5: a discrete mouse-wheel step renders synchronously (its pre-SP2, still
-    // instant, behavior). Under SP2 the cache-only-while-scrolling gate leaves
-    // the newly revealed page blank until the settle timer fires ~SCROLL_SETTLE_MS
-    // later; on the Qt5 build the adjacent-page async preload does not fill the
-    // cache in time, so every notch flashes blank and stalls. Do NOT mark the
-    // stepped route active so paintEvent takes the synchronous getCachedPdfPage
-    // path. Continuous sources (scroll-bar drag, touchpad pixel-delta) keep the
-    // deferred cache-only path. Heavy housekeeping stays deferred either way.
     m_scrollActive = steppedScroll ? false : true;
 #endif
-    if (m_scrollSettleTimer) {
+
+    // 3ENOTES_PROGRESSIVE_VIEWPORT_V1:
+    // Start useful background work during continuous motion; don't postpone it
+    // forever by restarting the preload timer on every input event.
+    if (m_pdfPreloadTimer && !m_pdfPreloadTimer->isActive())
+        m_pdfPreloadTimer->start(24);
+
+    if (m_scrollSettleTimer)
         m_scrollSettleTimer->start();
-    }
 }
 
 void DocumentViewport::onScrollSettled()
@@ -4111,242 +4088,183 @@ void DocumentViewport::zoomAtPoint(qreal newZoom, QPointF viewportPt)
 
 void DocumentViewport::beginZoomGesture(QPointF centerPoint)
 {
-    if (m_gesture.isActive()) {
-#ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "[DocumentViewport] beginZoomGesture BLOCKED - already active!"
-                 << "activeType:" << m_gesture.activeType;
-#endif
-        return;  // Already in gesture
-    }
-    
-    // Safety check: don't start gesture if widget is not in a valid state
-    if (!isVisible() || !isEnabled()) {
-#ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "[DocumentViewport] beginZoomGesture BLOCKED - widget not visible/enabled";
-#endif
+    if (m_gesture.isActive() || !isVisible() || !isEnabled())
         return;
-    }
-    
-#ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "[DocumentViewport] beginZoomGesture STARTED";
-#endif
+
     m_gesture.activeType = ViewportGestureState::Zoom;
     m_gesture.startZoom = m_zoomLevel;
     m_gesture.targetZoom = m_zoomLevel;
     m_gesture.zoomCenter = centerPoint;
     m_gesture.startPan = m_panOffset;
     m_gesture.targetPan = m_panOffset;
-    
-    // Track initial centroid for pan calculation during zoom gesture
-    // This enables simultaneous pan+zoom (gallery-style 2-finger gestures)
     m_gesture.initialCentroid = centerPoint;
     m_gesture.initialCentroidSet = true;
-    
-    // Capture current viewport as cached frame for fast scaling
-    m_gesture.cachedFrame = grab();
-    // Store device pixel ratio for correct scaling on high-DPI displays
-    m_gesture.frameDevicePixelRatio = m_gesture.cachedFrame.devicePixelRatio();
-    
-    // Grab keyboard focus to receive keyReleaseEvent when modifier is released
+
+    // 3ENOTES_PROGRESSIVE_VIEWPORT_V1:
+    // Do not stretch a captured viewport screenshot during pinch.
+    m_gesture.cachedFrame = QPixmap();
+    m_gesture.frameDevicePixelRatio = 1.0;
+    m_scrollActive = true;
+
+    if (m_focusRebuildTimer) {
+        m_focusCacheSuspended = true;
+        m_focusRebuildTimer->start(150);
+    }
+
     setFocus(Qt::OtherFocusReason);
-    
-    // Start timeout timer (fallback for gesture end detection)
     m_gestureTimeoutTimer->start(GESTURE_TIMEOUT_MS);
 }
 
 void DocumentViewport::updateZoomGesture(qreal scaleFactor, QPointF centerPoint)
 {
-    // Auto-begin gesture if not already active
-    if (!m_gesture.isActive()) {
+    if (!m_gesture.isActive())
         beginZoomGesture(centerPoint);
-    }
-    
-#ifdef SPEEDYNOTE_DEBUG
-    static int updateCount = 0;
-    updateCount++;
-    if (updateCount % 10 == 1) {  // Log every 10th update to avoid spam
-        qDebug() << "[DocumentViewport] updateZoomGesture"
-                 << "scale:" << scaleFactor
-                 << "targetZoom:" << m_gesture.targetZoom * scaleFactor;
-    }
-#endif
-    
-    // Accumulate zoom (multiplicative for smooth feel)
-    m_gesture.targetZoom *= scaleFactor;
-    m_gesture.targetZoom = qBound(MIN_ZOOM, m_gesture.targetZoom, MAX_ZOOM);
+
+    if (m_gesture.activeType != ViewportGestureState::Zoom || m_gesture.startZoom <= 0.0)
+        return;
+
+    const qreal minZ = (m_document && m_document->isEdgeless())
+                       ? minZoomForEdgeless() : MIN_ZOOM;
+
+    m_gesture.targetZoom =
+        qBound(minZ, m_gesture.targetZoom * scaleFactor, MAX_ZOOM);
     m_gesture.zoomCenter = centerPoint;
-    
-    // Calculate pan from centroid movement (for gallery-style 2-finger gestures)
-    // The centroid movement in viewport pixels needs to be converted to document coords
-    // using the START zoom level (since we're transforming the cached frame)
-    if (m_gesture.initialCentroidSet) {
-        QPointF centroidDelta = centerPoint - m_gesture.initialCentroid;
-        // Convert viewport pixels to document coords (at start zoom level)
-        // Negate because moving finger right should pan view left (reveal content on right)
-        m_gesture.targetPan = m_gesture.startPan - centroidDelta / m_gesture.startZoom;
+
+    // Keep the document point below the initial centroid attached to the
+    // current centroid. One transform handles both pinch and two-finger pan.
+    const QPointF anchorDoc =
+        m_gesture.initialCentroid / m_gesture.startZoom + m_gesture.startPan;
+
+    m_zoomLevel = m_gesture.targetZoom;
+    m_panOffset = anchorDoc - centerPoint / m_zoomLevel;
+    clampPanOffset();
+    m_gesture.targetPan = m_panOffset;
+    updateCurrentPageIndex();
+
+    if (m_focusRebuildTimer) {
+        m_focusCacheSuspended = true;
+        m_focusRebuildTimer->start(150);
     }
-    
-    // Restart timeout timer (each event resets the timeout)
+
+    m_scrollActive = true;
+    emit zoomChanged(m_zoomLevel);
+    emit panChanged(m_panOffset);
+    emitScrollFractions();
+
     m_gestureTimeoutTimer->start(GESTURE_TIMEOUT_MS);
-    
-    // Trigger repaint (will use fast cached frame scaling)
     update();
 }
 
 void DocumentViewport::endZoomGesture()
 {
-    if (m_gesture.activeType != ViewportGestureState::Zoom) {
-        return;  // Not in zoom gesture
-    }
-    
-#ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "[DocumentViewport] endZoomGesture"
-             << "finalZoom:" << m_gesture.targetZoom;
-#endif
-    
-    // Stop timeout timer
+    if (m_gesture.activeType != ViewportGestureState::Zoom)
+        return;
+
     m_gestureTimeoutTimer->stop();
-    
-    // Get final zoom level with mode-specific min zoom
-    qreal minZ = (m_document && m_document->isEdgeless()) 
-                 ? minZoomForEdgeless() 
-                 : MIN_ZOOM;
-    qreal finalZoom = qBound(minZ, m_gesture.targetZoom, MAX_ZOOM);
-    
-    // Calculate new pan offset combining:
-    // 1. Zoom center correction (keep center point fixed during zoom)
-    // 2. Centroid movement pan (gallery-style 2-finger gesture)
-    QPointF center = m_gesture.zoomCenter;
-    QPointF docPtAtCenter = center / m_gesture.startZoom + m_gesture.startPan;
-    QPointF zoomCorrectedPan = docPtAtCenter - center / finalZoom;
-    
-    // Add the centroid-based pan offset
-    // targetPan already contains startPan + centroid delta, so we need to add
-    // just the delta on top of the zoom-corrected pan
-    QPointF centroidPanDelta = m_gesture.targetPan - m_gesture.startPan;
-    QPointF newPan = zoomCorrectedPan + centroidPanDelta;
-    
-    // Clear gesture state BEFORE applying zoom (to avoid recursion in paintEvent)
+
+    const qreal finalZoom = m_gesture.targetZoom;
+    const QPointF finalPan = m_gesture.targetPan;
     m_gesture.reset();
-    
-    // Apply final zoom and pan
+
+    // The camera was already updated live; never recompute it at gesture end.
     m_zoomLevel = finalZoom;
-    m_panOffset = newPan;
-    
-    // Invalidate PDF cache (DPI changed)
-    invalidatePdfCache();
-    
-    // Clamp and emit signals
+    m_panOffset = finalPan;
     clampPanOffset();
     updateCurrentPageIndex();
-    
+    m_scrollActive = false;
+
     emit zoomChanged(m_zoomLevel);
     emit panChanged(m_panOffset);
     emitScrollFractions();
-    
-    // Trigger full re-render at new DPI
-    update();
-    
-    // Check if auto-layout should switch modes (zoom level changed)
+
     checkAutoLayout();
-    
-    // Update PDF cache capacity (visible pages may have changed)
     updatePdfCacheCapacity();
-    
-    // Preload PDF cache for new zoom level
-    preloadPdfCache();
+    update();
+
+    if (m_scrollSettleTimer)
+        m_scrollSettleTimer->start();
+    else
+        onScrollSettled();
 }
 
 void DocumentViewport::beginPanGesture()
 {
-    if (m_gesture.isActive()) {
-        return;  // Already in gesture
-    }
-    
-    // Safety check: don't start gesture if widget is not in a valid state
-    if (!isVisible() || !isEnabled()) {
-#ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "[DocumentViewport] beginPanGesture BLOCKED - widget not visible/enabled";
-#endif
+    if (m_gesture.isActive() || !isVisible() || !isEnabled())
         return;
-    }
-    
+
     m_gesture.activeType = ViewportGestureState::Pan;
     m_gesture.startZoom = m_zoomLevel;
     m_gesture.targetZoom = m_zoomLevel;
     m_gesture.startPan = m_panOffset;
     m_gesture.targetPan = m_panOffset;
-    
-    // Capture current viewport as cached frame for fast shifting
-    m_gesture.cachedFrame = grab();
-    // Store device pixel ratio for correct positioning on high-DPI displays
-    m_gesture.frameDevicePixelRatio = m_gesture.cachedFrame.devicePixelRatio();
-    
-    // Grab keyboard focus to receive keyReleaseEvent when modifier is released
+
+    // 3ENOTES_PROGRESSIVE_VIEWPORT_V1: live document pan, no screenshot shift.
+    m_gesture.cachedFrame = QPixmap();
+    m_gesture.frameDevicePixelRatio = 1.0;
+    m_scrollActive = true;
+
+    if (m_focusRebuildTimer) {
+        m_focusCacheSuspended = true;
+        m_focusRebuildTimer->start(150);
+    }
+
     setFocus(Qt::OtherFocusReason);
-    
-    // Start timeout timer (fallback for gesture end detection)
     m_gestureTimeoutTimer->start(GESTURE_TIMEOUT_MS);
 }
 
 void DocumentViewport::updatePanGesture(QPointF panDelta)
 {
-    // Auto-begin gesture if not already active
-    if (!m_gesture.isActive()) {
+    if (!m_gesture.isActive())
         beginPanGesture();
-    }
-    
-    // Accumulate pan offset (additive)
+
+    if (m_gesture.activeType != ViewportGestureState::Pan)
+        return;
+
     m_gesture.targetPan += panDelta;
-    
-    // Note: We don't clamp targetPan here - let endPanGesture handle clamping
-    // This allows the visual feedback to show unclamped pan during the gesture
-    
-    // Restart timeout timer (each event resets the timeout)
+    m_panOffset = m_gesture.targetPan;
+    clampPanOffset();
+    m_gesture.targetPan = m_panOffset;
+    updateCurrentPageIndex();
+
+    if (m_focusRebuildTimer) {
+        m_focusCacheSuspended = true;
+        m_focusRebuildTimer->start(150);
+    }
+
+    m_scrollActive = true;
+
+    if (m_pdfPreloadTimer && !m_pdfPreloadTimer->isActive())
+        m_pdfPreloadTimer->start(24);
+
+    emit panChanged(m_panOffset);
+    emitScrollFractions();
     m_gestureTimeoutTimer->start(GESTURE_TIMEOUT_MS);
-    
-    // Trigger repaint (will use fast cached frame shifting)
     update();
 }
 
 void DocumentViewport::endPanGesture()
 {
-    if (m_gesture.activeType != ViewportGestureState::Pan) {
-        return;  // Not in pan gesture
-    }
-    
-    // Stop timeout timer
+    if (m_gesture.activeType != ViewportGestureState::Pan)
+        return;
+
     m_gestureTimeoutTimer->stop();
-    
-    // Get final pan offset
-    QPointF finalPan = m_gesture.targetPan;
-    
-    // Clear gesture state BEFORE applying pan (to avoid recursion in paintEvent)
+
+    const QPointF finalPan = m_gesture.targetPan;
     m_gesture.reset();
-    
-    // Apply final pan
+
     m_panOffset = finalPan;
-    
-    // Clamp and emit signals
     clampPanOffset();
     updateCurrentPageIndex();
-    
+    m_scrollActive = false;
+
     emit panChanged(m_panOffset);
     emitScrollFractions();
-    
-    // Trigger full re-render
     update();
-    
-    // Update PDF cache capacity (visible pages may have changed)
-    updatePdfCacheCapacity();
-    
-    // Preload PDF cache for new viewport position
-    preloadPdfCache();
-    
-    // Evict distant tiles if in edgeless mode
-    if (m_document && m_document->isEdgeless()) {
-        evictDistantTiles();
-    }
+
+    if (m_scrollSettleTimer)
+        m_scrollSettleTimer->start();
+    else
+        onScrollSettled();
 }
 
 void DocumentViewport::onGestureTimeout()
@@ -4537,19 +4455,33 @@ bool DocumentViewport::event(QEvent* event)
 
 QPixmap DocumentViewport::lookupCachedPdfPage(const QString& sourceId, int pageIndex, qreal dpi) const
 {
-    if (!m_document) {
-        return QPixmap();
-    }
-
-    // Thread-safe cache lookup. Never renders (SP2): safe on the paint path
-    // while scrolling.
+    // 3ENOTES_PROGRESSIVE_VIEWPORT_V1
+    // Exact target DPI wins. Until it is ready, reuse the nearest cached DPI
+    // for the same page instead of blanking/re-rendering synchronously.
     QMutexLocker locker(&m_pdfCacheMutex);
+
+    const PdfCacheEntry* bestFallback = nullptr;
+    qreal bestScore = std::numeric_limits<qreal>::max();
+
     for (const PdfCacheEntry& entry : m_pdfCache) {
-        if (entry.matches(sourceId, pageIndex, dpi)) {
-            return entry.pixmap;  // Cache hit
+        if (entry.sourceId != sourceId || entry.pageIndex != pageIndex || entry.pixmap.isNull())
+            continue;
+
+        if (entry.matches(sourceId, pageIndex, dpi))
+            return entry.pixmap;
+
+        if (entry.dpi > 0.0 && dpi > 0.0) {
+            const qreal score = qAbs(qLn(entry.dpi / dpi));
+            if (score < bestScore) {
+                bestScore = score;
+                bestFallback = &entry;
+            }
+        } else if (!bestFallback) {
+            bestFallback = &entry;
         }
     }
-    return QPixmap();  // Miss - caller decides whether to render synchronously
+
+    return bestFallback ? bestFallback->pixmap : QPixmap();
 }
 
 QPixmap DocumentViewport::getCachedPdfPage(const QString& sourceId, int pageIndex, qreal dpi)
@@ -4885,26 +4817,16 @@ void DocumentViewport::invalidatePdfCachePage(const QString& sourceId, int pageI
 
 void DocumentViewport::updatePdfCacheCapacity()
 {
-    // Calculate visible page count
     QVector<int> visible = visiblePages();
-    int visibleCount = static_cast<int>(visible.size());
-    
-    // Buffer: 3 pages for 1-column (1 above + 2 below or vice versa)
-    //         6 pages for 2-column (1 row above + 1 row below = 4, plus margin)
-    int buffer = (m_layoutMode == LayoutMode::TwoColumn) ? 6 : 3;
-    
-    // New capacity with minimum of 4
-    int newCapacity = qMax(4, visibleCount + buffer);
-    
-    // Thread-safe capacity update and eviction
-    // Acquire mutex BEFORE updating capacity to prevent race conditions
+    const int visibleCount = static_cast<int>(visible.size());
+    const int buffer = (m_layoutMode == LayoutMode::TwoColumn) ? 6 : 3;
+
+    // Keep roughly two bounded DPI generations: currently usable + incoming.
+    const int newCapacity = qMax(8, (visibleCount + buffer) * 2);
+
     QMutexLocker locker(&m_pdfCacheMutex);
-    
-    // Only update if changed
     if (m_pdfCacheCapacity != newCapacity) {
         m_pdfCacheCapacity = newCapacity;
-        
-        // Immediately evict if over new capacity
         evictFurthestCacheEntries();
     }
 }
@@ -15150,8 +15072,10 @@ void DocumentViewport::renderPage(QPainter& painter, Page* page, int pageIndex)
                                              pageSize, m_zoomLevel, dpr,
                                              tier, focusRect);
             } else {
-                layer->renderTiered(painter, pageSize, m_zoomLevel, dpr,
-                                    tier, focusRect);
+                layer->renderTiered(
+                    painter, pageSize, m_zoomLevel, dpr,
+                    tier, focusRect,
+                    m_gesture.isActive() || m_scrollActive || m_focusCacheSuspended);
             }
         }
         
@@ -15402,8 +15326,10 @@ void DocumentViewport::dispatchTileLayer(QPainter& painter, VectorLayer* layer,
                                      tileSize, m_zoomLevel, dpr,
                                      tier, focusRect);
     } else {
-        layer->renderTiered(painter, tileSize, m_zoomLevel, dpr,
-                            tier, focusRect);
+        layer->renderTiered(
+            painter, tileSize, m_zoomLevel, dpr,
+            tier, focusRect,
+            m_gesture.isActive() || m_scrollActive || m_focusCacheSuspended);
     }
 }
 

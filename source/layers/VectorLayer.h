@@ -482,7 +482,13 @@ public:
     /// is the source of the "blurry zoom-in" at extreme zooms. Exposed so
     /// `DocumentViewport::chooseRenderTier` can decide when to switch the
     /// focused page/tile to the viewport-clipped focus cache.
+    // 3ENOTES_ADAPTIVE_STROKE_CACHE_V1
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    static constexpr int MAX_STROKE_CACHE_DIM = 2048;
+#else
     static constexpr int MAX_STROKE_CACHE_DIM = 4096;
+#endif
+    static constexpr int FOCUS_CACHE_OVERSCAN_PX = 128;
 
     /// Render-tier dispatch for `renderTiered` / `renderExcludingTiered`.
     /// Selected per-paint per-tile by `DocumentViewport::chooseRenderTier`.
@@ -640,44 +646,47 @@ public:
      */
     void ensureFocusCacheValid(const QSizeF& size, qreal zoom, qreal dpr,
                                const QRectF& focusRect) const {
-        Q_UNUSED(size);
         if (focusRect.isEmpty() || zoom <= 0.0 || dpr <= 0.0) {
             releaseFocusCache();
             return;
         }
 
-        const QSize physicalSize(qMax(1, qCeil(focusRect.width()  * zoom * dpr)),
-                                 qMax(1, qCeil(focusRect.height() * zoom * dpr)));
-        const bool sameKey =
-            qFuzzyCompare(m_focusZoom, zoom) &&
-            qFuzzyCompare(m_focusDpr,  dpr)  &&
-            m_focusRect == focusRect &&
-            !m_focusCache.isNull() &&
-            m_focusCache.size() == physicalSize;
-
-        // Fast path: same rect/zoom/dpr, only new strokes appended since
-        // last build.
-        if (sameKey && !m_focusCacheDirty && m_focusPendingStrokeStart >= 0) {
-            appendPendingFocusStrokes();
+        const QRectF tileBounds(QPointF(0, 0), size);
+        const QRectF requestedRect = focusRect.intersected(tileBounds);
+        if (requestedRect.isEmpty()) {
+            releaseFocusCache();
             return;
         }
-        if (sameKey && !m_focusCacheDirty && m_focusPendingStrokeStart < 0) {
-            return;  // Cache is fully valid.
+
+        const qreal effectiveScale = qMax<qreal>(0.001, zoom * dpr);
+        const qreal overscanLogical =
+            static_cast<qreal>(FOCUS_CACHE_OVERSCAN_PX) / effectiveScale;
+        const QRectF buildRect =
+            requestedRect.adjusted(-overscanLogical, -overscanLogical,
+                                    overscanLogical, overscanLogical)
+                         .intersected(tileBounds);
+
+        const bool sameRaster =
+            qFuzzyCompare(m_focusZoom, zoom) &&
+            qFuzzyCompare(m_focusDpr, dpr) &&
+            !m_focusCache.isNull();
+        const bool coversRequest =
+            sameRaster && m_focusRect.contains(requestedRect);
+
+        if (coversRequest && !m_focusCacheDirty) {
+            if (m_focusPendingStrokeStart >= 0)
+                appendPendingFocusStrokes();
+            return;
         }
 
-        // Full rebuild.
+        const QSize physicalSize(
+            qMax(1, qCeil(buildRect.width() * zoom * dpr)),
+            qMax(1, qCeil(buildRect.height() * zoom * dpr)));
+
         m_focusPendingStrokeStart = -1;
-        rebuildFocusCache(zoom, dpr, focusRect, physicalSize);
+        rebuildFocusCache(zoom, dpr, buildRect, physicalSize);
     }
 
-    /**
-     * @brief Patch the focus cache after removing a stroke.
-     * @param removedBounds Bounding box of the removed stroke (page/tile coords).
-     *
-     * Mirror of `patchCacheAfterRemoval` for the focus cache; only runs when
-     * the removed stroke actually intersects `m_focusRect` (otherwise the
-     * stroke was outside the cached region and the cache is already correct).
-     */
     void patchFocusCacheAfterRemoval(const QRectF& removedBounds) {
         if (m_focusCacheDirty || m_focusCache.isNull() ||
             removedBounds.isEmpty() || m_focusPendingStrokeStart >= 0 ||
@@ -715,28 +724,32 @@ public:
      * to exactly one physical screen pixel, giving sharp rendering at any zoom level.
      * New strokes are rendered incrementally to the existing cache (no full rebuild).
      */
-    void renderWithZoomCache(QPainter& painter, const QSizeF& size, qreal zoom, qreal dpr) {
-        if (!visible || m_strokes.isEmpty()) {
-            return;
+    void renderWithZoomCache(QPainter& painter, const QSizeF& size,
+                             qreal zoom, qreal dpr,
+                             bool preferExistingCache = false) {
+        if (!visible || m_strokes.isEmpty()) return;
+
+        bool reuse = false;
+        if (preferExistingCache && !m_strokeCacheDirty &&
+            !m_strokeCache.isNull() && m_cacheZoom > 0.0 &&
+            m_cacheDpr > 0.0 && m_cacheDivisor > 0) {
+            const QSize expected =
+                cappedPhysicalSize(size, m_cacheZoom, m_cacheDpr, m_cacheDivisor);
+            reuse = (m_strokeCache.size() == expected);
         }
-        
-        ensureStrokeCacheValid(size, zoom, dpr);
-        
+
+        if (reuse) {
+            if (m_pendingStrokeStart >= 0)
+                appendPendingStrokes();
+        } else {
+            ensureStrokeCacheValid(size, zoom, dpr);
+        }
+
         if (!m_strokeCache.isNull()) {
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-            // Qt5: cache DPR is clamped to max(1.0, rawScale). When the
-            // cache DPR was NOT clamped (rawScale >= 1.0), the pixmap's
-            // logical size matches the page/tile size and drawPixmap(0,0)
-            // works correctly. We MUST use this point-draw path rather than
-            // the QRectF overload because the rect-to-rect mapping path in
-            // Qt5's raster engine composites at fractional sub-pixel
-            // positions differently, breaking the sub-pixel snap correction
-            // that aligns the live stroke cache with the layer cache.
-            // Only fall back to the QRectF overload when DPR was clamped
-            // (rawScale < 1.0, i.e. zoomed out) where the logical size
-            // mismatch requires explicit rect mapping.
-            int divisor = computeCacheDivisor(size, zoom, dpr);
-            if (zoom * dpr / divisor >= 1.0) {
+            const qreal cachedRawScale =
+                m_cacheZoom * m_cacheDpr / qMax(1, m_cacheDivisor);
+            if (cachedRawScale >= 1.0) {
                 painter.drawPixmap(0, 0, m_strokeCache);
             } else {
                 painter.drawPixmap(QRectF(0, 0, size.width(), size.height()),
@@ -747,15 +760,13 @@ public:
             painter.drawPixmap(0, 0, m_strokeCache);
 #endif
         } else {
-            // Fallback to direct rendering (shouldn't happen)
             painter.save();
             painter.scale(zoom, zoom);
             render(painter);
             painter.restore();
         }
     }
-    
-    // Legacy method for backward compatibility (1:1 cache, no zoom)
+
     void renderWithCache(QPainter& painter, const QSizeF& size, qreal dpr) {
         renderWithZoomCache(painter, size, 1.0, dpr);
     }
@@ -850,52 +861,47 @@ public:
     void renderTiered(QPainter& painter, const QSizeF& size,
                       qreal zoom, qreal dpr,
                       RenderTier tier,
-                      const QRectF& focusRect = QRectF()) {
+                      const QRectF& focusRect = QRectF(),
+                      bool preferExistingCache = false) {
         if (!visible || m_strokes.isEmpty()) return;
-        // Symmetric to DocumentViewport releasing the capped cache before
-        // calling us with tier != Capped: when the dispatcher picks Capped,
-        // any leftover focus pixmap (from when this tile was on-screen at
-        // high zoom) is dead weight, so free it eagerly.
-        if (tier == RenderTier::Capped && hasFocusCacheAllocated()) {
+
+        if (tier == RenderTier::Capped && hasFocusCacheAllocated())
             releaseFocusCache();
-        }
+
         switch (tier) {
         case RenderTier::Capped:
-            // Delegate to the existing path; preserves the Qt5 rect-mapping
-            // sub-pixel correction (see renderWithZoomCache).
-            renderWithZoomCache(painter, size, zoom, dpr);
+            renderWithZoomCache(painter, size, zoom, dpr, preferExistingCache);
             break;
-        case RenderTier::Focus: {
+
+        case RenderTier::Focus:
             ensureFocusCacheValid(size, zoom, dpr, focusRect);
-            if (m_focusCache.isNull()) break;
-            // The pixmap has DPR set to (zoom * dpr), so its logical size
-            // matches m_focusRect.size() in page/tile-local units. The
-            // point-draw overload routes through the same fast 1:1 blit
-            // path used by the capped cache - no smooth-scale resampling.
-            painter.drawPixmap(m_focusRect.topLeft(), m_focusCache);
+            if (!m_focusCache.isNull())
+                painter.drawPixmap(m_focusRect.topLeft(), m_focusCache);
+            break;
+
+        case RenderTier::Direct: {
+            const bool reuseFocus =
+                preferExistingCache && !m_focusCacheDirty &&
+                !m_focusCache.isNull() && m_focusRect.contains(focusRect);
+
+            if (reuseFocus) {
+                if (m_focusPendingStrokeStart >= 0)
+                    appendPendingFocusStrokes();
+                painter.save();
+                painter.setClipRect(focusRect, Qt::IntersectClip);
+                painter.drawPixmap(m_focusRect.topLeft(), m_focusCache);
+                painter.restore();
+            } else {
+                painter.save();
+                painter.setClipRect(focusRect, Qt::IntersectClip);
+                renderDirectClipped(painter, focusRect);
+                painter.restore();
+            }
             break;
         }
-        case RenderTier::Direct:
-            painter.save();
-            // IntersectClip rather than replace: the outer painter may
-            // already have a clip (e.g. paintEvent dirty-region), and we
-            // only want to further constrain to the focus rect.
-            painter.setClipRect(focusRect, Qt::IntersectClip);
-            renderDirectClipped(painter, focusRect);
-            painter.restore();
-            break;
         }
     }
 
-    /**
-     * @brief Render this layer with excluded stroke IDs at the chosen tier.
-     *
-     * Lasso source-layer variant. Capped tier delegates to today's
-     * `renderExcluding`. Focus and Direct tiers are identical to each other:
-     * cache-free + bbox cull. (A per-tier excluded-IDs cache would have to be
-     * invalidated on every selection change, which isn't worth the complexity
-     * for the typical lasso interaction pattern.)
-     */
     void renderExcludingTiered(QPainter& painter,
                                const QSet<QString>& excludeIds,
                                const QSizeF& size, qreal zoom, qreal dpr,
