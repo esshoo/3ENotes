@@ -276,7 +276,18 @@ public:
     // New: Keyboard mapping methods (made public for ControlPanelDialog)
     // REMOVED MW7.6: addKeyboardMapping, removeKeyboardMapping, and getKeyboardMappings removed - old mapping system deleted
 
+    /**
+     * @brief Create the default new Note.
+     *
+     * New Note is an infinite canvas. The legacy function name is retained
+     * so older generic entry points inherit the new default.
+     */
     void addNewTab();
+
+    /**
+     * @brief Create an explicit fixed-page blank document.
+     */
+    void addNewPagedTab();
     
     /**
      * @brief Create a new tab with an edgeless (infinite canvas) document.

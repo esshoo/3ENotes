@@ -539,7 +539,7 @@ static void connectLauncherSignals(Launcher* launcher)
 
     QObject::connect(launcher, &Launcher::createNewPaged, [=]() {
         auto [w, _] = getMainWindow(launcher);
-        w->addNewTab();
+        w->addNewPagedTab();
         launcher->hideWithAnimation();
     });
 

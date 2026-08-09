@@ -1625,7 +1625,7 @@ void MainWindow::wireQActionDispatchers()
     // ----- file.* -----
     wire("file.save",         [](MainWindow* w){ w->saveDocument(); });
     wire("file.save_as",      [](MainWindow* w){ w->saveDocumentAs(); });
-    wire("file.new_paged",    [](MainWindow* w){ w->addNewTab(); });
+    wire("file.new_paged",    [](MainWindow* w){ w->addNewPagedTab(); });
     wire("file.new_edgeless", [](MainWindow* w){ w->addNewEdgelessTab(); });
     wire("file.open_pdf",     [](MainWindow* w){ w->openPdfDocument(); });
     wire("file.open_notebook",[](MainWindow* w){ w->loadFolderDocument(); });
@@ -4642,7 +4642,15 @@ void MainWindow::forceUIRefresh() {
 
 
     
-void MainWindow::addNewTab() {
+void MainWindow::addNewTab()
+{
+    // 3ENOTES_NEW_NOTE_ROUTING_V2
+    // Canonical UX rule: New Note = Infinite Canvas.
+    // Keeping this under the legacy generic function name ensures any old
+    // creation entry point cannot silently fall back to a bounded sheet.
+    addNewEdgelessTab();
+}
+void MainWindow::addNewPagedTab() {
     // Phase 3.1.1: Simplified addNewTab using DocumentManager and TabManager
     if (!tabManager() || !m_documentManager) {
         qWarning() << "addNewTab: TabManager or DocumentManager not initialized";
@@ -8627,14 +8635,14 @@ void MainWindow::showAddMenu() {
     QMenu menu(this);
     
     // New Edgeless Canvas
-    QAction* newEdgelessAction = menu.addAction(tr("New Edgeless Canvas"));
+    QAction* newEdgelessAction = menu.addAction(tr("New Note"));
     newEdgelessAction->setShortcut(ShortcutManager::instance()->keySequenceForAction("file.new_edgeless"));
     connect(newEdgelessAction, &QAction::triggered, this, &MainWindow::addNewEdgelessTab);
     
     // New Paged Notebook
-    QAction* newPagedAction = menu.addAction(tr("New Paged Notebook"));
+    QAction* newPagedAction = menu.addAction(tr("New Page Document"));
     newPagedAction->setShortcut(ShortcutManager::instance()->keySequenceForAction("file.new_paged"));
-    connect(newPagedAction, &QAction::triggered, this, &MainWindow::addNewTab);
+    connect(newPagedAction, &QAction::triggered, this, &MainWindow::addNewPagedTab);
     
     // Separator
     menu.addSeparator();

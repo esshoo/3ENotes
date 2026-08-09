@@ -41,7 +41,7 @@ void FloatingActionButton::setupUi()
     m_mainButton = new QPushButton(this);
     m_mainButton->setFixedSize(MAIN_BUTTON_SIZE, MAIN_BUTTON_SIZE);
     m_mainButton->setCursor(Qt::PointingHandCursor);
-    m_mainButton->setToolTip(tr("Create new notebook"));
+    m_mainButton->setToolTip(tr("New / Open"));
     updateMainButtonIcon();
     
     // Style the main button
@@ -62,8 +62,8 @@ void FloatingActionButton::setupUi()
     connect(m_mainButton, &QPushButton::clicked, this, &FloatingActionButton::toggle);
     
     // Create action buttons (bottom to top order when expanded)
-    m_edgelessBtn = createActionButton("fullscreen", tr("New Edgeless Canvas"));
-    m_pagedBtn = createActionButton("bookmark", tr("New Paged Notebook"));
+    m_edgelessBtn = createActionButton("fullscreen", tr("New Note"));
+    m_pagedBtn = createActionButton("bookmark", tr("New Page Document"));
     m_pdfBtn = createActionButton("pdf", tr("Open PDF for Annotation"));
     m_openBtn = createActionButton("folder", tr("Open Notebook (.snb)"));
     m_importBtn = createActionButton("import", tr("Import 3ENotes Project (.3EN / legacy)"));
