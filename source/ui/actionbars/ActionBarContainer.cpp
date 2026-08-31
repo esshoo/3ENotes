@@ -38,6 +38,14 @@ void ActionBarContainer::setActionBar(const QString& type, ActionBar* actionBar)
         actionBar->setParent(this);
         actionBar->hide();  // Hidden until context matches
         m_actionBars.insert(type, actionBar);
+        if (type == QLatin1String("objectSelect")) {
+            if (auto* objectBar = qobject_cast<ObjectSelectActionBar*>(actionBar)) {
+                objectBar->setHasSelection(m_hasObjectSelection);
+                objectBar->setHasObjectInClipboard(m_hasObjectsInClipboard);
+                objectBar->setHasImageInClipboard(m_clipboardHasImage);
+                objectBar->setObjectToolActive(m_currentTool == ToolType::ObjectSelect);
+            }
+        }
     }
     
     // Re-evaluate visibility in case this affects current state
@@ -306,6 +314,12 @@ void ActionBarContainer::updatePagePanelEffectiveVisibility()
 void ActionBarContainer::onToolChanged(ToolType tool)
 {
     m_currentTool = tool;
+    
+    if (auto* objectBar = qobject_cast<ObjectSelectActionBar*>(
+            m_actionBars.value(QStringLiteral("objectSelect"), nullptr))) {
+        objectBar->setObjectToolActive(tool == ToolType::ObjectSelect);
+    }
+    
     updateVisibility();
 }
 
@@ -403,19 +417,20 @@ void ActionBarContainer::updateVisibility()
             break;
             
         case ToolType::ObjectSelect:
-            // Show ObjectSelectActionBar if:
-            // - Has object selection (full bar)
-            // - OR no selection but internal object clipboard has content (paste-only bar)
-            if (m_hasObjectSelection || m_hasObjectsInClipboard) {
-                typeToShow = "objectSelect";
-            } else if (m_clipboardHasImage) {
-                // No selection and no internal clipboard, but system clipboard has image
-                typeToShow = "clipboard";
-            }
+            // The Add/Select toggle is always available. Contextual object and
+            // clipboard actions are hidden by ObjectSelectActionBar itself.
+            typeToShow = "objectSelect";
             break;
             
         case ToolType::Highlighter:
-            if (m_hasTextSelection) {
+            // Tapping a highlight selects its annotation without leaving the
+            // tool, so the object actions have to be reachable from here too.
+            // Tap-to-select clears any text selection, so in practice only one
+            // of these is ever live; the annotation wins if both are, which is
+            // the case during an Adjust session.
+            if (m_hasObjectSelection) {
+                typeToShow = "objectSelect";
+            } else if (m_hasTextSelection) {
                 typeToShow = "textSelection";
             }
             break;
@@ -595,5 +610,9 @@ void ActionBarContainer::checkClipboardForImage()
     const QMimeData* mimeData = clipboard->mimeData();
     
     m_clipboardHasImage = mimeData && mimeData->hasImage();
+    if (auto* objectBar = qobject_cast<ObjectSelectActionBar*>(
+            m_actionBars.value(QStringLiteral("objectSelect"), nullptr))) {
+        objectBar->setHasImageInClipboard(m_clipboardHasImage);
+    }
 }
 

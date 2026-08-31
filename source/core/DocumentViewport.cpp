@@ -12,16 +12,22 @@
 #include "MarkdownNote.h"           // Phase M.2: For markdown note creation
 #include "../layers/VectorLayer.h"
 #include "../pdf/PdfProvider.h"     // Use abstract interface, not concrete impl
+#include "../objects/ImageObject.h"
 #include "../objects/LinkObject.h"  // Phase C.2.3: For cloneWithBackLink
 #include "../objects/OcrTextObject.h"  // Phase 1D: OCR text object deletion
-#include "../objects/TextBoxObject.h"  // Phase 2B: text edit undo
+#include "../objects/TextBoxObject.h"
 #include "../ui/banners/MissingPdfBanner.h"  // Phase R.3: Missing PDF notification
+#include "../ui/panels/InlineTextBoxEditor.h"
+#include "../ui/panels/LinkObjectBar.h"
+#include "../ui/panels/TextBoxFormatBar.h"
+#include "../../markdown/qmarkdowntextedit.h"
 
 #include <QPainter>
 #include <QPaintEvent>
 #include <QRegion>
 #include <QResizeEvent>
 #include <QMouseEvent>
+#include <QContextMenuEvent>
 #include <QTabletEvent>
 #include <QWheelEvent>
 #include <QKeyEvent>
@@ -41,11 +47,17 @@
 #include <QSet>       // For efficient ID lookup in eraseAt
 #include <QClipboard>     // For clipboard access (O2.4)
 #include <QGuiApplication> // For clipboard access (O2.4)
+#include <QScreen>         // For refresh rate in the perf HUD context
 #include <QApplication>    // For focusWidget() - text input focus check
 #include <QLineEdit>       // For text input focus check
 #include <QTextEdit>       // For text input focus check
 #include <QPlainTextEdit>  // For text input focus check
+#include <QSignalBlocker>
 #include <QElapsedTimer>  // For double/triple click detection (Phase A)
+#include <QBuffer>
+#include <QFile>
+#include <QFileInfo>
+#include <QImageReader>
 #include <QMimeData>      // For clipboard content type check (O2.4)
 #include <QDragEnterEvent> // Plan D2: cross-document page-transfer drops
 #include <QDragMoveEvent>
@@ -87,6 +99,7 @@ static void initEraserJni()
 #include <QAbstractTextDocumentLayout>
 #include <QRegularExpression>
 #include <QMenu>             // For addLinkToSlot menu (Phase C.5.3 - temporary)
+#include "../ui/ThemeColors.h"
 #include <QInputDialog>      // For URL input dialog (Phase C.5.3 - temporary)
 
 // ===== Constants =====
@@ -101,7 +114,8 @@ static constexpr qreal PAGE_TO_PDF_SCALE = 72.0 / 96.0;  // Page coords → PDF 
 // Static clipboard storage shared across all DocumentViewport instances
 DocumentViewport::StrokeClipboard DocumentViewport::s_clipboard;
 QList<QJsonObject> DocumentViewport::s_objectClipboard;
-QMap<QString, QPixmap> DocumentViewport::s_objectClipboardAssets;
+QMap<QString, DocumentViewport::ClipboardImageAsset>
+    DocumentViewport::s_objectClipboardAssets;
 
 // ===== Thread-Local PDF Provider Cache =====
 // 
@@ -170,20 +184,43 @@ DocumentViewport::DocumentViewport(QWidget* parent)
     setAttribute(Qt::WA_NoSystemBackground, true);
     setAutoFillBackground(false);
     
-    // Benchmark display timer - triggers repaint to update paint rate counter
-    // Note: Debug overlay is now handled by DebugOverlay widget (source/ui/DebugOverlay.cpp)
-    connect(&m_benchmarkDisplayTimer, &QTimer::timeout, this, [this]() {
-        if (m_benchmarking) {
-            // DebugOverlay widget handles its own updates, but we may want
-            // to trigger viewport repaints for accurate paint rate measurement
-            // during benchmarking (disabled for now to avoid unnecessary repaints)
-        }
-    });
-    
     // PDF preload timer - debounces preload requests during rapid scrolling
     m_pdfPreloadTimer = new QTimer(this);
     m_pdfPreloadTimer->setSingleShot(true);
     connect(m_pdfPreloadTimer, &QTimer::timeout, this, &DocumentViewport::doAsyncPdfPreload);
+
+    m_objectGeometryFeedbackTimer = new QTimer(this);
+    m_objectGeometryFeedbackTimer->setSingleShot(true);
+    m_objectGeometryFeedbackTimer->setInterval(900);
+    connect(m_objectGeometryFeedbackTimer, &QTimer::timeout, this, [this]() {
+        const QRect dirty = m_objectGeometryFeedbackAnchor
+            .adjusted(-16.0, -16.0, 260.0, 80.0).toAlignedRect();
+        m_objectGeometryFeedbackText.clear();
+        m_objectGeometryFeedbackAnchor = QRectF();
+        update(dirty);
+    });
+    connect(this, &DocumentViewport::zoomChanged, this,
+            [this]() {
+        updateInlineTextEditorGeometry();
+        updateTextBoxFormatBarGeometry();
+        updateLinkObjectBarGeometry();
+    });
+    connect(this, &DocumentViewport::panChanged, this,
+            [this]() {
+        updateInlineTextEditorGeometry();
+        updateTextBoxFormatBarGeometry();
+        updateLinkObjectBarGeometry();
+    });
+    connect(this, &DocumentViewport::objectSelectionChanged,
+            this, &DocumentViewport::syncTextBoxFormatBar);
+    connect(this, &DocumentViewport::textBoxLayoutCommitted,
+            this, &DocumentViewport::syncTextBoxFormatBar);
+    connect(this, &DocumentViewport::objectSelectionChanged,
+            this, &DocumentViewport::syncLinkObjectBar);
+    // Slot contents can change without the selection changing (adding a URL or
+    // markdown note, clearing a slot), so the buttons need this second trigger.
+    connect(this, &DocumentViewport::linkSlotsChanged,
+            this, &DocumentViewport::syncLinkObjectBar);
 
     // Scroll-settle timer (SP1) - defers heavy housekeeping (preload/evict) until
     // the immediate-pan route (wheel/touchpad/scroll-bar) stops for a beat.
@@ -248,6 +285,11 @@ DocumentViewport::DocumentViewport(QWidget* parent)
 
 DocumentViewport::~DocumentViewport()
 {
+    closeTextBoxFormatPopups(true);
+    closeLinkObjectBarPopups(true);
+    finishTextBoxFormatInteraction(true);
+    commitInlineTextEdit();
+
     // Cancel any pending preload requests
     if (m_pdfPreloadTimer) {
         m_pdfPreloadTimer->stop();
@@ -332,6 +374,17 @@ void DocumentViewport::setDocument(Document* doc)
     if (m_document == doc) {
         return;
     }
+
+    closeTextBoxFormatPopups(true);
+    closeLinkObjectBarPopups(true);
+    finishTextBoxFormatInteraction(true);
+    commitInlineTextEdit();
+    // The session's target belongs to the outgoing document and the undo stacks
+    // are cleared below, so there is nothing to commit into.
+    discardHighlightAdjust();
+    // Same reasoning: a position link is intra-document, so its armed origin
+    // means nothing once the document changes.
+    m_positionPairing.clear();
     
     // End any active gesture (cached frame is from old document)
     if (m_gesture.isActive()) {
@@ -340,17 +393,12 @@ void DocumentViewport::setDocument(Document* doc)
     }
     m_backtickHeld = false;  // Reset key tracking for new document
     
-    // Clear object selection (pointers refer to old document's objects)
-    // Must be done BEFORE changing m_document to avoid dangling pointer access
+    // Cancel live object previews while their source objects are still valid,
+    // then clear selection before changing m_document to avoid dangling access.
+    cancelObjectPointerGesture();
     bool hadSelection = !m_selectedObjects.isEmpty();
     m_selectedObjects.clear();
     m_hoveredObject = nullptr;
-    m_isDraggingObjects = false;
-    m_isResizingObject = false;
-    m_isCreatingTextBox = false;
-    m_resizeObjectPageIndex = -1;
-    m_objectOriginalPositions.clear();
-    m_objectOriginalPageIndices.clear();
     
     // Clear undo/redo stacks (actions refer to old document)
     bool hadUndo = canUndo();
@@ -459,40 +507,66 @@ void DocumentViewport::setDocument(Document* doc)
     emit panChanged(m_panOffset);
     emit currentPageChanged(m_currentPageIndex);
     emitScrollFractions();
+    syncTextBoxFormatBar();
+    syncLinkObjectBar();
 }
 
-// ===== Missing PDF Banner (Phase R.3) =====
+// ===== PDF source warning banner =====
 
-void DocumentViewport::showMissingPdfBanner(const QString& pdfName)
+void DocumentViewport::showPdfSourceWarning(int sourceCount, int affectedPages,
+                                            const QString& singleSourceName,
+                                            const QString& warningSignature)
 {
     if (!m_missingPdfBanner) {
         m_missingPdfBanner = new MissingPdfBanner(this);
         
-        // Connect signals
-        connect(m_missingPdfBanner, &MissingPdfBanner::locatePdfClicked,
-                this, [this]() { emit requestPdfRelink(); });
+        connect(m_missingPdfBanner, &MissingPdfBanner::reviewSourcesClicked,
+                this, [this]() { emit requestPdfSources(); });
         connect(m_missingPdfBanner, &MissingPdfBanner::dismissed,
-                this, [this]() { /* Banner handles its own hide animation */ });
+                this, [this]() {
+            m_dismissedPdfWarningSignature = m_pdfWarningSignature;
+            emit topBannerReserveChanged();
+        });
     }
     
-    m_missingPdfBanner->setPdfName(pdfName);
+    m_pdfWarningSignature = warningSignature;
+    m_missingPdfBanner->setSummary(sourceCount, affectedPages, singleSourceName);
     
-    // Position at top of viewport
     m_missingPdfBanner->setFixedWidth(width());
     m_missingPdfBanner->move(0, 0);
     
-    // Only animate if not already visible (avoid restart on redundant calls)
-    if (!m_missingPdfBanner->isVisible()) {
+    if (m_dismissedPdfWarningSignature != warningSignature) {
+        // Also cancels an in-flight hide animation if health changed again.
+        const bool wasShowing = m_missingPdfBanner->isVisible();
         m_missingPdfBanner->showAnimated();
+        if (!wasShowing) emit topBannerReserveChanged();
     }
 }
 
-void DocumentViewport::hideMissingPdfBanner()
+void DocumentViewport::hidePdfSourceWarning()
 {
-    // Only hide if banner exists and is visible (avoid redundant animation)
+    m_pdfWarningSignature.clear();
+    m_dismissedPdfWarningSignature.clear();
     if (m_missingPdfBanner && m_missingPdfBanner->isVisible()) {
         m_missingPdfBanner->hideAnimated();
+        emit topBannerReserveChanged();
     }
+}
+
+int DocumentViewport::topBannerReserve() const
+{
+    if (!m_missingPdfBanner || !m_missingPdfBanner->isVisible()) {
+        return 0;
+    }
+    // The banner stays visible for the length of its slide-out, so a dismissed
+    // or superseded warning still reports isVisible(). Treating those as gone
+    // lets a top-anchored overlay settle in one move instead of chasing the
+    // animation in either direction.
+    if (m_pdfWarningSignature.isEmpty() ||
+        m_dismissedPdfWarningSignature == m_pdfWarningSignature) {
+        return 0;
+    }
+    return m_missingPdfBanner->height();
 }
 
 // ===== Theme / Dark Mode =====
@@ -520,6 +594,15 @@ void DocumentViewport::setDarkMode(bool dark)
     if (m_pdfDarkModeEnabled) {
         invalidatePdfCache();
     }
+
+    if (m_textBoxFormatBar)
+        m_textBoxFormatBar->setDarkMode(dark);
+    if (m_linkObjectBar)
+        m_linkObjectBar->setDarkMode(dark);
+    if (m_inlineTextBoxEditor && m_inlineEditSession.active)
+        updateInlineTextEditorGeometry();
+    updateTextBoxFormatBarGeometry();
+    updateLinkObjectBarGeometry();
 
     // Trigger repaint
     update();
@@ -740,7 +823,17 @@ void DocumentViewport::setCurrentTool(ToolType tool)
     if (m_currentTool == tool) {
         return;
     }
-    
+
+    commitInlineTextEdit();
+    // Adjust lives inside the Highlighter, so leaving that tool ends the
+    // session. Commit rather than discard: every gesture in the session was
+    // already applied to the mark, so dropping them would silently revert
+    // visible work.
+    if (m_adjustSession.active && m_currentTool == ToolType::Highlighter
+        && tool != ToolType::Highlighter) {
+        commitHighlightAdjust();
+    }
+
     ToolType previousTool = m_currentTool;
     m_currentTool = tool;
     
@@ -761,15 +854,12 @@ void DocumentViewport::setCurrentTool(ToolType tool)
         }
     }
     
-    // Clear object selection and cancel creation when switching away from ObjectSelect tool
-    if (previousTool == ToolType::ObjectSelect && tool != ToolType::ObjectSelect) {
-        if (m_isCreatingTextBox) {
-            m_isCreatingTextBox = false;
-            m_pointerActive = false;
-        }
-        if (!m_selectedObjects.isEmpty()) {
-            deselectAllObjects();
-        }
+    // Clear object selection and cancel creation when switching away from ObjectSelect tool.
+    // Entering Adjust is the exception: it switches to the Highlighter precisely
+    // in order to keep working on the annotation that is selected right now.
+    if (previousTool == ToolType::ObjectSelect && tool != ToolType::ObjectSelect
+        && !m_enteringAdjustMode) {
+        clearObjectSelection();
     }
     
     // Cancel any in-progress eraser lasso when switching away from Eraser
@@ -789,6 +879,13 @@ void DocumentViewport::setCurrentTool(ToolType tool)
             m_isPanToolDragging = false;
         }
     }
+    
+    // An off-page pan belongs to no tool in particular, so it has to end
+    // whichever tool the user switches away from. The hover cursor is reset
+    // too, since updateHighlighterCursor() below replaces it with the new
+    // tool's and the next hover has to be free to claim it back.
+    cancelOffPagePan();
+    m_offPageHoverCursor = false;
     
     // Phase A: Clear text selection when switching away from Highlighter
     if (previousTool == ToolType::Highlighter && tool != ToolType::Highlighter) {
@@ -932,7 +1029,12 @@ void DocumentViewport::setObjectInsertMode(ObjectInsertMode mode)
     if (m_objectInsertMode == mode) {
         return;
     }
-    
+
+    // A mode change must not let an in-flight gesture complete under stale UI
+    // state (most visibly, a Text rubber band creating after Image is chosen).
+    if (hasActiveObjectPointerGesture()) {
+        cancelObjectPointerGesture();
+    }
     m_objectInsertMode = mode;
     emit objectInsertModeChanged(mode);
 #ifdef SPEEDYNOTE_DEBUG
@@ -945,12 +1047,101 @@ void DocumentViewport::setObjectActionMode(ObjectActionMode mode)
     if (m_objectActionMode == mode) {
         return;
     }
-    
+
+    // The effective mode is cached at press time. Cancel the active gesture
+    // instead of allowing release to perform the old mode after the toggle.
+    if (hasActiveObjectPointerGesture()) {
+        cancelObjectPointerGesture();
+    }
     m_objectActionMode = mode;
+    m_objectGestureActionMode = mode;
     emit objectActionModeChanged(mode);
 #ifdef SPEEDYNOTE_DEBUG
     qDebug() << "Object action mode changed to:" << (mode == ObjectActionMode::Select ? "Select" : "Create");
 #endif
+}
+
+DocumentViewport::ObjectActionMode
+DocumentViewport::effectiveObjectActionModeForPointer(
+    ObjectActionMode persistentMode,
+    PointerEvent::Source source,
+    Qt::MouseButton button)
+{
+    if (source == PointerEvent::Mouse && button == Qt::RightButton) {
+        return persistentMode == ObjectActionMode::Select
+            ? ObjectActionMode::Create
+            : ObjectActionMode::Select;
+    }
+    return persistentMode;
+}
+
+bool DocumentViewport::hasActiveObjectPointerGesture() const
+{
+    return m_currentTool == ToolType::ObjectSelect
+        && (m_pointerActive || m_objectGestureButton != Qt::NoButton
+            || m_isCreatingTextBox || m_isDraggingObjects || m_isResizingObject);
+}
+
+void DocumentViewport::beginObjectPointerGesture(const PointerEvent& pe)
+{
+    m_objectGestureButton =
+        pe.source == PointerEvent::Mouse ? pe.button : Qt::NoButton;
+    m_objectGestureActionMode = effectiveObjectActionModeForPointer(
+        m_objectActionMode, pe.source, pe.button);
+}
+
+void DocumentViewport::cancelObjectPointerGesture()
+{
+    // Drag and resize previews mutate the live object. Restore their snapshots
+    // so Escape, a tool switch, or a mode switch is a true cancellation rather
+    // than an untracked document edit with no undo entry or dirty signal.
+    if (m_isDraggingObjects) {
+        for (InsertedObject* obj : m_selectedObjects) {
+            if (!obj) continue;
+            auto it = m_objectOriginalPositions.constFind(obj->id);
+            if (it != m_objectOriginalPositions.constEnd()) {
+                obj->position = *it;
+            }
+        }
+    }
+
+    if (m_isResizingObject && !m_selectedObjects.isEmpty()) {
+        if (InsertedObject* obj = m_selectedObjects.first()) {
+            if (m_hasResizeTextBoxState
+                && obj->type() == QLatin1String("textbox")) {
+                static_cast<TextBoxObject*>(obj)->applyState(
+                    m_resizeOriginalTextBoxState);
+            } else {
+                obj->position = m_resizeOriginalPosition;
+                obj->size = m_resizeOriginalSize;
+                obj->rotation = m_resizeOriginalRotation;
+            }
+        }
+    }
+
+    m_isDraggingObjects = false;
+    m_isCreatingTextBox = false;
+    m_isResizingObject = false;
+    m_objectResizeHandle = HandleHit::None;
+    m_resizeObjectPageIndex = -1;
+    m_hasResizeTextBoxState = false;
+    m_textBoxResizeActivated = false;
+    m_textBoxResizeChanged = false;
+    m_objectOriginalPositions.clear();
+    m_objectOriginalPageIndices.clear();
+    m_objectDragBackgroundSnapshot = QPixmap();
+    m_dragObjectRenderedCache = QPixmap();
+    m_pointerActive = false;
+    m_activeSource = PointerEvent::Unknown;
+    m_hardwareEraserActive = false;
+    resetObjectPointerGesture();
+    update();
+}
+
+void DocumentViewport::resetObjectPointerGesture()
+{
+    m_objectGestureButton = Qt::NoButton;
+    m_objectGestureActionMode = m_objectActionMode;
 }
 
 void DocumentViewport::setEraserMode(EraserMode mode)
@@ -2035,28 +2226,28 @@ InsertedObject* DocumentViewport::objectAtPoint(const QPointF& docPoint) const
         // Edgeless mode: use viewport-level active layer index
         affinityFilter = m_edgelessActiveLayerIndex - 1;
         
-        // Edgeless mode: check all loaded tiles
-        // Objects are stored with tile-local coordinates
-        for (const auto& coord : m_document->allLoadedTileCoords()) {
-            Page* tile = m_document->getTile(coord.first, coord.second);
-            if (!tile) continue;
-            
-            // Convert document coords to tile-local coords
-            QPointF tileLocal = docPoint - QPointF(
-                coord.first * Document::EDGELESS_TILE_SIZE,
-                coord.second * Document::EDGELESS_TILE_SIZE
-            );
-            
-            // Check if point is within tile bounds (optimization)
-            if (tileLocal.x() < 0 || tileLocal.y() < 0 ||
-                tileLocal.x() > Document::EDGELESS_TILE_SIZE ||
-                tileLocal.y() > Document::EDGELESS_TILE_SIZE) {
-                // Point not in this tile, but object might extend beyond tile
-                // Still check - Page::objectAtPoint handles this
-            }
-            
-            if (InsertedObject* obj = tile->objectAtPoint(tileLocal, affinityFilter)) {
-                return obj;
+        // Objects are anchored in tile-local coordinates but may extend past
+        // their own tile, so a point can be covered by an object anchored up to
+        // maxObjectExtent away - and only by those. Walking every loaded tile
+        // made hit-testing proportional to canvas size on every pointer move,
+        // which the object tools do while merely hovering.
+        const int tileSize = Document::EDGELESS_TILE_SIZE;
+        const qreal reach = m_document->maxObjectExtent();
+        const int minTx = static_cast<int>(std::floor((docPoint.x() - reach) / tileSize));
+        const int maxTx = static_cast<int>(std::floor((docPoint.x() + reach) / tileSize));
+        const int minTy = static_cast<int>(std::floor((docPoint.y() - reach) / tileSize));
+        const int maxTy = static_cast<int>(std::floor((docPoint.y() + reach) / tileSize));
+        
+        for (int tx = minTx; tx <= maxTx; ++tx) {
+            for (int ty = minTy; ty <= maxTy; ++ty) {
+                Page* tile = m_document->getTile(tx, ty);
+                if (!tile) continue;
+                
+                const QPointF tileLocal =
+                    docPoint - QPointF(tx * tileSize, ty * tileSize);
+                if (InsertedObject* obj = tile->objectAtPoint(tileLocal, affinityFilter)) {
+                    return obj;
+                }
             }
         }
     } else {
@@ -2171,13 +2362,24 @@ DocumentViewport::HandleHit DocumentViewport::objectHandleAtPoint(const QPointF&
     if (!obj) {
         return HandleHit::None;
     }
+    if (m_inlineEditSession.active
+        && obj->id == m_inlineEditSession.objectId) {
+        return HandleHit::None;
+    }
     
+    // Annotations expose no handles. updateObjectResize() has always rejected
+    // them, and a highlight's bounds are its text rects: resizing or rotating
+    // them would detach the mark from the text it annotates.
+    if (obj->type() == QLatin1String("link")) {
+        return HandleHit::None;
+    }
+
     // Get unrotated object bounds in viewport coordinates
     QRectF objRect = objectBoundsInViewport(obj);
     if (objRect.isEmpty()) {
         return HandleHit::None;
     }
-    
+
     // Helper to rotate a point around center
     auto rotatePoint = [](const QPointF& pt, const QPointF& center, qreal angleDegrees) -> QPointF {
         if (qAbs(angleDegrees) < 0.01) return pt;
@@ -2218,6 +2420,16 @@ DocumentViewport::HandleHit DocumentViewport::objectHandleAtPoint(const QPointF&
     if (QLineF(viewportPos, rotatePos).length() <= hitRadius) {
         return HandleHit::Rotate;
     }
+
+    // User text boxes derive height from content, so only expose width
+    // handles. OCR text remains geometry-driven and keeps all handles.
+    if (obj->type() == QLatin1String("textbox")) {
+        if (QLineF(viewportPos, handles[3]).length() <= hitRadius)
+            return HandleHit::Left;
+        if (QLineF(viewportPos, handles[4]).length() <= hitRadius)
+            return HandleHit::Right;
+        return HandleHit::None;
+    }
     
     // Check the 8 resize handles
     static const HandleHit handleTypes[8] = {
@@ -2245,8 +2457,9 @@ void DocumentViewport::updateObjectResize(const QPointF& currentViewport)
     InsertedObject* obj = m_selectedObjects.first();
     if (!obj) return;
     
-    // Phase C.2.2: LinkObject doesn't resize - only move is allowed
-    // LinkObject has fixed icon size (24x24), resize would distort it
+    // Annotations don't resize - only move is allowed. An icon-only annotation
+    // has a fixed 24x24 badge, and a highlight's bounds are its text rects, so
+    // either way resizing would only distort it.
     if (obj->type() == "link") {
         return;
     }
@@ -2282,6 +2495,8 @@ void DocumentViewport::updateObjectResize(const QPointF& currentViewport)
             // Rotation leaves position/size alone, but clamp anyway so a
             // rotated object near an edge can never end up unreachable.
             clampObjectToPage(obj, m_resizeObjectPageIndex);
+            updateTextBoxFormatBarGeometry();
+            updateLinkObjectBarGeometry();
             return;  // Don't apply resize logic below
         }
     
@@ -2316,6 +2531,103 @@ void DocumentViewport::updateObjectResize(const QPointF& currentViewport)
     qreal sinR = qSin(-rotRad);
     qreal localX = dx * cosR - dy * sinR;
     qreal localY = dx * sinR + dy * cosR;
+
+    if (m_hasResizeTextBoxState
+        && (m_objectResizeHandle == HandleHit::Left
+            || m_objectResizeHandle == HandleHit::Right)) {
+        auto* textBox = static_cast<TextBoxObject*>(obj);
+        qreal proposedWidth = m_objectResizeHandle == HandleHit::Right
+            ? localX + halfW
+            : halfW - localX;
+        proposedWidth = qMax(TextBoxObject::MINIMUM_WIDTH, proposedWidth);
+        if (m_document && !m_document->isEdgeless()
+            && m_resizeObjectPageIndex >= 0) {
+            proposedWidth = qMin(
+                proposedWidth,
+                qMax<qreal>(TextBoxObject::MINIMUM_WIDTH,
+                            m_document->pageSizeAt(
+                                m_resizeObjectPageIndex).width()));
+        }
+
+        if (!m_textBoxResizeActivated
+            && qAbs(proposedWidth - m_resizeOriginalSize.width()) < 0.01) {
+            return;
+        }
+
+        if (!m_textBoxResizeActivated) {
+            textBox->applyState(m_resizeOriginalTextBoxState);
+            if (textBox->usesLegacyLayout())
+                textBox->upgradeToCurrentLayout();
+            m_resizeBaseTextBoxState = textBox->captureState();
+            m_resizeLastAcceptedTextBoxState =
+                m_resizeOriginalTextBoxState;
+            m_textBoxResizeActivated = true;
+        }
+
+        textBox->applyState(m_resizeBaseTextBoxState);
+        textBox->reflowToWidth(proposedWidth);
+        TextBoxState candidate = textBox->captureState();
+
+        auto rotatedObjectPoint = [](const TextBoxState& state,
+                                     const QPointF& localPoint) {
+            const QPointF center(
+                state.size.width() / 2.0, state.size.height() / 2.0);
+            const QPointF delta = localPoint - center;
+            const qreal radians = qDegreesToRadians(state.rotation);
+            const QPointF rotated(
+                delta.x() * qCos(radians) - delta.y() * qSin(radians),
+                delta.x() * qSin(radians) + delta.y() * qCos(radians));
+            return state.position + center + rotated;
+        };
+        auto positionForAnchoredPoint = [](const TextBoxState& state,
+                                           const QPointF& localPoint,
+                                           const QPointF& targetPoint) {
+            const QPointF center(
+                state.size.width() / 2.0, state.size.height() / 2.0);
+            const QPointF delta = localPoint - center;
+            const qreal radians = qDegreesToRadians(state.rotation);
+            const QPointF rotated(
+                delta.x() * qCos(radians) - delta.y() * qSin(radians),
+                delta.x() * qSin(radians) + delta.y() * qCos(radians));
+            return targetPoint - center - rotated;
+        };
+
+        const bool resizingRight =
+            m_objectResizeHandle == HandleHit::Right;
+        const QPointF originalAnchor = rotatedObjectPoint(
+            m_resizeOriginalTextBoxState,
+            resizingRight
+                ? QPointF(0.0, 0.0)
+                : QPointF(m_resizeOriginalTextBoxState.size.width(), 0.0));
+        const QPointF candidateLocalAnchor = resizingRight
+            ? QPointF(0.0, 0.0)
+            : QPointF(candidate.size.width(), 0.0);
+        candidate.position = positionForAnchoredPoint(
+            candidate, candidateLocalAnchor, originalAnchor);
+
+        if (!textBoxGeometryProposalAllowed(
+                m_resizeOriginalTextBoxState, candidate,
+                m_resizeObjectPageIndex)) {
+            textBox->applyState(m_resizeLastAcceptedTextBoxState);
+            showObjectGeometryFeedback(
+                tr("Text box cannot grow beyond the page"),
+                objectBoundsInViewport(textBox));
+            updateTextBoxFormatBarGeometry();
+            return;
+        }
+
+        textBox->applyState(candidate);
+        m_resizeLastAcceptedTextBoxState = candidate;
+        m_textBoxResizeChanged =
+            candidate.size != m_resizeOriginalTextBoxState.size
+            || candidate.position != m_resizeOriginalTextBoxState.position
+            || candidate.textLayoutVersion
+                != m_resizeOriginalTextBoxState.textLayoutVersion
+            || !qFuzzyCompare(1.0 + candidate.fontSize,
+                              1.0 + m_resizeOriginalTextBoxState.fontSize);
+        updateTextBoxFormatBarGeometry();
+        return;
+    }
     
     // Calculate scale factors based on which handle is being dragged
     qreal scaleX = 1.0;
@@ -2587,10 +2899,12 @@ QVector<int> DocumentViewport::visiblePages() const
 
 void DocumentViewport::paintEvent(QPaintEvent* event)
 {
-    // Benchmark: track paint timestamps (Task 2.6)
-    if (m_benchmarking) {
-        m_paintTimestamps.push_back(m_benchmarkTimer.elapsed());
-    }
+    // Perf instrumentation. Declared before the QPainter on purpose: the
+    // painter must be destroyed (and its work flushed) before the sampler's
+    // destructor takes the end timestamp. Recording from a destructor also
+    // means the early returns in the fast paths below are all measured.
+    ViewportPerfMonitor::FrameSampler perfSample(m_perf, event->rect(), size(),
+                                                 devicePixelRatioF());
     
     QPainter painter(this);
     // Note: Antialiasing is deferred until after gesture fast paths.
@@ -2602,8 +2916,10 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
     if (m_gesture.isActive() && !m_gesture.cachedFrame.isNull() 
         && m_gesture.startZoom > 0) {  // Guard against division by zero
         
-        // Fill background (for areas outside transformed frame)
-        painter.fillRect(rect(), m_backgroundColor);
+        // Background is filled per branch below, not here: the pan path only
+        // needs the strip its shifted frame leaves exposed, whereas a scaled
+        // frame can leave a border of any shape. Nothing pre-clears for us,
+        // since WA_OpaquePaintEvent is set.
         
         // Calculate frame size in LOGICAL pixels (not physical)
         // grab() returns a pixmap at device pixel ratio, so we must divide by DPR
@@ -2616,6 +2932,9 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
         painter.setRenderHint(QPainter::SmoothPixmapTransform, false);  // Speed over quality
         
         if (m_gesture.activeType == ViewportGestureState::Zoom) {
+            perfSample.setPath(ViewportPerfMonitor::FramePath::GestureZoom);
+            // A scaled frame can expose a border on any side, so clear it all.
+            painter.fillRect(rect(), m_backgroundColor);
             // ZOOM + PAN: Scale the cached frame around zoom center, with pan offset
             qreal relativeScale = m_gesture.targetZoom / m_gesture.startZoom;
             QSizeF scaledSize = logicalSize * relativeScale;
@@ -2640,12 +2959,27 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
             painter.drawPixmap(QRectF(scaledOrigin, scaledSize), m_gesture.cachedFrame, 
                               m_gesture.cachedFrame.rect());
         } else if (m_gesture.activeType == ViewportGestureState::Pan) {
+            perfSample.setPath(ViewportPerfMonitor::FramePath::GesturePan);
             // PAN: Shift the cached frame by pan delta
             // Pan delta in document coords → convert to viewport pixels
             QPointF panDeltaDoc = m_gesture.targetPan - m_gesture.startPan;
             QPointF panDeltaPixels = panDeltaDoc * m_gesture.startZoom * -1.0;  // Negate: pan offset increase = viewport moves opposite
             
+            // Note: no need to snap panDeltaPixels to whole device pixels. With
+            // SmoothPixmapTransform off, QRasterPaintEngine already quantises a
+            // pure-translate drawPixmap to the device pixel grid - verified by
+            // byte-comparing renders at fractional and integral offsets, which
+            // come out identical at both DPR 1 and DPR 2.
+            
+            // Clear only what the shifted frame won't cover.
+            fillBackgroundAround(painter, QRectF(panDeltaPixels, logicalSize));
+            
             painter.drawPixmap(panDeltaPixels, m_gesture.cachedFrame);
+        } else {
+            // Defensive: ViewportGestureState::ZoomAndPan is declared but never
+            // assigned. If that changes, clear rather than present a stale
+            // backing store.
+            painter.fillRect(rect(), m_backgroundColor);
         }
         
         // Skip normal rendering during gesture
@@ -2657,6 +2991,8 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
     // This avoids re-rendering all tiles/pages, providing smooth transform performance.
     if (m_isTransformingSelection && !m_selectionBackgroundSnapshot.isNull() 
         && m_lassoSelection.isValid() && !m_skipSelectionRendering) {
+        
+        perfSample.setPath(ViewportPerfMonitor::FramePath::SelectionTransform);
         
         // Draw the cached background (viewport without selection)
         qreal dpr = m_backgroundSnapshotDpr;
@@ -2682,6 +3018,8 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
     if ((m_isDraggingObjects || m_isResizingObject) 
         && !m_objectDragBackgroundSnapshot.isNull()
         && !m_skipSelectedObjectRendering) {
+        
+        perfSample.setPath(ViewportPerfMonitor::FramePath::ObjectDrag);
         
         // Draw the cached background (viewport without selected objects)
         qreal dpr = m_objectDragSnapshotDpr;
@@ -2725,7 +3063,7 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
     // ========== EDGELESS MODE ==========
     // Edgeless uses tiled rendering instead of page-based rendering
     if (m_document->isEdgeless()) {
-        renderEdgelessMode(painter);
+        renderEdgelessMode(painter, dirtyRect);
         
         // Draw eraser cursor
         if (!m_isDrawing || !isPartialUpdate) {
@@ -2734,7 +3072,7 @@ void DocumentViewport::paintEvent(QPaintEvent* event)
         
         // Debug overlay is now handled by DebugOverlay widget (source/ui/DebugOverlay.cpp)
         // Toggle with Ctrl+Shift+D
-        
+
         return;  // Done with edgeless rendering
     }
     
@@ -3118,6 +3456,9 @@ void DocumentViewport::resizeEvent(QResizeEvent* event)
         }
         
         clampPanOffset();
+        updateInlineTextEditorGeometry();
+        updateTextBoxFormatBarGeometry();
+        updateLinkObjectBarGeometry();
         update();
         emitScrollFractions();
         return;
@@ -3164,10 +3505,39 @@ void DocumentViewport::resizeEvent(QResizeEvent* event)
     if (m_missingPdfBanner && m_missingPdfBanner->isVisible()) {
         m_missingPdfBanner->setFixedWidth(width());
     }
+    updateInlineTextEditorGeometry();
+    updateTextBoxFormatBarGeometry();
+    updateLinkObjectBarGeometry();
 }
 
 void DocumentViewport::mousePressEvent(QMouseEvent* event)
 {
+    m_contextMenuObjectId.clear();
+
+    // A right-press on the box being edited is asking for that editor's text
+    // menu. It has to be recognised before the outside-click commit below,
+    // which would otherwise dismiss the editor the menu belongs to. The editor
+    // widget covers only the text area, so these are the presses that land on
+    // the box's padding ring or border.
+    m_contextMenuTargetsInlineEditor =
+        m_currentTool == ToolType::ObjectSelect
+        && event->button() == Qt::RightButton
+        && inlineEditTargetContains(SN_MOUSE_POS(event));
+    if (m_contextMenuTargetsInlineEditor) {
+        event->accept();
+        return;
+    }
+
+    // Child-widget presses stay in the editor. Any press delivered to the
+    // canvas is an explicit outside click and commits the current session.
+    if (m_inlineEditSession.active)
+        commitInlineTextEdit();
+    else {
+        closeTextBoxFormatPopups(true);
+        finishTextBoxFormatInteraction(true);
+    }
+    closeLinkObjectBarPopups(true);
+
     // Middle mouse button: start pan gesture (independent of active tool)
     if (event->button() == Qt::MiddleButton) {
         beginPanGesture();
@@ -3178,8 +3548,12 @@ void DocumentViewport::mousePressEvent(QMouseEvent* event)
         return;
     }
     
-    // Only handle left button for drawing
-    if (event->button() != Qt::LeftButton) {
+    const bool objectAlternateButton =
+        m_currentTool == ToolType::ObjectSelect && event->button() == Qt::RightButton;
+
+    // Drawing tools use left only. ObjectSelect also consumes right as the
+    // temporary alternate action mode.
+    if (event->button() != Qt::LeftButton && !objectAlternateButton) {
         event->ignore();
         return;
     }
@@ -3197,7 +3571,14 @@ void DocumentViewport::mousePressEvent(QMouseEvent* event)
         event->accept();
         return;
     }
-    
+
+    // Ignore a second mouse button while an ObjectSelect gesture is active.
+    if (m_currentTool == ToolType::ObjectSelect
+        && m_objectGestureButton != Qt::NoButton) {
+        event->accept();
+        return;
+    }
+
     PointerEvent pe = mouseToPointerEvent(event, PointerEvent::Press);
     handlePointerEvent(pe);
     event->accept();
@@ -3229,7 +3610,11 @@ void DocumentViewport::mouseMoveEvent(QMouseEvent* event)
     }
     
     // Process move if we have an active pointer or for hover
-    if (m_pointerActive || (event->buttons() & Qt::LeftButton)) {
+    const bool objectRightDrag =
+        m_currentTool == ToolType::ObjectSelect
+        && (event->buttons() & Qt::RightButton)
+        && !m_contextMenuTargetsInlineEditor;
+    if (m_pointerActive || (event->buttons() & Qt::LeftButton) || objectRightDrag) {
         PointerEvent pe = mouseToPointerEvent(event, PointerEvent::Move);
         handlePointerEvent(pe);
     } else {
@@ -3250,8 +3635,25 @@ void DocumentViewport::mouseMoveEvent(QMouseEvent* event)
             dirtyRegion += QRegion(newRectF.toAlignedRect(), QRegion::Ellipse);
             update(dirtyRegion);
         }
+        
+        // Advertise the empty space around the pages as a pan target. This
+        // takes precedence over the tool cursors while hovering there, and the
+        // tool cursor is restored on the way back onto a page.
+        const bool offPageHover =
+            s_panOutsidePagesEnabled && m_document && !m_document->isEdgeless()
+            && !m_isPanToolDragging
+            && isPointOutsideAllPages(m_lastPointerPos);
+        if (offPageHover != m_offPageHoverCursor) {
+            m_offPageHoverCursor = offPageHover;
+            if (offPageHover) {
+                setCursor(Qt::OpenHandCursor);
+            } else {
+                updateHighlighterCursor();
+            }
+        }
+        
         // Phase D.1: Update cursor for PDF link hover in Highlighter tool
-        else if (m_currentTool == ToolType::Highlighter) {
+        if (!offPageHover && m_currentTool == ToolType::Highlighter) {
             updateLinkCursor(m_lastPointerPos);
         }
     }
@@ -3269,7 +3671,9 @@ void DocumentViewport::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     
-    if (event->button() != Qt::LeftButton) {
+    const bool objectAlternateButton =
+        m_currentTool == ToolType::ObjectSelect && event->button() == Qt::RightButton;
+    if (event->button() != Qt::LeftButton && !objectAlternateButton) {
         event->ignore();
         return;
     }
@@ -3281,15 +3685,217 @@ void DocumentViewport::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     
-    // Ignore if tablet is active
-    if (m_activeSource == PointerEvent::Stylus) {
+    // Ignore duplicate mouse releases from a stylus gesture, but never swallow
+    // the release of a mouse ObjectSelect gesture if source state was disturbed.
+    if (m_activeSource == PointerEvent::Stylus
+        && m_objectGestureButton == Qt::NoButton) {
         event->accept();
         return;
     }
     
+    // The matching press was claimed for the inline editor; this release only
+    // exists to carry the context menu that follows it.
+    if (objectAlternateButton && m_contextMenuTargetsInlineEditor) {
+        event->accept();
+        return;
+    }
+
     PointerEvent pe = mouseToPointerEvent(event, PointerEvent::Release);
     handlePointerEvent(pe);
+
+    // The release just placed an inline editor under the cursor, either by
+    // creating a text box or by opening an existing one. Windows raises the
+    // context menu off this same release, so the brand-new editor would answer
+    // it with its own menu.
+    if (objectAlternateButton && m_inlineEditSession.active
+        && m_inlineTextBoxEditor) {
+        m_inlineTextBoxEditor->suppressNextContextMenu();
+    }
+
     event->accept();
+}
+
+void DocumentViewport::contextMenuEvent(QContextMenuEvent* event)
+{
+    if (m_contextMenuTargetsInlineEditor) {
+        m_contextMenuTargetsInlineEditor = false;
+        if (m_inlineTextBoxEditor && m_inlineEditSession.active) {
+            m_inlineTextBoxEditor->showTextContextMenu(event->globalPos());
+            event->accept();
+            return;
+        }
+    }
+    if (m_currentTool == ToolType::ObjectSelect) {
+        const QString target = m_contextMenuObjectId;
+        m_contextMenuObjectId.clear();
+        // Only a right-press that landed on an object opens a menu. Pressing
+        // bare page is how a new object gets created, and that must not be
+        // interrupted by one.
+        if (!target.isEmpty() && objectById(target))
+            showObjectContextMenu(event->globalPos());
+        event->accept();
+        return;
+    }
+    QWidget::contextMenuEvent(event);
+}
+
+void DocumentViewport::showObjectContextMenu(const QPoint& globalPos)
+{
+    QMenu menu(this);
+    ThemeColors::styleMenu(&menu, m_isDarkMode);
+
+    const bool hasSelection = !m_selectedObjects.isEmpty();
+
+    QAction* cutAction = menu.addAction(tr("Cut"));
+    cutAction->setEnabled(hasSelection);
+    connect(cutAction, &QAction::triggered, this, [this]() {
+        copySelectedObjects();
+        deleteSelectedObjects();
+    });
+
+    QAction* copyAction = menu.addAction(tr("Copy"));
+    copyAction->setEnabled(hasSelection);
+    connect(copyAction, &QAction::triggered,
+            this, &DocumentViewport::copySelectedObjects);
+
+    QAction* pasteAction = menu.addAction(tr("Paste"));
+    connect(pasteAction, &QAction::triggered,
+            this, &DocumentViewport::pasteForObjectSelect);
+
+    menu.addSeparator();
+
+    if (m_selectedObjects.size() == 1
+        && m_selectedObjects.first()->type() == QLatin1String("textbox")) {
+        const QString textBoxId = m_selectedObjects.first()->id;
+        QAction* editAction = menu.addAction(tr("Edit Text"));
+        connect(editAction, &QAction::triggered, this, [this, textBoxId]() {
+            InsertedObject* object = objectById(textBoxId);
+            if (object && object->type() == QLatin1String("textbox"))
+                startInlineTextEdit(static_cast<TextBoxObject*>(object), false);
+        });
+        menu.addSeparator();
+    }
+
+    QAction* deleteAction = menu.addAction(tr("Delete"));
+    deleteAction->setEnabled(hasSelection);
+    connect(deleteAction, &QAction::triggered,
+            this, &DocumentViewport::deleteSelectedObjects);
+
+    menu.exec(globalPos);
+}
+
+QPointF DocumentViewport::applyTrackpadAxisLock(const QWheelEvent* event,
+                                                QPointF scrollDelta,
+                                                QPoint pixelDelta)
+{
+#ifdef Q_OS_MACOS
+    // A conventional wheel reports no phase and no pixel delta.  Its discrete
+    // steps need no help staying on one axis, and without phases there is no
+    // gesture boundary to latch a decision against.
+    if (event->phase() == Qt::NoScrollPhase || pixelDelta.isNull()) {
+        return scrollDelta;
+    }
+
+    // Shift and backtick are explicit requests for a specific axis (see the
+    // dispatch below), so the lock must not second-guess them.
+    if ((event->modifiers() & Qt::ShiftModifier) || m_backtickHeld) {
+        return scrollDelta;
+    }
+
+    // ScrollBegin is the only reliable reset point.  macOS sends ScrollEnd when
+    // the fingers lift, then keeps sending momentum updates followed by a second
+    // ScrollEnd, so resetting on ScrollEnd would unlock mid-fling and let the
+    // momentum drift off-axis.
+    if (event->phase() == Qt::ScrollBegin) {
+        m_scrollLock = ScrollAxisLock::Undecided;
+        m_scrollLockAccum = QPointF();
+        m_scrollLockCross = 0.0;
+    }
+
+    // The toolbar's Y-axis-only mode is a hard lock, matching what
+    // TouchGestureHandler applies to touchscreen pans.  Disabled is deliberately
+    // not treated as "no lock": it means no touchscreen gestures, and on a Mac
+    // the trackpad is the primary way to scroll.
+    if (touchGestureMode() == TouchGestureMode::YAxisOnly) {
+        scrollDelta.setX(0);
+        return scrollDelta;
+    }
+
+    const qreal dx = pixelDelta.x();
+    const qreal dy = pixelDelta.y();
+
+    if (m_scrollLock == ScrollAxisLock::Undecided) {
+        m_scrollLockAccum += QPointF(dx, dy);
+        const qreal ax = qAbs(m_scrollLockAccum.x());
+        const qreal ay = qAbs(m_scrollLockAccum.y());
+        const qreal strong = qMax(ax, ay);
+
+        if (strong < SCROLL_LOCK_DECIDE_PX) {
+            // Still ambiguous.  Pass both axes through so scrolling responds
+            // from the very first event; the leak is bounded by the threshold.
+            return scrollDelta;
+        }
+
+        // A gesture already travelling well off-axis is a deliberate diagonal.
+        // Locking it just to make the user fight back out is wasted effort, so
+        // commit straight to Free.
+        if (qMin(ax, ay) >= strong * SCROLL_LOCK_DIAGONAL_RATIO) {
+            m_scrollLock = ScrollAxisLock::Free;
+            return scrollDelta;
+        }
+
+        m_scrollLock = (ay >= ax) ? ScrollAxisLock::Vertical
+                                  : ScrollAxisLock::Horizontal;
+        m_scrollLockCross = 0.0;
+    }
+
+    // Once released, stay released until the next gesture.  Re-evaluating here
+    // is what made a diagonal impossible to hold: the lock kept re-forming
+    // under the user mid-drag.
+    if (m_scrollLock == ScrollAxisLock::Free) {
+        return scrollDelta;
+    }
+
+    const bool vertical = (m_scrollLock == ScrollAxisLock::Vertical);
+    const qreal along = vertical ? dy : dx;
+    const qreal cross = vertical ? dx : dy;
+
+    // Momentum must never break a lock the user's fingers established.
+    if (event->phase() != Qt::ScrollMomentum) {
+        if (qAbs(cross) > qAbs(along) * SCROLL_LOCK_CROSS_RATIO) {
+            // Reversing direction restarts the push, so a wobble that happens to
+            // straddle the threshold cannot creep past it.
+            if (!qFuzzyIsNull(m_scrollLockCross) && (cross > 0) != (m_scrollLockCross > 0)) {
+                m_scrollLockCross = 0.0;
+            }
+            m_scrollLockCross += cross;
+        } else {
+            // Too shallow to be intent.  Discarding it is what keeps a straight
+            // scroll straight however far it runs, since every one of its cross
+            // deltas shares a sign and would otherwise accumulate.
+            m_scrollLockCross = 0.0;
+        }
+
+        if (qAbs(m_scrollLockCross) >= SCROLL_LOCK_BREAKOUT_PX) {
+            // Release rather than flip to the perpendicular axis.  The user is
+            // steering, and a flip would only trade one fight for another.
+            m_scrollLock = ScrollAxisLock::Free;
+            m_scrollLockCross = 0.0;
+            return scrollDelta;
+        }
+    }
+
+    if (m_scrollLock == ScrollAxisLock::Vertical) {
+        scrollDelta.setX(0);
+    } else {
+        scrollDelta.setY(0);
+    }
+    return scrollDelta;
+#else
+    Q_UNUSED(event);
+    Q_UNUSED(pixelDelta);
+    return scrollDelta;
+#endif
 }
 
 void DocumentViewport::wheelEvent(QWheelEvent* event)
@@ -3345,6 +3951,10 @@ void DocumentViewport::wheelEvent(QWheelEvent* event)
         scrollDelta.setX(-angleDelta.x() / 120.0 * scrollSpeed);
         scrollDelta.setY(-angleDelta.y() / 120.0 * scrollSpeed);
     }
+    
+    // macOS trackpads deliver both axes with no OS-level lock, so keeping a
+    // scroll straight is otherwise up to the steadiness of the user's fingers.
+    scrollDelta = applyTrackpadAxisLock(event, scrollDelta, pixelDelta);
     
     if (!scrollDelta.isNull()) {
         // Check for Shift modifier → Deferred horizontal pan
@@ -3406,20 +4016,10 @@ void DocumentViewport::keyPressEvent(QKeyEvent* event)
     // are now handled by MainWindow's QShortcut system so they work 
     // regardless of which widget has focus.
     
-    // ===== Debug Shortcut (kept as hardcoded - development only) =====
-#ifdef SPEEDYNOTE_DEBUG
-    // F10 = Toggle benchmark (debug builds only, conflicts with tool.pen in release)
-    if (event->key() == Qt::Key_F10) {
-        if (m_benchmarking) {
-            stopBenchmark();
-        } else {
-            startBenchmark();
-        }
-        update();
-        event->accept();
-        return;
-    }
-#endif
+    // ===== Note: perf HUD toggle moved to MainWindow =====
+    // The paint instrumentation toggle is registered as "view.perf_hud" in
+    // ShortcutManager so it works in release builds, is remappable, and does
+    // not require the viewport to hold keyboard focus.
     
     // Pass unhandled keys to parent
     QWidget::keyPressEvent(event);
@@ -3469,6 +4069,15 @@ void DocumentViewport::focusOutEvent(QFocusEvent* event)
             endPanGesture();
         }
     }
+
+    // The gesture above is gone, but the drag flags that fed it are not: left
+    // set, they swallow the next press as a continuation of a dead drag.
+    cancelOffPagePan();
+    m_isPanToolDragging = false;
+
+    if (hasActiveObjectPointerGesture()) {
+        cancelObjectPointerGesture();
+    }
     
     QWidget::focusOutEvent(event);
 }
@@ -3479,6 +4088,12 @@ void DocumentViewport::hideEvent(QHideEvent* event)
     qDebug() << "[DocumentViewport] hideEvent - clearing gesture state"
              << "wasActive:" << m_gesture.isActive();
 #endif
+    closeTextBoxFormatPopups(true);
+    closeLinkObjectBarPopups(true);
+    finishTextBoxFormatInteraction(true);
+    if (m_inlineEditSession.active)
+        commitInlineTextEdit();
+    commitHighlightAdjust();
     
     // BUG-A005 v4 FIX: Clear gesture state when viewport is hidden
     // When user goes to launcher and comes back, any stale gesture state
@@ -3488,10 +4103,18 @@ void DocumentViewport::hideEvent(QHideEvent* event)
         m_gestureTimeoutTimer->stop();
     }
     
+    m_offPagePanArmed = false;
+    m_offPagePanDragging = false;
+    m_isPanToolDragging = false;
+    
     // Also reset touch handler state including inertia
     // This prevents inertia callbacks from accessing invalid widget state
     if (m_touchHandler) {
         m_touchHandler->reset();
+    }
+
+    if (hasActiveObjectPointerGesture()) {
+        cancelObjectPointerGesture();
     }
     
     // Release stroke cache when hidden (reclaim memory while not visible)
@@ -3531,6 +4154,8 @@ void DocumentViewport::showEvent(QShowEvent* event)
     }
     
     QWidget::showEvent(event);
+    syncTextBoxFormatBar();
+    syncLinkObjectBar();
 }
 
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
@@ -3591,11 +4216,26 @@ void DocumentViewport::leaveEvent(QEvent* event)
 
 void DocumentViewport::tabletEvent(QTabletEvent* event)
 {
+    // Stylus events over the inline editor or the formatting bar arrive here
+    // by propagation. Leave them unhandled so Qt synthesizes mouse events for
+    // those widgets instead of treating the pen as a canvas interaction.
+    if (!m_pointerActive && pointerOverTextOverlay(SN_EVENT_POS(event))) {
+        event->ignore();
+        return;
+    }
+
     // Determine event type
     PointerEvent::Type peType;
     switch (event->type()) {
         case QEvent::TabletPress:
             peType = PointerEvent::Press;
+            if (m_inlineEditSession.active)
+                commitInlineTextEdit();
+            else {
+                closeTextBoxFormatPopups(true);
+                finishTextBoxFormatInteraction(true);
+            }
+            closeLinkObjectBarPopups(true);
             break;
         case QEvent::TabletMove:
             peType = PointerEvent::Move;
@@ -3606,6 +4246,13 @@ void DocumentViewport::tabletEvent(QTabletEvent* event)
         default:
             event->ignore();
             return;
+    }
+
+    // Do not let a stylus press preempt a mouse ObjectSelect gesture and erase
+    // its initiating-button/effective-mode state.
+    if (m_pointerActive && m_activeSource == PointerEvent::Mouse) {
+        event->accept();
+        return;
     }
     
     // ===== Tablet Hover Tracking for Eraser Cursor =====
@@ -3839,7 +4486,7 @@ void DocumentViewport::beginZoomGesture(QPointF centerPoint)
     m_gesture.initialCentroidSet = true;
     
     // Capture current viewport as cached frame for fast scaling
-    m_gesture.cachedFrame = grab();
+    m_gesture.cachedFrame = grabOpaqueViewport();
     // Store device pixel ratio for correct scaling on high-DPI displays
     m_gesture.frameDevicePixelRatio = m_gesture.cachedFrame.devicePixelRatio();
     
@@ -3974,7 +4621,7 @@ void DocumentViewport::beginPanGesture()
     m_gesture.targetPan = m_panOffset;
     
     // Capture current viewport as cached frame for fast shifting
-    m_gesture.cachedFrame = grab();
+    m_gesture.cachedFrame = grabOpaqueViewport();
     // Store device pixel ratio for correct positioning on high-DPI displays
     m_gesture.frameDevicePixelRatio = m_gesture.cachedFrame.devicePixelRatio();
     
@@ -4738,6 +5385,11 @@ void DocumentViewport::preloadStrokeCaches()
         QVector<int> loadedIndices = m_document->loadedPageIndices();
         for (int i : loadedIndices) {
             if (i < keepStart || i > keepEnd) {
+                if (m_inlineEditSession.active
+                    && m_inlineEditSession.document == m_document
+                    && m_inlineEditSession.pageIndex == i) {
+                    continue;
+                }
                 // CR-O1: Clear selection for objects on pages about to be evicted
                 Page* page = m_document->page(i);  // Already loaded, no disk I/O
                 if (page && !page->objects.empty()) {
@@ -4842,6 +5494,11 @@ void DocumentViewport::evictDistantTiles()
     bool selectionChanged = false;
     
     for (const auto& coord : loadedTiles) {
+        if (m_inlineEditSession.active
+            && m_inlineEditSession.document == m_document
+            && m_inlineEditSession.tileCoord == coord) {
+            continue;
+        }
         // Phase 5.6.5: No longer need to protect origin tile - layer structure comes from manifest
         
         QRectF tileRect(coord.first * tileSize, coord.second * tileSize,
@@ -4942,6 +5599,7 @@ PointerEvent DocumentViewport::mouseToPointerEvent(QMouseEvent* event, PointerEv
     // Hardware state
     pe.isEraser = false;
     pe.stylusButtons = 0;
+    pe.button = event->button();
     pe.buttons = event->buttons();
     pe.modifiers = event->modifiers();
     pe.timestamp = QDateTime::currentMSecsSinceEpoch();
@@ -4999,6 +5657,7 @@ PointerEvent DocumentViewport::tabletToPointerEvent(QTabletEvent* event, Pointer
     // Barrel buttons - Qt provides via buttons()
     // Common mappings: barrel button 1 = Qt::MiddleButton, barrel button 2 = Qt::RightButton
     pe.stylusButtons = static_cast<int>(event->buttons());
+    pe.button = event->button();
     pe.buttons = event->buttons();
     pe.modifiers = event->modifiers();
     pe.timestamp = QDateTime::currentMSecsSinceEpoch();
@@ -5058,6 +5717,18 @@ void DocumentViewport::handlePointerPress(const PointerEvent& pe)
             emit undoAvailableChanged(canUndo());
             emit redoAvailableChanged(canRedo());
         }
+    }
+    
+    // Empty space around the pages acts as the Pan tool, so a stylus user can
+    // move the view without reaching for the keyboard or a touchscreen. Only
+    // armed here: the gesture becomes a pan on the first move past the slop, so
+    // a tap costs no viewport grab and still reaches handleOffPagePanTap().
+    if (shouldArmOffPagePan(pe)) {
+        m_offPagePanArmed = true;
+        m_offPagePanDragging = false;
+        m_offPagePanStart = pe.viewportPos;
+        m_offPagePanModifiers = pe.modifiers;
+        return;
     }
     
     // Handle tool-specific actions
@@ -5135,6 +5806,26 @@ void DocumentViewport::handlePointerMove(const PointerEvent& pe)
     
     // Update last pointer position for cursor tracking
     m_lastPointerPos = pe.viewportPos;
+    
+    // Off-page pan runs ahead of every tool branch, the eraser included: a
+    // hardware eraser press sets m_hardwareEraserActive before dispatch, so
+    // checking this later would pan and erase at the same time.
+    if (m_offPagePanArmed) {
+        if (!m_offPagePanDragging) {
+            if (QLineF(m_offPagePanStart, pe.viewportPos).length()
+                <= OFF_PAGE_PAN_TAP_SLOP_PX) {
+                return;  // Still within the tap slop - decide on release
+            }
+            // Seed the gesture from the press position so the movement that
+            // crossed the slop is not swallowed.
+            PointerEvent seed = pe;
+            seed.viewportPos = m_offPagePanStart;
+            handlePointerPress_Pan(seed);
+            m_offPagePanDragging = true;
+        }
+        handlePointerMove_Pan(pe);
+        return;
+    }
     
     // CRITICAL: Some tablet drivers don't report eraser on Press but DO report it on Move.
     // If ANY event in the stroke has isEraser, treat the whole stroke as eraser.
@@ -5272,6 +5963,27 @@ void DocumentViewport::handlePointerMove(const PointerEvent& pe)
 void DocumentViewport::handlePointerRelease(const PointerEvent& pe)
 {
     if (!m_document) return;
+    
+    // Off-page pan: either finish the pan, or treat a press that never moved as
+    // the tap that used to clear the selection.
+    if (m_offPagePanArmed) {
+        if (m_offPagePanDragging) {
+            handlePointerRelease_Pan(pe);
+        } else {
+            handleOffPagePanTap();
+        }
+        
+        m_offPagePanArmed = false;
+        m_offPagePanDragging = false;
+        m_pointerActive = false;
+        m_activeSource = PointerEvent::Unknown;
+        m_activeDrawingPage = -1;
+        m_hardwareEraserActive = false;
+        
+        updateHighlighterCursor();
+        update();
+        return;
+    }
     
     // Eraser lasso: finalize and delete strokes inside the region
     if (m_isDrawingEraserLasso) {
@@ -6162,9 +6874,24 @@ void DocumentViewport::handlePointerRelease_Lasso(const PointerEvent& pe)
 void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
 {
     if (!m_document) return;
-    
-    // Phase C.4.4: Create mode - insert object at click position instead of selecting
-    if (m_objectActionMode == ObjectActionMode::Create) {
+
+    beginObjectPointerGesture(pe);
+
+    // The right button is a quick inverse of the persistent mode, so a
+    // right-press that lands on an object means "act on this one" rather than
+    // "stack a new one on top of it". The left button in Create mode still
+    // inserts wherever it is pressed.
+    InsertedObject* const alternateTarget =
+        (pe.source == PointerEvent::Mouse
+         && m_objectGestureButton == Qt::RightButton)
+        ? objectAtPoint(viewportToDocument(pe.viewportPos))
+        : nullptr;
+    m_contextMenuObjectId = alternateTarget ? alternateTarget->id : QString();
+
+    // The right mouse button temporarily uses the opposite action mode without
+    // changing the persistent action-bar state.
+    if (m_objectGestureActionMode == ObjectActionMode::Create
+        && !alternateTarget) {
         PageHit hit = viewportToPage(pe.viewportPos);
         if (hit.pageIndex < 0) {
             // Click not on any page - ignore in paged mode
@@ -6172,6 +6899,7 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
 #ifdef SPEEDYNOTE_DEBUG
                 qDebug() << "handlePointerPress_ObjectSelect: Create mode click not on page";
 #endif
+                cancelObjectPointerGesture();
                 return;
             }
             // Edgeless: use document coordinates directly
@@ -6189,6 +6917,7 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
             // KDE Plasma 6 Wayland re-trigger this branch and open another
             // dialog (stack-of-dialogs crash).
             if (m_objectInsertDialogActive) {
+                cancelObjectPointerGesture();
                 return;
             }
             m_objectInsertDialogActive = true;
@@ -6203,10 +6932,12 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
             QTimer::singleShot(0, this, [this]() {
                 m_objectInsertDialogActive = false;
             });
+            cancelObjectPointerGesture();
         } else if (m_objectInsertMode == ObjectInsertMode::Link) {
             // Create empty LinkObject at position
             // Pass viewportPos so edgeless mode can determine correct tile
             createLinkObjectAtPosition(hit.pageIndex, hit.pagePoint, pe.viewportPos);
+            cancelObjectPointerGesture();
         } else if (m_objectInsertMode == ObjectInsertMode::Text) {
             m_isCreatingTextBox = true;
             if (m_document && m_document->isEdgeless()) {
@@ -6214,7 +6945,6 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
             } else {
                 m_textBoxCreateStartDoc = hit.pagePoint;
             }
-            m_textBoxCreateStartVP = pe.viewportPos;
             m_textBoxCreatePageIndex = hit.pageIndex;
             m_pointerActive = true;
             return;
@@ -6228,8 +6958,9 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
         if (handle != HandleHit::None && handle != HandleHit::Inside) {
             InsertedObject* obj = m_selectedObjects.first();
             
-            // Phase C.2.2: LinkObject doesn't resize - skip resize handle interaction
-            // Allow the click to fall through to drag logic instead
+            // Annotations don't resize. objectHandleAtPoint() already returns
+            // None for them, so this is belt and braces; the click falls
+            // through to drag logic.
             if (obj->type() != "link") {
                 // Start resize operation (non-LinkObject only)
             m_isResizingObject = true;
@@ -6239,6 +6970,17 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
             m_resizeOriginalPosition = obj->position;  // Tile-local, for undo
             m_resizeOriginalRotation = obj->rotation;  // Phase O3.1.8.2
             m_resizeObjectPageIndex = -1;              // Resolved by the search below
+            m_hasResizeTextBoxState = false;
+            m_textBoxResizeActivated = false;
+            m_textBoxResizeChanged = false;
+            if (obj->type() == QLatin1String("textbox")
+                && (handle == HandleHit::Left || handle == HandleHit::Right)) {
+                auto* textBox = static_cast<TextBoxObject*>(obj);
+                m_resizeOriginalTextBoxState = textBox->captureState();
+                m_resizeBaseTextBoxState = m_resizeOriginalTextBoxState;
+                m_resizeLastAcceptedTextBoxState = m_resizeOriginalTextBoxState;
+                m_hasResizeTextBoxState = true;
+            }
             m_pointerActive = true;
             
             // BF: Calculate document-global center for scale calculations
@@ -6274,6 +7016,11 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
             
             // Phase O4.1: Capture background for fast resize rendering
             captureObjectDragBackground();
+            if (m_hasResizeTextBoxState) {
+                // Reflow changes line breaks and height; stretching the old
+                // pixmap would visually scale text and contradict the model.
+                m_dragObjectRenderedCache = QPixmap();
+            }
             
             return;  // Don't start object drag
             }
@@ -6293,65 +7040,37 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
         if (textBox && !textBox->text.isEmpty()) {
             QString href;
 
-            // Strategy 1: QTextDocument anchorHref for rendered Markdown links
-            if (textBox->isMarkdown()) {
-                constexpr qreal screenPad = 2.0;
-                qreal pagePad = screenPad / m_zoomLevel;
-                bool foundLocal = false;
-                QPointF localPos;
-                if (m_document->isEdgeless()) {
-                    for (const auto& coord : m_document->allLoadedTileCoords()) {
-                        Page* tile = m_document->getTile(coord.first, coord.second);
-                        if (!tile) continue;
-                        for (const auto& obj : tile->objects) {
-                            if (obj.get() == hitObject) {
-                                QPointF tileOrigin(
-                                    coord.first * Document::EDGELESS_TILE_SIZE,
-                                    coord.second * Document::EDGELESS_TILE_SIZE);
-                                localPos = docPoint - tileOrigin - textBox->position
-                                           - QPointF(pagePad, pagePad);
-                                foundLocal = true;
-                                break;
-                            }
+            // Strategy 1: use the same layout and coordinate transform as
+            // rendering/search. The helper also handles rotated text boxes.
+            bool foundLocal = false;
+            QPointF localPos;
+            if (m_document->isEdgeless()) {
+                for (const auto& coord : m_document->allLoadedTileCoords()) {
+                    Page* tile = m_document->getTile(coord.first, coord.second);
+                    if (!tile) continue;
+                    for (const auto& obj : tile->objects) {
+                        if (obj.get() == hitObject) {
+                            const QPointF tileOrigin(
+                                coord.first * Document::EDGELESS_TILE_SIZE,
+                                coord.second * Document::EDGELESS_TILE_SIZE);
+                            localPos =
+                                docPoint - tileOrigin - textBox->position;
+                            foundLocal = true;
+                            break;
                         }
-                        if (foundLocal) break;
                     }
-                } else {
-                    int pageIdx = pageAtPoint(docPoint);
-                    if (pageIdx >= 0) {
-                        localPos = docPoint - pagePosition(pageIdx) - textBox->position
-                                   - QPointF(pagePad, pagePad);
-                        foundLocal = true;
-                    }
+                    if (foundLocal) break;
                 }
-
-                if (foundLocal) {
-                    qreal docWidth = textBox->size.width() - 2.0 * pagePad;
-                    if (docWidth > 0.0) {
-                        QTextDocument* doc = textBox->ensureDocCache(docWidth);
-                        if (doc) {
-                            if (textBox->fontSize <= 0.0 && doc->size().height() > 0.0) {
-                                qreal availHeight = textBox->size.height() - 2.0 * pagePad;
-                                if (doc->size().height() > availHeight && availHeight > 0.0) {
-                                    qreal autoScale = availHeight / doc->size().height();
-                                    localPos /= autoScale;
-                                }
-                            }
-
-                            int cursorPos = doc->documentLayout()->hitTest(localPos, Qt::FuzzyHit);
-                            if (cursorPos >= 0) {
-                                QTextCursor cursor(doc);
-                                cursor.setPosition(cursorPos);
-                                href = cursor.charFormat().anchorHref();
-                                if (href.isEmpty() && cursorPos + 1 <= doc->characterCount()) {
-                                    cursor.setPosition(cursorPos + 1);
-                                    href = cursor.charFormat().anchorHref();
-                                }
-                            }
-                        }
-                    }
+            } else {
+                const int pageIdx = pageAtPoint(docPoint);
+                if (pageIdx >= 0) {
+                    localPos =
+                        docPoint - pagePosition(pageIdx) - textBox->position;
+                    foundLocal = true;
                 }
             }
+            if (foundLocal)
+                href = textBox->anchorAtLocalPoint(localPos, m_zoomLevel);
 
             // Strategy 2: Regex for Markdown [text](url) links
             if (href.isEmpty()) {
@@ -6374,13 +7093,14 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
             }
 
             if (!href.isEmpty()) {
+                cancelObjectPointerGesture();
                 QDesktopServices::openUrl(QUrl(href));
                 return;
             }
         }
     }
 
-    // Double-click detection for text editing (Phase 2B)
+    // Double-click: edit a user text box, or offer to convert OCR text
     static QElapsedTimer lastObjClickTimer;
     static QPointF lastObjClickPos;
     static int objClickCount = 0;
@@ -6397,8 +7117,23 @@ void DocumentViewport::handlePointerPress_ObjectSelect(const PointerEvent& pe)
 
     if (objClickCount == 2 && hitObject) {
         const QString t = hitObject->type();
-        if (t == QLatin1String("textbox") || t == QLatin1String("ocr_text")) {
-            emit openTextEditorRequested(hitObject);
+        if (t == QLatin1String("textbox")) {
+            cancelObjectPointerGesture();
+            if (!m_selectedObjects.contains(hitObject)) {
+                deselectAllObjects();
+                selectObject(hitObject, false);
+            }
+            startInlineTextEdit(
+                static_cast<TextBoxObject*>(hitObject), false);
+            return;
+        }
+        if (t == QLatin1String("ocr_text")) {
+            cancelObjectPointerGesture();
+            if (!m_selectedObjects.contains(hitObject)) {
+                deselectAllObjects();
+                selectObject(hitObject, false);
+            }
+            emit convertOcrTextRequested(hitObject);
             return;
         }
     }
@@ -6501,10 +7236,27 @@ void DocumentViewport::handlePointerMove_ObjectSelect(const PointerEvent& pe)
 
 void DocumentViewport::handlePointerRelease_ObjectSelect(const PointerEvent& pe)
 {
+    if (pe.source == PointerEvent::Mouse
+        && m_objectGestureButton != Qt::NoButton
+        && pe.button != m_objectGestureButton) {
+        if (!(pe.buttons & m_objectGestureButton)) {
+            // The initiating release was lost (for example during input-source
+            // interleaving). Roll back rather than leaving a stuck preview.
+            cancelObjectPointerGesture();
+        }
+        return;
+    }
+
+    auto finishGesture = [this]() {
+        m_pointerActive = false;
+        m_activeSource = PointerEvent::Unknown;
+        m_hardwareEraserActive = false;
+        resetObjectPointerGesture();
+    };
+
     // Phase 2C: Finalize text box creation
     if (m_isCreatingTextBox) {
         m_isCreatingTextBox = false;
-        m_pointerActive = false;
 
         PageHit releaseHit = viewportToPage(pe.viewportPos);
         QPointF releasePagePoint;
@@ -6517,22 +7269,10 @@ void DocumentViewport::handlePointerRelease_ObjectSelect(const PointerEvent& pe)
                 ? releaseHit.pagePoint : m_textBoxCreateStartDoc;
         }
 
-        QRectF rect = QRectF(m_textBoxCreateStartDoc, releasePagePoint).normalized();
+        const QRectF rect = proposedTextBoxCreationRect(
+            m_textBoxCreateStartDoc, releasePagePoint, pageIndex);
 
-        static constexpr qreal MIN_W = 40.0;
-        static constexpr qreal MIN_H = 20.0;
-        static constexpr qreal DEFAULT_W = 200.0;
-        static constexpr qreal DEFAULT_H = 40.0;
-
-        if (rect.width() < MIN_W && rect.height() < MIN_H) {
-            rect = QRectF(m_textBoxCreateStartDoc.x() - DEFAULT_W / 2.0,
-                          m_textBoxCreateStartDoc.y() - DEFAULT_H / 2.0,
-                          DEFAULT_W, DEFAULT_H);
-        } else {
-            if (rect.width() < MIN_W) rect.setWidth(MIN_W);
-            if (rect.height() < MIN_H) rect.setHeight(MIN_H);
-        }
-
+        finishGesture();
         createTextBoxAtRect(pageIndex, rect, pe.viewportPos);
         return;
     }
@@ -6541,16 +7281,21 @@ void DocumentViewport::handlePointerRelease_ObjectSelect(const PointerEvent& pe)
     if (m_isResizingObject) {
         InsertedObject* obj = m_selectedObjects.isEmpty() ? nullptr : m_selectedObjects.first();
         // Check if any transform property changed (position, size, or rotation)
-        bool changed = obj && (obj->size != m_resizeOriginalSize || 
-                               obj->position != m_resizeOriginalPosition ||
-                               obj->rotation != m_resizeOriginalRotation);  // O3.1.8.3
+        bool changed = m_hasResizeTextBoxState
+            ? m_textBoxResizeChanged
+            : obj && (obj->size != m_resizeOriginalSize ||
+                      obj->position != m_resizeOriginalPosition ||
+                      obj->rotation != m_resizeOriginalRotation);
+        if (m_hasResizeTextBoxState && !changed && obj
+            && obj->type() == QLatin1String("textbox")) {
+            static_cast<TextBoxObject*>(obj)->applyState(
+                m_resizeOriginalTextBoxState);
+        }
         if (changed) {
             // Phase O3.1.5/O3.1.8.3: Create undo entry for resize/rotate
             bool aspectLock = true;
             if (auto* img = dynamic_cast<ImageObject*>(obj))
                 aspectLock = img->maintainAspectRatio;
-            pushObjectResizeUndo(obj, m_resizeOriginalPosition, m_resizeOriginalSize,
-                                 m_resizeOriginalRotation, aspectLock);
             
             // Mark dirty
             if (m_document) {
@@ -6560,19 +7305,35 @@ void DocumentViewport::handlePointerRelease_ObjectSelect(const PointerEvent& pe)
                     // Mark tile dirty - use cached tile coord for efficiency
                     m_document->markTileDirty(m_dragObjectTileCoord);
                 } else {
-                    int pageIdx = (m_dragObjectPageIndex >= 0) ? m_dragObjectPageIndex : m_currentPageIndex;
+                    int pageIdx = m_resizeObjectPageIndex >= 0
+                        ? m_resizeObjectPageIndex
+                        : ((m_dragObjectPageIndex >= 0)
+                            ? m_dragObjectPageIndex
+                            : m_currentPageIndex);
                     m_document->markPageDirty(pageIdx);
                     m_pendingThumbnailPages.insert(pageIdx);
+                    emit pageModified(pageIdx);
                 }
             }
+            pushObjectResizeUndo(obj, m_resizeOriginalPosition,
+                                 m_resizeOriginalSize,
+                                 m_resizeOriginalRotation, aspectLock,
+                                 m_hasResizeTextBoxState
+                                     ? &m_resizeOriginalTextBoxState
+                                     : nullptr);
             
             emit documentModified();
+            if (m_hasResizeTextBoxState)
+                emit textBoxLayoutCommitted();
         }
         
         m_isResizingObject = false;
         m_objectResizeHandle = HandleHit::None;
         m_resizeObjectPageIndex = -1;
-        m_pointerActive = false;
+        m_hasResizeTextBoxState = false;
+        m_textBoxResizeActivated = false;
+        m_textBoxResizeChanged = false;
+        finishGesture();
         
         // Phase O4.1: Clear background snapshot and object cache, trigger full re-render
         m_objectDragBackgroundSnapshot = QPixmap();
@@ -6708,18 +7469,27 @@ void DocumentViewport::handlePointerRelease_ObjectSelect(const PointerEvent& pe)
         update();
     }
     
-    m_pointerActive = false;
+    finishGesture();
 }
 
 void DocumentViewport::clearObjectSelection()
 {
+    // The inline editor is anchored to a selected object, so it cannot outlive
+    // the selection: leaving it up would float a live editor over a canvas with
+    // nothing selected and silently drop whatever the user typed next.
+    if (m_inlineEditSession.active)
+        commitInlineTextEdit();
+    // Same reasoning for Adjust: its target is the selected annotation.
+    commitHighlightAdjust();
+
+    closeTextBoxFormatPopups(true);
+    closeLinkObjectBarPopups(true);
+    finishTextBoxFormatInteraction(true);
+    cancelObjectPointerGesture();
+
     bool hadSelection = !m_selectedObjects.isEmpty();
     m_selectedObjects.clear();
     m_hoveredObject = nullptr;
-    m_isDraggingObjects = false;
-    m_isCreatingTextBox = false;
-    m_objectOriginalPositions.clear();
-    m_objectOriginalPageIndices.clear();
     if (hadSelection) {
         for (int p : m_pendingThumbnailPages)
             emit pageModified(p);
@@ -6887,7 +7657,12 @@ QVector<DocumentViewport::PageRelocation> DocumentViewport::relocateObjectsToCor
 void DocumentViewport::selectObject(InsertedObject* obj, bool addToSelection)
 {
     if (!obj) return;
-    
+
+    // Commit a pending description edit while its object is still the selected
+    // one. Doing this after the selection moves would apply the text to the
+    // newly selected object instead.
+    closeLinkObjectBarPopups(true);
+
     bool changed = false;
     
     if (!addToSelection) {
@@ -6906,9 +7681,14 @@ void DocumentViewport::selectObject(InsertedObject* obj, bool addToSelection)
     }
     
     if (changed) {
+        closeTextBoxFormatPopups(true);
+        finishTextBoxFormatInteraction(true);
         emit objectSelectionChanged();
         
-        // Phase C.2.4: Auto-switch insert mode based on selected object type
+        // Phase C.2.4: Auto-switch insert mode based on selected object type.
+        // Assign directly rather than calling setObjectInsertMode(): selection
+        // happens during a Select press, and the public setter intentionally
+        // cancels active gestures initiated by an external mode change.
         if (m_selectedObjects.size() == 1) {
             InsertedObject* selected = m_selectedObjects.first();
             ObjectInsertMode newMode = m_objectInsertMode;
@@ -6917,6 +7697,8 @@ void DocumentViewport::selectObject(InsertedObject* obj, bool addToSelection)
                 newMode = ObjectInsertMode::Image;
             } else if (selected->type() == "link") {
                 newMode = ObjectInsertMode::Link;
+            } else if (selected->type() == "textbox") {
+                newMode = ObjectInsertMode::Text;
             }
             
             if (newMode != m_objectInsertMode) {
@@ -6933,6 +7715,11 @@ void DocumentViewport::deselectObject(InsertedObject* obj)
 {
     if (!obj) return;
     
+    if (m_selectedObjects.contains(obj)) {
+        closeTextBoxFormatPopups(true);
+        closeLinkObjectBarPopups(true);
+        finishTextBoxFormatInteraction(true);
+    }
     if (m_selectedObjects.removeOne(obj)) {
         emit objectSelectionChanged();
         update();
@@ -6941,8 +7728,25 @@ void DocumentViewport::deselectObject(InsertedObject* obj)
 
 void DocumentViewport::deselectAllObjects()
 {
+    if (hasActiveObjectPointerGesture()) {
+        cancelObjectPointerGesture();
+    }
+
+    // Commit before the early return: page deletion deselects first and then
+    // snapshots the page, so committing here is what puts in-progress text into
+    // the undo snapshot instead of losing it behind a still-visible editor.
+    if (m_inlineEditSession.active)
+        commitInlineTextEdit();
+    // Adjust's target is the selection, and its gestures are already applied to
+    // the mark, so the session has to land its undo entry here for the same
+    // reason.
+    commitHighlightAdjust();
+
     if (m_selectedObjects.isEmpty()) return;
 
+    closeTextBoxFormatPopups(true);
+    closeLinkObjectBarPopups(true);
+    finishTextBoxFormatInteraction(true);
     m_selectedObjects.clear();
     for (int p : m_pendingThumbnailPages)
         emit pageModified(p);
@@ -6981,6 +7785,9 @@ void DocumentViewport::deselectObjectById(const QString& objectId)
 {
     for (int i = static_cast<int>(m_selectedObjects.size()) - 1; i >= 0; --i) {
         if (m_selectedObjects[i] && m_selectedObjects[i]->id == objectId) {
+            closeTextBoxFormatPopups(true);
+            closeLinkObjectBarPopups(true);
+            finishTextBoxFormatInteraction(true);
             m_selectedObjects.removeAt(i);
             emit objectSelectionChanged();
             update();
@@ -7117,6 +7924,8 @@ void DocumentViewport::updateObjectDrag(const QPointF& totalDelta)
     // Note: Page/tile dirty marking is done on drag release (O2.3.2)
     // to avoid marking dirty on every micro-movement during drag.
     // Tile boundary crossing is handled in O2.3.4.
+    updateTextBoxFormatBarGeometry();
+    updateLinkObjectBarGeometry();
     
     // Phase O4.1.3: Throttle updates to ~60fps
     // High-DPI mice/tablets can send 100s of events per second.
@@ -7140,6 +7949,8 @@ void DocumentViewport::moveSelectedObjects(const QPointF& delta)
         obj->position += delta;
         clampObjectToPage(obj, pageIndexForObject(obj));
     }
+    updateTextBoxFormatBarGeometry();
+    updateLinkObjectBarGeometry();
     
     if (!m_dragUpdateTimer.isValid() || 
         m_dragUpdateTimer.elapsed() >= DRAG_UPDATE_INTERVAL_MS) {
@@ -7151,14 +7962,15 @@ void DocumentViewport::moveSelectedObjects(const QPointF& delta)
 void DocumentViewport::pasteForObjectSelect()
 {
 #ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "pasteForObjectSelect: Called, insertMode =" 
-             << (m_objectInsertMode == ObjectInsertMode::Image ? "Image" : "Link");
+    const char* modeName = m_objectInsertMode == ObjectInsertMode::Image ? "Image"
+        : m_objectInsertMode == ObjectInsertMode::Link ? "Link" : "Text";
+    qDebug() << "pasteForObjectSelect: Called, insertMode =" << modeName;
 #endif
     
     // Phase O2.4.2: Tool-aware paste for ObjectSelect tool
     // Paste priority depends on ObjectInsertMode:
     // - Image mode: System clipboard images take priority, then internal clipboard
-    // - Link mode: Internal clipboard takes priority (ignore system clipboard images)
+    // - Link/Text mode: paste internal objects only
     
     QClipboard* clipboard = QGuiApplication::clipboard();
     if (!clipboard || !clipboard->mimeData()) {
@@ -7170,40 +7982,29 @@ void DocumentViewport::pasteForObjectSelect()
     
     const QMimeData* mimeData = clipboard->mimeData();
     
-    // ===== Link mode: Internal clipboard takes priority =====
-    // When user is in Link mode, they're focused on LinkObjects.
-    // System clipboard images should NOT interrupt pasting copied LinkObjects.
-    if (m_objectInsertMode == ObjectInsertMode::Link) {
-        // Priority 1 (Link mode): Internal object clipboard
+    // ===== Link/Text modes: Internal object clipboard only =====
+    // System images belong to the dedicated Image tool and must not interrupt
+    // pasting copied objects while another subtype is active.
+    if (m_objectInsertMode != ObjectInsertMode::Image) {
         if (!s_objectClipboard.isEmpty()) {
 #ifdef SPEEDYNOTE_DEBUG
-            qDebug() << "pasteForObjectSelect (Link mode): Internal clipboard has" 
+            qDebug() << "pasteForObjectSelect (non-Image mode): Internal clipboard has"
                      << s_objectClipboard.size() << "objects";
 #endif
             pasteObjects();
             return;
         }
-        
-        // Priority 2 (Link mode): Fall through - no internal clipboard content
-        // In Link mode, we don't paste system clipboard images.
-        // User can switch to Image mode if they want to paste an image.
+
 #ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "pasteForObjectSelect (Link mode): No internal clipboard content, skipping system clipboard";
+        qDebug() << "pasteForObjectSelect (non-Image mode): "
+                    "No internal clipboard content, skipping system image";
 #endif
         return;
     }
     
     // ===== Image mode: System clipboard takes priority =====
-    // Priority 1 (Image mode): System clipboard has raw image data
-    if (mimeData->hasImage()) {
-#ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "pasteForObjectSelect (Image mode): Clipboard has raw image";
-#endif
-        insertImageFromClipboard();
-        return;
-    }
-    
-    // Priority 2 (Image mode/BF.1): File URLs (e.g., copied from Windows File Explorer)
+    // Prefer local files because Explorer often advertises both a URL and a
+    // decoded image; the URL preserves the original bytes and format.
     if (mimeData->hasUrls()) {
         QList<QUrl> urls = mimeData->urls();
 #ifdef SPEEDYNOTE_DEBUG
@@ -7217,12 +8018,8 @@ void DocumentViewport::pasteForObjectSelect()
                 qDebug() << "pasteForObjectSelect (Image mode): Checking file:" << filePath;
 #endif
                 
-                // Check if it's an image file
-                QString lower = filePath.toLower();
-                if (lower.endsWith(".png") || lower.endsWith(".jpg") || 
-                    lower.endsWith(".jpeg") || lower.endsWith(".bmp") ||
-                    lower.endsWith(".gif") || lower.endsWith(".webp")) {
-                    
+                QImageReader reader(filePath);
+                if (reader.canRead()) {
 #ifdef SPEEDYNOTE_DEBUG
                     qDebug() << "pasteForObjectSelect (Image mode): Loading image from file:" << filePath;
 #endif
@@ -7235,8 +8032,17 @@ void DocumentViewport::pasteForObjectSelect()
         qDebug() << "pasteForObjectSelect (Image mode): No valid image files in URLs";
 #endif
     }
+
+    // Fall back to raw image data for screenshots and application clipboards.
+    if (mimeData->hasImage()) {
+#ifdef SPEEDYNOTE_DEBUG
+        qDebug() << "pasteForObjectSelect (Image mode): Clipboard has raw image";
+#endif
+        insertImageFromClipboard();
+        return;
+    }
     
-    // Priority 3 (Image mode): Internal object clipboard
+    // Internal object clipboard
     // Even in Image mode, paste internal objects if no system clipboard image
     if (!s_objectClipboard.isEmpty()) {
 #ifdef SPEEDYNOTE_DEBUG
@@ -7252,319 +8058,195 @@ void DocumentViewport::pasteForObjectSelect()
 #endif
 }
 
+bool DocumentViewport::prepareFreshImageForInsertion(ImageObject& imageObject)
+{
+    if (!m_document || imageObject.pixmap().isNull()) {
+        return false;
+    }
+
+    const QSizeF insertionBounds = m_document->isEdgeless()
+        ? QSizeF(Document::EDGELESS_TILE_SIZE, Document::EDGELESS_TILE_SIZE)
+        : m_document->pageSizeAt(m_currentPageIndex);
+    if (!insertionBounds.isValid() || insertionBounds.isEmpty()
+        || !qIsFinite(insertionBounds.width()) || !qIsFinite(insertionBounds.height())) {
+        return false;
+    }
+
+    imageObject.size = ObjectConstraints::freshImageInsertSize(
+        QSizeF(imageObject.pixmap().size()),
+        imageObject.pixmap().devicePixelRatio(),
+        devicePixelRatioF(),
+        insertionBounds);
+    const QPointF center = viewportCenterInDocument();
+    imageObject.position = center - QPointF(imageObject.size.width() / 2.0,
+                                             imageObject.size.height() / 2.0);
+    return true;
+}
+
 void DocumentViewport::insertImageFromClipboard()
 {
-#ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "insertImageFromClipboard: Called";
-#endif
-    
-    // Phase O2.4.3: Insert image from clipboard as ImageObject
     if (!m_document) {
-#ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "insertImageFromClipboard: No document!";
-#endif
         return;
     }
-    
-    // 1. Get image from clipboard
+
+    QElapsedTimer timer;
+    timer.start();
     QClipboard* clipboard = QGuiApplication::clipboard();
     if (!clipboard) {
-#ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "insertImageFromClipboard: No clipboard!";
-#endif
         return;
     }
-    
-    QImage image = clipboard->image();
-#ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "insertImageFromClipboard: image.isNull() =" << image.isNull() 
-             << "size =" << image.size();
-#endif
 
-    // CRITICAL: This check must be OUTSIDE debug block to prevent crash in release builds
+    QImage image = clipboard->image();
     if (image.isNull()) {
-#ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "insertImageFromClipboard: No valid image in clipboard";
-#endif
         return;
     }
-    
-    // 2. Create ImageObject with setPixmap()
-    auto imgObj = std::make_unique<ImageObject>();
-    imgObj->setPixmap(QPixmap::fromImage(image));
-    // NOTE: id is auto-generated in InsertedObject constructor
-    
-    // Scale size for high DPI displays
-    // The pixmap dimensions are in physical pixels, but document coordinates
-    // are in logical pixels. Dividing by DPR ensures 1:1 pixel mapping on screen.
-    qreal dpr = devicePixelRatioF();
-    if (dpr > 1.0) {
-        imgObj->size = QSizeF(imgObj->size.width() / dpr, imgObj->size.height() / dpr);
-    }
-    
-    // 3. Position at viewport center
-    // Paged mode: an image larger than the page could never be contained by
-    // it, so shrink to fit before deciding where the top-left goes.
-    if (!m_document->isEdgeless()) {
-        imgObj->size = ObjectConstraints::shrinkToFit(
-            imgObj->size, m_document->pageSizeAt(m_currentPageIndex));
-    }
-    QPointF center = viewportCenterInDocument();
-    imgObj->position = center - QPointF(imgObj->size.width() / 2.0, imgObj->size.height() / 2.0);
-    
-    // Phase O3.5.1: Default affinity based on active layer
-    // Formula: activeLayer - 1, so image appears BELOW active layer's strokes
-    // This allows user to immediately annotate the image with the active layer
-    int activeLayer = m_document->isEdgeless() 
-        ? m_edgelessActiveLayerIndex 
-        : (m_document->page(m_currentPageIndex) 
-           ? m_document->page(m_currentPageIndex)->activeLayerIndex 
-           : 0);
-    int defaultAffinity = activeLayer - 1;  // -1 minimum (background)
-    imgObj->setLayerAffinity(defaultAffinity);
 #ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "insertImageFromClipboard: activeLayer =" << activeLayer 
-             << "defaultAffinity =" << defaultAffinity;
+    qDebug() << "[ImageInsert] clipboard transfer:" << timer.elapsed() << "ms"
+             << image.size();
 #endif
-    
-    // CRITICAL: Save raw pointer BEFORE std::move invalidates imgObj
-    InsertedObject* rawPtr = imgObj.get();
-    
-    // Track tile coord for undo (edgeless mode)
-    Document::TileCoord insertedTileCoord = {0, 0};
-    
-    // 4. Add to appropriate page/tile
-    if (m_document->isEdgeless()) {
-        // Edgeless mode: find tile for the center position
-        auto coord = m_document->tileCoordForPoint(imgObj->position);
-        Page* targetTile = m_document->getOrCreateTile(coord.first, coord.second);
-        if (!targetTile) {
-            qWarning() << "insertImageFromClipboard: Failed to get/create tile";
-            return;
-        }
-        
-        // Set zOrder so new object appears on top of existing objects with same affinity
-        imgObj->zOrder = getNextZOrderForAffinity(targetTile, defaultAffinity);
-        
-        #ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "insertImageFromClipboard: assigned zOrder =" << imgObj->zOrder;
-        #endif
-        
-        // Convert to tile-local coordinates
-        imgObj->position = imgObj->position - QPointF(
-            coord.first * Document::EDGELESS_TILE_SIZE,
-            coord.second * Document::EDGELESS_TILE_SIZE
-        );
-        
-        targetTile->addObject(std::move(imgObj));
-        m_document->markTileDirty(coord);
-        insertedTileCoord = coord;  // Save for undo
-    } else {
-        // Paged mode: add to current page
-        Page* targetPage = m_document->page(m_currentPageIndex);
-        if (!targetPage) {
-            qWarning() << "insertImageFromClipboard: No page at index" << m_currentPageIndex;
-            return;
-        }
-        
-        // Set zOrder so new object appears on top of existing objects with same affinity
-        imgObj->zOrder = getNextZOrderForAffinity(targetPage, defaultAffinity);
-        #ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "insertImageFromClipboard: assigned zOrder =" << imgObj->zOrder;
-        #endif
-        
-        // Adjust position to be page-local (subtract page origin), then keep
-        // the image inside the page - the viewport centre can sit in a gap or
-        // past the page edge when zoomed out.
-        QPointF pageOrigin = pagePosition(m_currentPageIndex);
-        imgObj->position = clampObjectPositionToPage(
-            m_currentPageIndex, imgObj->position - pageOrigin, imgObj->size);
-        
-        targetPage->addObject(std::move(imgObj));
-        m_document->markPageDirty(m_currentPageIndex);
-    }
-    
-    // 5. Update max object extent for extended tile loading
-    m_document->updateMaxObjectExtent(rawPtr);
-    
-    // 6. Save to assets folder (hash-based deduplication) - Phase O2.C: type-agnostic
-    if (!m_document->bundlePath().isEmpty()) {
-        if (!rawPtr->saveAssets(m_document->bundlePath())) {
-            qWarning() << "insertImageFromClipboard: Failed to save assets";
-            // Continue anyway - data is in memory and will be saved on document save
-        }
-    }
-    
-    // 7. Create undo entry (BF.6)
-    pushObjectInsertUndo(rawPtr, m_currentPageIndex, insertedTileCoord);
-    
-    // 8. Select the new object
-    deselectAllObjects();
-    selectObject(rawPtr, false);
-    
-    // 9. Auto-switch to Select mode after inserting
-    if (m_objectActionMode == ObjectActionMode::Create) {
-        m_objectActionMode = ObjectActionMode::Select;
-        emit objectActionModeChanged(m_objectActionMode);
-    }
-    
-    // 10. Emit modification signal
-    emit documentModified();
-    
-    update();
-    
-#ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "insertImageFromClipboard: Inserted image" << rawPtr->id 
-             << "size" << rawPtr->size << "at" << rawPtr->position;
-#endif
+    insertPreparedImage(image);
 }
 
 void DocumentViewport::insertImageFromFile(const QString& filePath)
 {
-#ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "insertImageFromFile: Called with path:" << filePath;
-#endif
-    
     if (!m_document) {
-#ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "insertImageFromFile: No document!";
-#endif
         return;
     }
-    
-    // 1. Load image from file
-    QImage image(filePath);
+
+    QElapsedTimer timer;
+    timer.start();
+    constexpr qint64 MAX_RETAINED_SOURCE_BYTES = 64LL * 1024 * 1024;
+    const qint64 sourceSize = QFileInfo(filePath).size();
+    if (sourceSize < 0 || sourceSize > MAX_RETAINED_SOURCE_BYTES) {
+        // Avoid duplicating arbitrarily large encoded files in RAM. These rare
+        // inputs still get the fast insertion path, but their decoded pixels
+        // are persisted as a background PNG instead of preserving source bytes.
+        QImageReader reader(filePath);
+        QImage image = reader.read();
+        if (image.isNull()) {
+            qWarning() << "insertImageFromFile: Failed to decode" << filePath
+                       << reader.errorString();
+            return;
+        }
+#ifdef SPEEDYNOTE_DEBUG
+        qDebug() << "[ImageInsert] streamed large source:" << sourceSize
+                 << "bytes, decode:" << timer.elapsed() << "ms";
+#endif
+        insertPreparedImage(image);
+        return;
+    }
+
+    QFile source(filePath);
+    if (!source.open(QIODevice::ReadOnly)) {
+        qWarning() << "insertImageFromFile: Failed to open" << filePath;
+        return;
+    }
+    const QByteArray encodedData = source.readAll();
+    if (encodedData.size() != sourceSize) {
+        qWarning() << "insertImageFromFile: Incomplete read from" << filePath;
+        return;
+    }
+    source.close();
+    const qint64 readMs = timer.elapsed();
+
+    QBuffer sourceBuffer;
+    sourceBuffer.setData(encodedData);
+    sourceBuffer.open(QIODevice::ReadOnly);
+    QImageReader reader(&sourceBuffer);
+    const QByteArray format = reader.format();
+    QImage image = reader.read();
     if (image.isNull()) {
-        qWarning() << "insertImageFromFile: Failed to load image from" << filePath;
+        qWarning() << "insertImageFromFile: Failed to decode" << filePath
+                   << reader.errorString();
         return;
     }
 #ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "insertImageFromFile: Loaded image, size =" << image.size();
+    qDebug() << "[ImageInsert] file read:" << readMs << "ms, decode:"
+             << (timer.elapsed() - readMs) << "ms, bytes:" << encodedData.size()
+             << "format:" << format << "pixels:" << image.size();
 #endif
-    
-    // 2. Create ImageObject with setPixmap()
+    insertPreparedImage(image, encodedData, format);
+}
+
+void DocumentViewport::insertPreparedImage(const QImage& image,
+                                           const QByteArray& encodedData,
+                                           const QByteArray& encodedFormat)
+{
+    if (!m_document || image.isNull()) {
+        return;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
     auto imgObj = std::make_unique<ImageObject>();
-    imgObj->setPixmap(QPixmap::fromImage(image));
-    
-    // Scale size for high DPI displays
-    // The pixmap dimensions are in physical pixels, but document coordinates
-    // are in logical pixels. Dividing by DPR ensures 1:1 pixel mapping on screen.
-    qreal dpr = devicePixelRatioF();
-    if (dpr > 1.0) {
-        imgObj->size = QSizeF(imgObj->size.width() / dpr, imgObj->size.height() / dpr);
+    imgObj->setSourceImage(image, encodedData, encodedFormat);
+    const qint64 pixmapMs = timer.elapsed();
+
+    if (!prepareFreshImageForInsertion(*imgObj)) {
+        qWarning() << "insertPreparedImage: Invalid image insertion bounds";
+        return;
     }
-    
-    // 3. Position at viewport center
-    // Paged mode: an image larger than the page could never be contained by
-    // it, so shrink to fit before deciding where the top-left goes.
-    if (!m_document->isEdgeless()) {
-        imgObj->size = ObjectConstraints::shrinkToFit(
-            imgObj->size, m_document->pageSizeAt(m_currentPageIndex));
-    }
-    QPointF center = viewportCenterInDocument();
-    imgObj->position = center - QPointF(imgObj->size.width() / 2.0, imgObj->size.height() / 2.0);
-    
-    // Phase O3.5.1: Default affinity based on active layer
-    // Formula: activeLayer - 1, so image appears BELOW active layer's strokes
-    // This allows user to immediately annotate the image with the active layer
-    int activeLayer = m_document->isEdgeless() 
-        ? m_edgelessActiveLayerIndex 
-        : (m_document->page(m_currentPageIndex) 
-           ? m_document->page(m_currentPageIndex)->activeLayerIndex 
-           : 0);
-    int defaultAffinity = activeLayer - 1;  // -1 minimum (background)
+
+    const int activeLayer = m_document->isEdgeless()
+        ? m_edgelessActiveLayerIndex
+        : (m_document->page(m_currentPageIndex)
+           ? m_document->page(m_currentPageIndex)->activeLayerIndex : 0);
+    const int defaultAffinity = activeLayer - 1;
     imgObj->setLayerAffinity(defaultAffinity);
-#ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "insertImageFromFile: activeLayer =" << activeLayer 
-             << "defaultAffinity =" << defaultAffinity;
-#endif
-    
-    // Store raw pointer BEFORE std::move
-    InsertedObject* rawPtr = imgObj.get();
-    
-    // Track tile coord for undo (edgeless mode)
+
+    ImageObject* rawPtr = imgObj.get();
     Document::TileCoord insertedTileCoord = {0, 0};
-    
-    // 4. Add to appropriate page/tile
     if (m_document->isEdgeless()) {
-        auto coord = m_document->tileCoordForPoint(imgObj->position);
+        const auto coord = m_document->tileCoordForPoint(imgObj->position);
         Page* targetTile = m_document->getOrCreateTile(coord.first, coord.second);
         if (!targetTile) {
-            qWarning() << "insertImageFromFile: Failed to get/create tile";
             return;
         }
-        
-        // Set zOrder so new object appears on top of existing objects with same affinity
         imgObj->zOrder = getNextZOrderForAffinity(targetTile, defaultAffinity);
-        #ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "insertImageFromFile: assigned zOrder =" << imgObj->zOrder;
-        #endif
-        
-        // Convert to tile-local coordinates
-        imgObj->position = imgObj->position - QPointF(
-            coord.first * Document::EDGELESS_TILE_SIZE,
-            coord.second * Document::EDGELESS_TILE_SIZE
-        );
-        
+        imgObj->position -= QPointF(coord.first * Document::EDGELESS_TILE_SIZE,
+                                    coord.second * Document::EDGELESS_TILE_SIZE);
         targetTile->addObject(std::move(imgObj));
         m_document->markTileDirty(coord);
-        insertedTileCoord = coord;  // Save for undo
+        insertedTileCoord = coord;
     } else {
-        // Paged mode: add to current page
         Page* targetPage = m_document->page(m_currentPageIndex);
         if (!targetPage) {
-            qWarning() << "insertImageFromFile: No page at index" << m_currentPageIndex;
             return;
         }
-        
-        // Set zOrder so new object appears on top of existing objects with same affinity
         imgObj->zOrder = getNextZOrderForAffinity(targetPage, defaultAffinity);
-        #ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "insertImageFromFile: assigned zOrder =" << imgObj->zOrder;
-        #endif
-        
-        // Adjust position to be page-local, then keep the image inside the
-        // page - the viewport centre can sit in a gap or past the page edge.
-        QPointF pageOrigin = pagePosition(m_currentPageIndex);
         imgObj->position = clampObjectPositionToPage(
-            m_currentPageIndex, imgObj->position - pageOrigin, imgObj->size);
-        
+            m_currentPageIndex,
+            imgObj->position - pagePosition(m_currentPageIndex),
+            imgObj->size);
         targetPage->addObject(std::move(imgObj));
         m_document->markPageDirty(m_currentPageIndex);
     }
-    
-    // 5. Update max object extent
+
     m_document->updateMaxObjectExtent(rawPtr);
-    
-    // 6. Save to assets folder - Phase O2.C: type-agnostic
-    if (!m_document->bundlePath().isEmpty()) {
-        if (!rawPtr->saveAssets(m_document->bundlePath())) {
-            qWarning() << "insertImageFromFile: Failed to save assets";
-        }
-    }
-    
-    // 7. Create undo entry (BF.6)
+    const qint64 modelMs = timer.elapsed();
+
     pushObjectInsertUndo(rawPtr, m_currentPageIndex, insertedTileCoord);
-    
-    // 8. Select the new object
+    const qint64 undoMs = timer.elapsed();
     deselectAllObjects();
     selectObject(rawPtr, false);
-    
-    // 9. Auto-switch to Select mode after inserting
-    if (m_objectActionMode == ObjectActionMode::Create) {
-        m_objectActionMode = ObjectActionMode::Select;
-        emit objectActionModeChanged(m_objectActionMode);
-    }
-    
-    // 10. Emit modification signal
     emit documentModified();
-    
-    update();
-    
-    #ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "insertImageFromFile: Inserted image" << rawPtr->id 
-             << "size" << rawPtr->size << "at" << rawPtr->position;
-    #endif
+
+    const QRect dirty = objectBoundsInViewport(rawPtr)
+        .adjusted(-32.0, -32.0, 32.0, 32.0).toAlignedRect();
+    update(dirty);
+
+    const qint64 enqueueStart = timer.elapsed();
+    if (!m_document->bundlePath().isEmpty()) {
+        if (!m_document->enqueueImageAssetWrite(rawPtr, image)) {
+            qWarning() << "insertPreparedImage: Background asset write was not queued";
+        }
+    }
+#ifdef SPEEDYNOTE_DEBUG
+    qDebug() << "[ImageInsert] pixmap:" << pixmapMs << "ms, model:"
+             << (modelMs - pixmapMs) << "ms, undo:" << (undoMs - modelMs)
+             << "ms, enqueue:" << (timer.elapsed() - enqueueStart)
+             << "ms, visible work total:" << undoMs << "ms";
+#endif
 }
 
 void DocumentViewport::insertImageFromDialog()
@@ -7596,7 +8278,31 @@ void DocumentViewport::deleteSelectedObjects()
     if (!m_document || m_selectedObjects.isEmpty()) {
         return;
     }
-    
+    closeTextBoxFormatPopups(true);
+    // Discard: the object is about to be deleted, so committing text to it is
+    // pointless and would push a stray undo entry ahead of the delete.
+    closeLinkObjectBarPopups(false);
+    finishTextBoxFormatInteraction(true);
+    if (m_inlineEditSession.active) {
+        endInlineTextEdit(false, true);
+        if (m_selectedObjects.isEmpty())
+            return;
+    }
+    // Same reasoning as the popup discard above: the delete snapshot already
+    // captures the adjusted region, so undo restores what was on screen.
+    discardHighlightAdjust();
+
+    // A half-made position link whose origin is among the doomed objects has no
+    // other end left to write, so it goes with them.
+    if (m_positionPairing.active) {
+        for (InsertedObject* obj : m_selectedObjects) {
+            if (obj && obj->id == m_positionPairing.originObjectId) {
+                cancelPositionLinkPairing();
+                break;
+            }
+        }
+    }
+
     // Separate OcrTextObjects (derived cache — no undo) from regular objects
     QVector<InsertedObject*> regularObjects;
     QVector<InsertedObject*> ocrObjects;
@@ -7625,6 +8331,12 @@ void DocumentViewport::deleteSelectedObjects()
             bool removedBlock = false;
             for (int b = page->ocrTextBlocks.size() - 1; b >= 0; --b) {
                 if (page->ocrTextBlocks[b].id == ocrObj->id) {
+                    // A block with no strokes cannot be kept out by stroke
+                    // suppression, so remember it by fingerprint instead.
+                    if (ocrObj->sourceStrokeIds.isEmpty()) {
+                        page->dismissedOcrBlockKeys.insert(
+                            ocrBlockDismissalKey(page->ocrTextBlocks[b]));
+                    }
                     page->ocrTextBlocks.removeAt(b);
                     removedBlock = true;
                     break;
@@ -7793,6 +8505,325 @@ void DocumentViewport::deleteSelectedObjects()
     #endif
 }
 
+// ===== OCR to text box conversion =====
+
+Page* DocumentViewport::locateObjectContainer(
+    const QString& objectId, int& pageIndex,
+    Document::TileCoord& tileCoord) const
+{
+    pageIndex = -1;
+    tileCoord = {0, 0};
+    if (!m_document || objectId.isEmpty())
+        return nullptr;
+
+    if (m_document->isEdgeless()) {
+        for (const auto& coord : m_document->allLoadedTileCoords()) {
+            Page* tile = m_document->getTile(coord.first, coord.second);
+            if (tile && tile->objectById(objectId)) {
+                tileCoord = coord;
+                return tile;
+            }
+        }
+        return nullptr;
+    }
+
+    Page* current = m_document->page(m_currentPageIndex);
+    if (current && current->objectById(objectId)) {
+        pageIndex = m_currentPageIndex;
+        return current;
+    }
+    for (int i : m_document->loadedPageIndices()) {
+        Page* page = m_document->page(i);
+        if (page && page->objectById(objectId)) {
+            pageIndex = i;
+            return page;
+        }
+    }
+    return nullptr;
+}
+
+InsertedObject* DocumentViewport::objectById(const QString& objectId) const
+{
+    int pageIndex = -1;
+    Document::TileCoord tileCoord = {0, 0};
+    Page* container = locateObjectContainer(objectId, pageIndex, tileCoord);
+    return container ? container->objectById(objectId) : nullptr;
+}
+
+void DocumentViewport::forgetObject(const QString& objectId)
+{
+    if (objectId.isEmpty())
+        return;
+
+    if (m_inlineEditSession.active
+        && m_inlineEditSession.objectId == objectId) {
+        // The object is already doomed, so the session cannot commit into it.
+        endInlineTextEdit(false, true);
+    }
+
+    if (m_textBoxFormatTransaction.active
+        && m_textBoxFormatTransaction.objectId == objectId) {
+        closeTextBoxFormatPopups(false);
+        finishTextBoxFormatInteraction(false);
+    }
+
+    // The object is being destroyed, so a pending description edit has nowhere
+    // to land.
+    closeLinkObjectBarPopups(false);
+
+    // A half-made position link whose origin is being deleted has no other end
+    // left to write, so drop it rather than let it strand.
+    if (m_positionPairing.active
+        && m_positionPairing.originObjectId == objectId) {
+        cancelPositionLinkPairing();
+    }
+
+    if (m_hoveredObject && m_hoveredObject->id == objectId)
+        m_hoveredObject = nullptr;
+
+    deselectObjectById(objectId);
+}
+
+void DocumentViewport::persistOcrSidecar(Page* container, int pageIndex,
+                                         Document::TileCoord tileCoord)
+{
+    if (!m_document || !container)
+        return;
+
+    if (m_document->isEdgeless()) {
+        m_document->markTileDirty(tileCoord);
+        m_document->saveTileOcr(tileCoord);
+    } else {
+        if (pageIndex >= 0)
+            m_document->markPageDirty(pageIndex);
+        m_document->savePageOcr(container->uuid, container);
+    }
+    invalidateOcrBlockCache(pageIndex);
+}
+
+void DocumentViewport::applyOcrConversion(const UndoAction& action)
+{
+    if (!m_document)
+        return;
+
+    // The container may have been evicted since the action was recorded, so
+    // reload it the way the other object undo paths do.
+    Page* container = m_document->isEdgeless()
+        ? m_document->getOrCreateTile(action.objectTileCoord.first,
+                                      action.objectTileCoord.second)
+        : m_document->page(action.objectPageIndex);
+    if (!container)
+        return;
+
+    const QString ocrId =
+        action.ocrSourceObjectData.value(QStringLiteral("id")).toString();
+
+    for (const auto& strokeId : action.ocrSuppressedStrokeIdsAdded)
+        container->suppressedStrokeIds.insert(strokeId);
+    if (!action.ocrDismissedBlockKeyAdded.isEmpty()) {
+        container->dismissedOcrBlockKeys.insert(
+            action.ocrDismissedBlockKeyAdded);
+    }
+
+    for (int i = container->ocrTextBlocks.size() - 1; i >= 0; --i) {
+        if (container->ocrTextBlocks[i].id == ocrId) {
+            container->ocrTextBlocks.removeAt(i);
+            break;
+        }
+    }
+
+    if (!ocrId.isEmpty()) {
+        forgetObject(ocrId);
+        container->removeObject(ocrId);
+    }
+
+    auto textBox = InsertedObject::fromJson(action.objectData);
+    if (textBox) {
+        m_document->updateMaxObjectExtent(textBox.get());
+        container->addObject(std::move(textBox));
+    }
+
+    m_document->recalculateMaxObjectExtent();
+    persistOcrSidecar(container, action.objectPageIndex,
+                      action.objectTileCoord);
+}
+
+void DocumentViewport::revertOcrConversion(const UndoAction& action)
+{
+    if (!m_document)
+        return;
+
+    Page* container = m_document->isEdgeless()
+        ? m_document->getOrCreateTile(action.objectTileCoord.first,
+                                      action.objectTileCoord.second)
+        : m_document->page(action.objectPageIndex);
+    if (!container)
+        return;
+
+    forgetObject(action.objectId);
+    container->removeObject(action.objectId);
+
+    // Only the ids this conversion added: a stroke suppressed by an earlier
+    // OCR deletion must stay suppressed.
+    for (const auto& strokeId : action.ocrSuppressedStrokeIdsAdded)
+        container->suppressedStrokeIds.remove(strokeId);
+    if (!action.ocrDismissedBlockKeyAdded.isEmpty()) {
+        container->dismissedOcrBlockKeys.remove(
+            action.ocrDismissedBlockKeyAdded);
+    }
+
+    if (action.ocrSourceBlockValid) {
+        const int index = qBound(0, action.ocrSourceBlockIndex,
+                                 container->ocrTextBlocks.size());
+        container->ocrTextBlocks.insert(
+            index, OcrTextBlock::fromJson(action.ocrSourceBlock));
+    }
+
+    auto ocrObject = InsertedObject::fromJson(action.ocrSourceObjectData);
+    if (auto* restored = dynamic_cast<OcrTextObject*>(ocrObject.get())) {
+        restored->showConfidence = action.ocrSourceObjectData
+            .value(QStringLiteral("uiShowConfidence")).toBool(false);
+        restored->ocrSnapEnabled = action.ocrSourceObjectData
+            .value(QStringLiteral("uiSnapEnabled")).toBool(false);
+        restored->ocrCjkGridMode = action.ocrSourceObjectData
+            .value(QStringLiteral("uiCjkGridMode")).toBool(false);
+        restored->ocrGridSpacing = action.ocrSourceObjectData
+            .value(QStringLiteral("uiGridSpacing")).toInt(32);
+    }
+    if (ocrObject) {
+        m_document->updateMaxObjectExtent(ocrObject.get());
+        container->addObject(std::move(ocrObject));
+    }
+
+    m_document->recalculateMaxObjectExtent();
+    persistOcrSidecar(container, action.objectPageIndex,
+                      action.objectTileCoord);
+}
+
+bool DocumentViewport::convertOcrTextToTextBox(OcrTextObject* ocr,
+                                               bool startEditing)
+{
+    if (!ocr || !m_document)
+        return false;
+
+    int pageIndex = -1;
+    Document::TileCoord tileCoord = {0, 0};
+    Page* container = locateObjectContainer(ocr->id, pageIndex, tileCoord);
+    if (!container)
+        return false;
+
+    closeTextBoxFormatPopups(true);
+    finishTextBoxFormatInteraction(true);
+    if (m_inlineEditSession.active)
+        commitInlineTextEdit();
+
+    // Build the replacement first: a paged conversion whose reflowed height
+    // does not fit must leave the OCR block and its sidecar untouched.
+    TextBoxObject textBox;
+    textBox.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    textBox.position = ocr->position;
+    textBox.rotation = ocr->rotation;
+    textBox.setLayerAffinity(ocr->getLayerAffinity());
+    // Conversion replaces the block in place, so it keeps the stacking the user
+    // already sees. Promoting it to the top would reorder it against unrelated
+    // neighbours on every convert.
+    textBox.zOrder = ocr->zOrder;
+    textBox.visible = true;
+    textBox.text = ocr->text;
+    textBox.fontFamily = ocr->fontFamily;
+    textBox.fontColor = ocr->fontColor;
+    textBox.backgroundColor = ocr->backgroundColor;
+    textBox.alignment = ocr->alignment;
+    textBox.showBorder = ocr->showBorder;
+    textBox.fontSize = ocr->estimateBaseFontSize();
+    textBox.textLayoutVersion = TextBoxObject::CURRENT_TEXT_LAYOUT_VERSION;
+
+    qreal width = qMax(ocr->size.width(), TextBoxObject::MINIMUM_WIDTH);
+    if (!m_document->isEdgeless() && pageIndex >= 0) {
+        const qreal pageWidth =
+            qMax<qreal>(1.0, m_document->pageSizeAt(pageIndex).width());
+        width = qMin(width, pageWidth);
+    }
+    textBox.size = QSizeF(width, 1.0);
+    textBox.reflowToWidth(width);
+
+    const QRectF ocrBounds = objectBoundsInViewport(ocr);
+    if (!m_document->isEdgeless() && pageIndex >= 0) {
+        const QSizeF pageSize = m_document->pageSizeAt(pageIndex);
+        textBox.position = clampObjectPositionToPage(
+            pageIndex, textBox.position, textBox.size);
+        const QRectF bounds(textBox.position, textBox.size);
+        if (bounds.bottom() > pageSize.height() + 0.01
+            || bounds.right() > pageSize.width() + 0.01) {
+            showObjectGeometryFeedback(
+                tr("Not enough room on this page to convert this text"),
+                ocrBounds);
+            return false;
+        }
+    }
+
+    UndoAction action;
+    action.type = UndoAction::OcrConvertToTextBox;
+    action.objectPageIndex = pageIndex;
+    action.objectTileCoord = tileCoord;
+    action.objectId = textBox.id;
+    action.objectData = textBox.toJson();
+    action.ocrSourceObjectData = ocr->toJson();
+    // Display-only flags are driven by the OCR toolbar and are deliberately
+    // absent from the persisted OCR schema, so carry them in the snapshot.
+    action.ocrSourceObjectData[QStringLiteral("uiShowConfidence")] =
+        ocr->showConfidence;
+    action.ocrSourceObjectData[QStringLiteral("uiSnapEnabled")] =
+        ocr->ocrSnapEnabled;
+    action.ocrSourceObjectData[QStringLiteral("uiCjkGridMode")] =
+        ocr->ocrCjkGridMode;
+    action.ocrSourceObjectData[QStringLiteral("uiGridSpacing")] =
+        ocr->ocrGridSpacing;
+
+    for (int i = 0; i < container->ocrTextBlocks.size(); ++i) {
+        if (container->ocrTextBlocks[i].id == ocr->id) {
+            action.ocrSourceBlock = container->ocrTextBlocks[i].toJson();
+            action.ocrSourceBlockValid = true;
+            action.ocrSourceBlockIndex = i;
+            break;
+        }
+    }
+    for (const auto& strokeId : ocr->sourceStrokeIds) {
+        if (!container->suppressedStrokeIds.contains(strokeId))
+            action.ocrSuppressedStrokeIdsAdded.append(strokeId);
+    }
+
+    // Without stroke ids there is nothing to suppress, so the block is recorded
+    // by geometry fingerprint instead; otherwise a scan already in flight would
+    // hand the block straight back.
+    if (ocr->sourceStrokeIds.isEmpty() && action.ocrSourceBlockValid) {
+        const QString key = ocrBlockDismissalKey(
+            OcrTextBlock::fromJson(action.ocrSourceBlock));
+        if (!container->dismissedOcrBlockKeys.contains(key))
+            action.ocrDismissedBlockKeyAdded = key;
+    }
+
+    applyOcrConversion(action);
+    pushUndoAction(action);
+
+    InsertedObject* created = container->objectById(action.objectId);
+    deselectAllObjects();
+    if (created)
+        selectObject(created, false);
+
+    if (!m_document->isEdgeless() && pageIndex >= 0) {
+        m_pendingThumbnailPages.insert(pageIndex);
+        emit pageModified(pageIndex);
+    }
+    emit documentModified();
+    emit textBoxLayoutCommitted();
+    update();
+
+    if (startEditing && created)
+        startInlineTextEdit(static_cast<TextBoxObject*>(created), false);
+    return true;
+}
+
 void DocumentViewport::copySelectedObjects()
 {
     // Phase O2.6.2: Copy selected objects to internal clipboard
@@ -7868,7 +8899,21 @@ void DocumentViewport::copySelectedObjects()
             // Cache image assets for cross-document paste
             if (auto* img = dynamic_cast<ImageObject*>(obj)) {
                 if (img->isLoaded() && !img->imagePath.isEmpty()) {
-                    s_objectClipboardAssets[img->imagePath] = img->pixmap();
+                    ClipboardImageAsset asset;
+                    asset.pixmap = img->pixmap();
+                    asset.encodedData = img->encodedAssetData();
+                    asset.format = img->assetFormat();
+                    constexpr qint64 MAX_CLIPBOARD_SOURCE_BYTES =
+                        64LL * 1024 * 1024;
+                    if (asset.encodedData.isEmpty() && m_document
+                        && !m_document->bundlePath().isEmpty()) {
+                        QFile source(img->fullPath(m_document->bundlePath()));
+                        if (source.size() <= MAX_CLIPBOARD_SOURCE_BYTES
+                            && source.open(QIODevice::ReadOnly)) {
+                            asset.encodedData = source.readAll();
+                        }
+                    }
+                    s_objectClipboardAssets[img->imagePath] = std::move(asset);
                 }
             }
         }
@@ -7968,8 +9013,17 @@ void DocumentViewport::pasteObjects()
             if (auto* img = dynamic_cast<ImageObject*>(obj.get())) {
                 auto it = s_objectClipboardAssets.find(img->imagePath);
                 if (it != s_objectClipboardAssets.end()) {
-                    img->setPixmap(it.value());
-                    img->imagePath.clear();
+                    if (!it->encodedData.isEmpty()) {
+                        QImage source;
+                        source.loadFromData(it->encodedData);
+                        if (!source.isNull()) {
+                            img->setSourceImage(source, it->encodedData, it->format);
+                        } else {
+                            img->setPixmap(it->pixmap);
+                        }
+                    } else {
+                        img->setPixmap(it->pixmap);
+                    }
                 }
             }
         }
@@ -8035,13 +9089,24 @@ void DocumentViewport::pasteObjects()
         // Update max object extent
         m_document->updateMaxObjectExtent(rawPtr);
         
-        // Save assets to disk immediately (matches insertImageFromFile/insertImageFromClipboard)
-        if (!m_document->bundlePath().isEmpty()) {
-            rawPtr->saveAssets(m_document->bundlePath());
-        }
-        
         // Create undo entry for this pasted object
         pushObjectInsertUndo(rawPtr, m_currentPageIndex, insertedTileCoord);
+
+        // Preserve the responsive insertion path for cross-document images.
+        // Other asset-bearing object types retain their existing synchronous
+        // persistence contract.
+        if (!m_document->bundlePath().isEmpty()) {
+            if (auto* image = dynamic_cast<ImageObject*>(rawPtr)) {
+                const QImage source = image->encodedAssetData().isEmpty()
+                    ? image->pixmap().toImage() : QImage();
+                if (!image->assetPersisted()
+                    && !m_document->enqueueImageAssetWrite(image, source)) {
+                    qWarning() << "pasteObjects: Background image write was not queued";
+                }
+            } else {
+                rawPtr->saveAssets(m_document->bundlePath());
+            }
+        }
         
         // Track for selection
         pastedObjects.append(rawPtr);
@@ -8058,6 +9123,16 @@ void DocumentViewport::pasteObjects()
         for (const auto& c : touchedTiles) m_document->refreshLinkOutlineFor(c);
         for (int p : touchedPages) m_document->refreshLinkOutlineFor(p);
         emit linkObjectListMayHaveChanged();  // M.7.3: Refresh sidebar
+
+        // documentModified alone is not enough: the thumbnail refresh it drives
+        // is skipped while the pasted objects are still selected, and the search
+        // cache only listens for a layout commit. Pasted text would otherwise
+        // stay unsearchable until something else committed.
+        for (int p : touchedPages) {
+            m_pendingThumbnailPages.insert(p);
+            emit pageModified(p);
+        }
+        emit textBoxLayoutCommitted();
     }
     
     update();
@@ -8069,60 +9144,86 @@ void DocumentViewport::pasteObjects()
 
 // ===== LinkObject Creation (Phase C.3.2 & C.4.5) =====
 
-void DocumentViewport::createLinkObjectForHighlight(int pageIndex)
+// The badge is a 24x24 icon in the margin, so it cannot carry the mark's own
+// 50%-alpha tint and stay legible on a white page. Both the creation path and
+// the post-hoc recolour derive it here so the two cannot drift apart.
+static QColor badgeTintForHighlight(const QColor& regionColor)
 {
-    // Phase C.3.2: Create LinkObject for text highlight
-    if (!m_document || m_textSelection.highlightRects.isEmpty()) {
-        return;
+    QColor tint = regionColor;
+    tint.setRed(tint.red() * 0.5);
+    tint.setGreen(tint.green() * 0.5);
+    tint.setBlue(tint.blue() * 0.5);
+    tint.setAlpha(255);
+    return tint;
+}
+
+HighlightRegion::SourceRange
+DocumentViewport::buildHighlightSourceRange(int pageIndex) const
+{
+    HighlightRegion::SourceRange range;
+    range.source = static_cast<HighlightRegion::Source>(m_textSelection.source);
+    range.startBoxIndex = m_textSelection.startBoxIndex;
+    range.startCharIndex = m_textSelection.startCharIndex;
+    range.endBoxIndex = m_textSelection.endBoxIndex;
+    range.endCharIndex = m_textSelection.endCharIndex;
+
+    // Paged only: the page is identified by UUID, never by index, so the range
+    // survives page reordering. Edgeless addresses its OCR cache by tile and
+    // has no page UUID to record.
+    if (m_document && !m_document->isEdgeless()) {
+        if (const Page* page = m_document->page(pageIndex)) {
+            range.pageUuid = page->uuid;
+        }
+    }
+    return range;
+}
+
+LinkObject* DocumentViewport::createLinkObjectForHighlight(
+    int pageIndex, const QVector<QRectF>& regionRects)
+{
+    if (!m_document || regionRects.isEmpty()) {
+        return nullptr;
     }
 
-    const bool ocrSelection = (m_textSelection.source == TextSelection::Source::Ocr);
     const bool edgeless = m_document->isEdgeless();
 
-    // Resolve the anchor position in DOCUMENT-space (for edgeless) or
-    // PAGE-space (for paged).
-    QRectF firstRect = m_textSelection.highlightRects[0];
-    qreal firstRectX;
-    qreal firstRectY;
-    if (ocrSelection) {
-        firstRectX = firstRect.x();
-        firstRectY = firstRect.y();
-    } else {
-        firstRectX = firstRect.x() * PDF_TO_PAGE_SCALE;
-        firstRectY = firstRect.y() * PDF_TO_PAGE_SCALE;
-    }
-
-    // Place icon to the LEFT of the first highlight rect (in the margin).
-    // Paged mode pulls it back onto the page below; in edgeless the canvas is
-    // infinite (negative coords are legal), so nothing constrains it.
-    constexpr qreal MARGIN_PADDING = 4.0;
-    qreal iconX = firstRectX - LinkObject::ICON_SIZE - MARGIN_PADDING;
-
     auto linkObj = std::make_unique<LinkObject>();
+    // Auto-derived from the selection, so descriptionUserEdited stays false and
+    // the annotation counts as "nothing worth opening" until the user acts.
     linkObj->description = m_textSelection.selectedText;
 
-    // Use a DARKER version of highlighter color for visibility on white pages.
-    QColor darkened = m_highlighterColor;
-    darkened.setRed(darkened.red() * 0.5);
-    darkened.setGreen(darkened.green() * 0.5);
-    darkened.setBlue(darkened.blue() * 0.5);
-    darkened.setAlpha(255);
-    linkObj->iconColor = darkened;
+    linkObj->iconColor = badgeTintForHighlight(m_highlighterColor);
+
+    linkObj->region.style =
+        static_cast<HighlightRegion::Style>(m_autoHighlightStyle);
+    linkObj->region.color = m_highlighterColor;
+    linkObj->region.sourceRange = buildHighlightSourceRange(pageIndex);
 
     if (edgeless) {
-        // Find the tile containing the anchor point. In edgeless, positions
-        // are stored tile-local, and the object's hit tests are done in
-        // document space (tileOrigin + obj.position).
-        QPointF docAnchor(iconX, firstRectY);
-        auto coord = m_document->tileCoordForPoint(docAnchor);
-        Page* targetTile = m_document->getOrCreateTile(coord.first, coord.second);
-        if (!targetTile) {
-            return;
+        // Positions are stored tile-local, so rebase the document-space rects
+        // onto the tile that owns the region's top-left corner. The region may
+        // extend past that tile; objects render unclipped and both the render
+        // and hit-test paths widen their tile query by maxObjectExtent(), which
+        // the updateMaxObjectExtent() call below keeps current.
+        QRectF bounds;
+        for (const QRectF& r : regionRects) {
+            bounds = bounds.isNull() ? r : bounds.united(r);
         }
 
-        QPointF tileOrigin(coord.first * Document::EDGELESS_TILE_SIZE,
-                           coord.second * Document::EDGELESS_TILE_SIZE);
-        linkObj->position = docAnchor - tileOrigin;
+        auto coord = m_document->tileCoordForPoint(bounds.topLeft());
+        Page* targetTile = m_document->getOrCreateTile(coord.first, coord.second);
+        if (!targetTile) {
+            return nullptr;
+        }
+
+        const QPointF tileOrigin(coord.first * Document::EDGELESS_TILE_SIZE,
+                                 coord.second * Document::EDGELESS_TILE_SIZE);
+        QVector<QRectF> tileRects;
+        tileRects.reserve(regionRects.size());
+        for (const QRectF& r : regionRects) {
+            tileRects.append(r.translated(-tileOrigin));
+        }
+        linkObj->setRegionFromPageRects(tileRects);
 
         int activeLayer = m_edgelessActiveLayerIndex;
         int defaultAffinity = activeLayer - 1;
@@ -8132,25 +9233,36 @@ void DocumentViewport::createLinkObjectForHighlight(int pageIndex)
         LinkObject* rawPtr = linkObj.get();
         targetTile->addObject(std::move(linkObj));
         m_document->markTileDirty(coord);
+        m_document->updateMaxObjectExtent(rawPtr);
 
         pushObjectInsertUndo(rawPtr, pageIndex, coord);
 
+        // Surface the annotation's controls straight away, without making the
+        // user switch to ObjectSelect and hunt for a badge.
+        selectObject(rawPtr, false);
+
 #ifdef QT_DEBUG
-        qDebug() << "Created LinkObject for highlight on edgeless tile"
+        qDebug() << "Created highlight annotation on edgeless tile"
                  << coord.first << coord.second
+                 << "rects:" << rawPtr->region.rects.size()
                  << "description:" << rawPtr->description.left(30);
 #endif
-        return;
+        return rawPtr;
     }
 
-    // ---------- Paged path (original behavior) ----------
+    // ---------- Paged path ----------
     Page* page = m_document->page(pageIndex);
     if (!page) {
-        return;
+        return nullptr;
     }
 
-    linkObj->position = clampObjectPositionToPage(
-        pageIndex, QPointF(iconX, firstRectY), linkObj->size);
+    // Deliberately NOT clamped to the page. ObjectConstraints::clampAxis()
+    // centres anything wider than the page and otherwise shifts it inward,
+    // either of which would drag the mark off the text it annotates. The rects
+    // come from text inside the page, so only the badge overhangs, and
+    // objectAtPoint()'s neighbour-page sweep already reaches overhanging
+    // objects.
+    linkObj->setRegionFromPageRects(regionRects);
 
     int activeLayer = page->activeLayerIndex;
     int defaultAffinity = activeLayer - 1;
@@ -8160,18 +9272,26 @@ void DocumentViewport::createLinkObjectForHighlight(int pageIndex)
     LinkObject* rawPtr = linkObj.get();
     page->addObject(std::move(linkObj));
     m_document->markPageDirty(pageIndex);
+    m_document->updateMaxObjectExtent(rawPtr);
 
     pushObjectInsertUndo(rawPtr, pageIndex, {});
 
-    // SB2: a highlight-created LinkObject adds a scroll-bar marker; keep the
-    // outline cache current and notify listeners (scroll bar + notes sidebar).
+    // SB2: keep the outline cache current and notify listeners (scroll bar +
+    // notes sidebar). A brand-new highlight has no filled slot and no
+    // user-written description, so the marker filter drops it until it does.
     m_document->refreshLinkOutlineFor(pageIndex);
     emit linkObjectListMayHaveChanged();
 
+    // Surface the annotation's controls straight away, without making the user
+    // switch to ObjectSelect and hunt for a badge.
+    selectObject(rawPtr, false);
+
 #ifdef QT_DEBUG
-    qDebug() << "Created LinkObject for highlight on page" << pageIndex
+    qDebug() << "Created highlight annotation on page" << pageIndex
+             << "rects:" << rawPtr->region.rects.size()
              << "description:" << rawPtr->description.left(30);
 #endif
+    return rawPtr;
 }
 
 void DocumentViewport::createLinkObjectAtPosition(int pageIndex, const QPointF& pagePos, const QPointF& viewportPos)
@@ -8246,12 +9366,6 @@ void DocumentViewport::createLinkObjectAtPosition(int pageIndex, const QPointF& 
     deselectAllObjects();
     selectObject(rawPtr, false);
     
-    // Auto-switch to Select mode after inserting
-    if (m_objectActionMode == ObjectActionMode::Create) {
-        m_objectActionMode = ObjectActionMode::Select;
-        emit objectActionModeChanged(m_objectActionMode);
-    }
-    
     emit documentModified();
     // SB2: a brand-new LinkObject adds a scroll-bar marker. Refresh the outline
     // cache for the owning container and notify listeners (scroll bar + notes).
@@ -8278,22 +9392,1317 @@ void DocumentViewport::createLinkObjectAtPosition(int pageIndex, const QPointF& 
 
 // ===== Phase 2C: Text Box Creation =====
 
+bool DocumentViewport::hasActiveInlineTextEdit() const
+{
+    return m_inlineEditSession.active;
+}
+
+bool DocumentViewport::inlineEditTargetContains(
+    const QPointF& viewportPos) const
+{
+    if (!m_inlineEditSession.active || !m_inlineTextBoxEditor)
+        return false;
+    if (m_inlineTextBoxEditor->isVisible()
+        && m_inlineTextBoxEditor->geometry().contains(
+               viewportPos.toPoint())) {
+        return true;
+    }
+    TextBoxObject* textBox = resolveInlineTextBox();
+    return textBox
+        && objectBoundsInViewport(textBox).contains(viewportPos);
+}
+
+bool DocumentViewport::inlineTextEditorHasFocus() const
+{
+    return m_inlineTextBoxEditor && m_inlineEditSession.active
+        && (m_inlineTextBoxEditor->hasFocus()
+            || m_inlineTextBoxEditor->isAncestorOf(
+                QApplication::focusWidget()));
+}
+
+bool DocumentViewport::textBoxFormatBarHasFocus() const
+{
+    return m_textBoxFormatBar && m_textBoxFormatBar->controlHasFocus();
+}
+
+TextBoxObject* DocumentViewport::selectedTextBoxForFormatting() const
+{
+    if (!m_document || m_selectedObjects.size() != 1)
+        return nullptr;
+    InsertedObject* selected = m_selectedObjects.first();
+    if (!selected || selected->type() != QLatin1String("textbox"))
+        return nullptr;
+    auto* textBox = static_cast<TextBoxObject*>(selected);
+    int pageIndex = -1;
+    Document::TileCoord tileCoord = {0, 0};
+    return locateTextBoxObject(textBox, pageIndex, tileCoord)
+        ? textBox : nullptr;
+}
+
+bool DocumentViewport::locateTextBoxObject(
+    TextBoxObject* textBox, int& pageIndex,
+    Document::TileCoord& tileCoord) const
+{
+    pageIndex = -1;
+    tileCoord = {0, 0};
+    if (!m_document || !textBox)
+        return false;
+
+    if (m_document->isEdgeless()) {
+        for (const auto& coord : m_document->allLoadedTileCoords()) {
+            Page* tile = m_document->getTile(coord.first, coord.second);
+            if (tile && tile->objectById(textBox->id) == textBox) {
+                tileCoord = coord;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    pageIndex = pageIndexForObject(textBox);
+    return pageIndex >= 0 && pageIndex < m_document->pageCount();
+}
+
+TextBoxObject* DocumentViewport::resolveTextBoxFormatTarget() const
+{
+    if (!m_textBoxFormatTransaction.active || !m_document
+        || m_textBoxFormatTransaction.document != m_document) {
+        return nullptr;
+    }
+
+    Page* container = nullptr;
+    if (m_document->isEdgeless()) {
+        const auto coord = m_textBoxFormatTransaction.tileCoord;
+        container = m_document->getTile(coord.first, coord.second);
+    } else if (m_textBoxFormatTransaction.pageIndex >= 0
+               && m_textBoxFormatTransaction.pageIndex
+                    < m_document->pageCount()) {
+        container = m_document->page(
+            m_textBoxFormatTransaction.pageIndex);
+    }
+    InsertedObject* object = container
+        ? container->objectById(m_textBoxFormatTransaction.objectId)
+        : nullptr;
+    if (!object) {
+        // The transaction pins the page/tile it started on, but an edgeless
+        // object can relocate mid-preview. Losing the target here would strand
+        // the preview mutations with no undo record and no way to roll back,
+        // so fall back to an id search across everything loaded.
+        object = objectById(m_textBoxFormatTransaction.objectId);
+    }
+    if (!object || object->type() != QLatin1String("textbox"))
+        return nullptr;
+    return static_cast<TextBoxObject*>(object);
+}
+
+void DocumentViewport::ensureTextBoxFormatBar()
+{
+    if (m_textBoxFormatBar)
+        return;
+
+    m_textBoxFormatBar = new TextBoxFormatBar(this);
+    m_textBoxFormatBar->setDarkMode(m_isDarkMode);
+    m_textBoxFormatBar->hide();
+
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::interactionStarted,
+            this, &DocumentViewport::beginTextBoxFormatInteraction);
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::fontSizePreviewRequested,
+            this, [this](qreal value) {
+        applyTextBoxFormatPreview(
+            TextBoxFormatChange::FontSize, value);
+    });
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::fontFamilyPreviewRequested,
+            this, [this](const QString& value) {
+        applyTextBoxFormatPreview(
+            TextBoxFormatChange::FontFamily, value);
+    });
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::alignmentPreviewRequested,
+            this, [this](TextAlignment value) {
+        applyTextBoxFormatPreview(
+            TextBoxFormatChange::Alignment,
+            static_cast<int>(value));
+    });
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::fontColorPreviewRequested,
+            this, [this](const QColor& value) {
+        applyTextBoxFormatPreview(
+            TextBoxFormatChange::FontColor, value);
+    });
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::backgroundColorPreviewRequested,
+            this, [this](const QColor& value) {
+        applyTextBoxFormatPreview(
+            TextBoxFormatChange::BackgroundColor, value);
+    });
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::backgroundOpacityPreviewRequested,
+            this, [this](int value) {
+        applyTextBoxFormatPreview(
+            TextBoxFormatChange::BackgroundOpacity, value);
+    });
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::borderPreviewRequested,
+            this, [this](bool value) {
+        applyTextBoxFormatPreview(
+            TextBoxFormatChange::Border, value);
+    });
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::interactionFinished,
+            this, &DocumentViewport::finishTextBoxFormatInteraction);
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::cancelInlineEditRequested,
+            this, &DocumentViewport::cancelInlineTextEdit);
+    connect(m_textBoxFormatBar,
+            &TextBoxFormatBar::commitInlineEditRequested,
+            this, &DocumentViewport::commitInlineTextEdit);
+}
+
+void DocumentViewport::syncTextBoxFormatBar()
+{
+    TextBoxObject* textBox = selectedTextBoxForFormatting();
+    if (!textBox) {
+        closeTextBoxFormatPopups(true);
+        finishTextBoxFormatInteraction(true);
+        if (m_textBoxFormatBar)
+            m_textBoxFormatBar->hide();
+        return;
+    }
+
+    ensureTextBoxFormatBar();
+    if (!m_textBoxFormatTransaction.active)
+        m_textBoxFormatBar->setValues(textBox->captureState());
+    m_textBoxFormatBar->show();
+    updateTextBoxFormatBarGeometry();
+    m_textBoxFormatBar->raise();
+}
+
+bool DocumentViewport::pointerOverTextOverlay(const QPointF& viewportPos) const
+{
+    const QPoint pos = viewportPos.toPoint();
+    if (m_textBoxFormatBar && m_textBoxFormatBar->isVisible()
+        && m_textBoxFormatBar->geometry().contains(pos)) {
+        return true;
+    }
+    if (m_linkObjectBar && m_linkObjectBar->isVisible()
+        && m_linkObjectBar->geometry().contains(pos)) {
+        return true;
+    }
+    return m_inlineTextBoxEditor && m_inlineTextBoxEditor->isVisible()
+        && m_inlineTextBoxEditor->geometry().contains(pos);
+}
+
+/**
+ * @brief Axis-aligned bounds of @p rect after rotating it about @p center.
+ *
+ * Object bounds are stored unrotated, so anything that positions a widget
+ * beside a rotated object has to expand to the rotated hull first or it will
+ * anchor to an edge the user cannot see.
+ */
+static QRectF rotatedViewportBounds(const QRectF& rect, const QPointF& center,
+                                    qreal degrees)
+{
+    if (qFuzzyIsNull(degrees))
+        return rect;
+
+    const qreal radians = qDegreesToRadians(degrees);
+    const qreal cosine = qCos(radians);
+    const qreal sine = qSin(radians);
+    auto rotate = [&](const QPointF& point) {
+        const QPointF delta = point - center;
+        return center + QPointF(delta.x() * cosine - delta.y() * sine,
+                                delta.x() * sine + delta.y() * cosine);
+    };
+
+    QPolygonF corners;
+    corners << rotate(rect.topLeft()) << rotate(rect.topRight())
+            << rotate(rect.bottomRight()) << rotate(rect.bottomLeft());
+    return corners.boundingRect();
+}
+
+void DocumentViewport::updateTextBoxFormatBarGeometry()
+{
+    if (!m_textBoxFormatBar || m_textBoxFormatBar->isHidden())
+        return;
+    TextBoxObject* textBox = selectedTextBoxForFormatting();
+    if (!textBox) {
+        m_textBoxFormatBar->hide();
+        return;
+    }
+
+    const QRectF unrotated = objectBoundsInViewport(textBox);
+    if (unrotated.isEmpty())
+        return;
+    const QRectF objectRect = rotatedViewportBounds(
+        unrotated, unrotated.center(), textBox->rotation);
+
+    placeFloatingBar(m_textBoxFormatBar, objectRect);
+}
+
+void DocumentViewport::placeFloatingBar(QWidget* bar, const QRectF& anchorRect)
+{
+    if (!bar || anchorRect.isEmpty())
+        return;
+
+    const int inset = 8;
+    const qreal gap = 8.0;
+    const QRectF available = QRectF(rect()).adjusted(
+        inset, inset, -inset, -inset);
+    QSize size = bar->sizeHint();
+    size.setWidth(qMin(size.width(),
+                       qMax(1, available.toAlignedRect().width())));
+    size.setHeight(qMin(size.height(),
+                        qMax(1, available.toAlignedRect().height())));
+
+    const qreal centeredX = anchorRect.center().x()
+        - size.width() / 2.0;
+    const qreal centeredY = anchorRect.center().y()
+        - size.height() / 2.0;
+    const QVector<QRectF> candidates = {
+        QRectF(centeredX, anchorRect.top() - gap - size.height(),
+               size.width(), size.height()),
+        QRectF(centeredX, anchorRect.bottom() + gap,
+               size.width(), size.height()),
+        QRectF(anchorRect.right() + gap, centeredY,
+               size.width(), size.height()),
+        QRectF(anchorRect.left() - gap - size.width(), centeredY,
+               size.width(), size.height())
+    };
+
+    QRectF chosen;
+    for (const QRectF& candidate : candidates) {
+        if (available.contains(candidate)) {
+            chosen = candidate;
+            break;
+        }
+    }
+    if (chosen.isEmpty()) {
+        auto overflowScore = [&available](const QRectF& candidate) {
+            return qMax<qreal>(0.0, available.left() - candidate.left())
+                + qMax<qreal>(0.0, candidate.right() - available.right())
+                + qMax<qreal>(0.0, available.top() - candidate.top())
+                + qMax<qreal>(0.0, candidate.bottom()
+                              - available.bottom());
+        };
+        chosen = candidates.first();
+        qreal bestScore = overflowScore(chosen);
+        for (int i = 1; i < candidates.size(); ++i) {
+            const qreal score = overflowScore(candidates.at(i));
+            if (score < bestScore) {
+                chosen = candidates.at(i);
+                bestScore = score;
+            }
+        }
+        chosen.moveLeft(qBound(available.left(), chosen.left(),
+                               available.right() - chosen.width()));
+        chosen.moveTop(qBound(available.top(), chosen.top(),
+                              available.bottom() - chosen.height()));
+    }
+
+    bar->setGeometry(chosen.toAlignedRect());
+    bar->raise();
+}
+
+// ===== LinkObject floating controls =====
+
+bool DocumentViewport::linkObjectBarHasFocus() const
+{
+    return m_linkObjectBar && m_linkObjectBar->controlHasFocus();
+}
+
+LinkObject* DocumentViewport::selectedLinkForBar() const
+{
+    if (!m_document || m_selectedObjects.size() != 1)
+        return nullptr;
+    InsertedObject* selected = m_selectedObjects.first();
+    if (!selected || selected->type() != QLatin1String("link"))
+        return nullptr;
+    return static_cast<LinkObject*>(selected);
+}
+
+void DocumentViewport::ensureLinkObjectBar()
+{
+    if (m_linkObjectBar)
+        return;
+
+    m_linkObjectBar = new LinkObjectBar(this);
+    m_linkObjectBar->setDarkMode(m_isDarkMode);
+    m_linkObjectBar->hide();
+
+    connect(m_linkObjectBar, &LinkObjectBar::slotActivated,
+            this, &DocumentViewport::activateLinkSlot);
+    connect(m_linkObjectBar, &LinkObjectBar::slotCleared,
+            this, &DocumentViewport::clearLinkSlot);
+    connect(m_linkObjectBar, &LinkObjectBar::pairingCancelRequested,
+            this, &DocumentViewport::cancelPositionLinkPairing);
+    connect(m_linkObjectBar, &LinkObjectBar::linkObjectColorChanged,
+            this, &DocumentViewport::setSelectedLinkColor);
+    connect(m_linkObjectBar, &LinkObjectBar::regionColorChanged,
+            this, &DocumentViewport::setSelectedLinkRegionColor);
+    connect(m_linkObjectBar, &LinkObjectBar::regionStyleChanged,
+            this, &DocumentViewport::setSelectedLinkRegionStyle);
+    connect(m_linkObjectBar, &LinkObjectBar::linkObjectDescriptionChanged,
+            this, &DocumentViewport::setSelectedLinkDescription);
+    connect(m_linkObjectBar, &LinkObjectBar::adjustToggled,
+            this, [this](bool adjusting) {
+        if (adjusting) {
+            if (!beginHighlightAdjust()) {
+                // Nothing to adjust; put the toggle back rather than leaving it
+                // stuck on with no session behind it.
+                syncLinkObjectBar();
+            }
+        } else {
+            commitHighlightAdjust();
+        }
+    });
+}
+
+void DocumentViewport::syncLinkObjectBar()
+{
+    LinkObject* link = selectedLinkForBar();
+    if (!link) {
+        // Discard rather than commit: the selection has already moved on by the
+        // time this runs, so confirming here would write the text onto whatever
+        // object is selected now. The selection-mutating call sites commit
+        // first, while the correct object is still selected.
+        closeLinkObjectBarPopups(false);
+        if (m_linkObjectBar)
+            m_linkObjectBar->hide();
+        return;
+    }
+
+    ensureLinkObjectBar();
+
+    LinkSlotState states[LinkObject::SLOT_COUNT];
+    for (int i = 0; i < LinkObject::SLOT_COUNT; ++i) {
+        switch (link->linkSlots[i].type) {
+            case LinkSlot::Type::Empty:    states[i] = LinkSlotState::Empty; break;
+            case LinkSlot::Type::Position: states[i] = LinkSlotState::Position; break;
+            case LinkSlot::Type::Url:      states[i] = LinkSlotState::Url; break;
+            case LinkSlot::Type::Markdown: states[i] = LinkSlotState::Markdown; break;
+        }
+    }
+
+    // An armed slot is still Empty on disk, so the pending look is applied here
+    // rather than being derivable from the slot's type.
+    int armedSlot = -1;
+    if (isPairingOrigin(link, &armedSlot)
+        && armedSlot >= 0 && armedSlot < LinkObject::SLOT_COUNT
+        && states[armedSlot] == LinkSlotState::Empty) {
+        states[armedSlot] = LinkSlotState::PendingOrigin;
+    }
+
+    // Which slots would take a second slot with them if cleared. Read straight
+    // off the slot rather than resolving the partner, so selecting an
+    // annotation never loads another page just to build its bar; the clear
+    // itself does the real verification.
+    bool paired[LinkObject::SLOT_COUNT];
+    for (int i = 0; i < LinkObject::SLOT_COUNT; ++i) {
+        const LinkSlot& s = link->linkSlots[i];
+        paired[i] = s.type == LinkSlot::Type::Position
+                    && !s.targetObjectId.isEmpty()
+                    && s.targetSlotIndex >= 0;
+    }
+    m_linkObjectBar->setSlotPaired(paired);
+
+    // hasRegion drives which colour the single swatch edits and whether the
+    // style dropdown shows; regionAdjustable additionally requires the object
+    // to be unlocked, since Adjust moves the region's bounding box.
+    const bool hasRegion = !link->region.isEmpty();
+    m_linkObjectBar->setValues(states, link->iconColor, link->description,
+                               hasRegion && !link->locked,
+                               m_adjustSession.active
+                                   && m_adjustSession.objectId == link->id,
+                               hasRegion,
+                               link->region.color,
+                               static_cast<int>(link->region.style));
+    m_linkObjectBar->show();
+    updateLinkObjectBarGeometry();
+    m_linkObjectBar->raise();
+}
+
+void DocumentViewport::updateLinkObjectBarGeometry()
+{
+    if (!m_linkObjectBar || m_linkObjectBar->isHidden())
+        return;
+    LinkObject* link = selectedLinkForBar();
+    if (!link) {
+        m_linkObjectBar->hide();
+        return;
+    }
+
+    const QRectF unrotated = objectBoundsInViewport(link);
+    if (unrotated.isEmpty())
+        return;
+    placeFloatingBar(m_linkObjectBar,
+                     rotatedViewportBounds(unrotated, unrotated.center(),
+                                           link->rotation));
+}
+
+void DocumentViewport::closeLinkObjectBarPopups(bool acceptPreview)
+{
+    if (m_linkObjectBar)
+        m_linkObjectBar->closePopups(acceptPreview);
+}
+
+void DocumentViewport::refreshLinkObjectBar()
+{
+    syncLinkObjectBar();
+}
+
+void DocumentViewport::setSelectedLinkColor(const QColor& color)
+{
+    LinkObject* link = selectedLinkForBar();
+    if (!link || !color.isValid() || link->iconColor == color)
+        return;
+
+    link->iconColor = color;
+    // Keeps the marker cache in sync so the scroll-bar tick colour survives
+    // this page being evicted later.
+    markLinkContainerDirtyAndRefreshOutline(link);
+
+    emit documentModified();
+    emit linkObjectAppearanceChanged(link->id, link->description, color);
+    update();
+}
+
+LinkObject* DocumentViewport::selectedHighlightForAppearance() const
+{
+    // No `locked` check on purpose: the flag means "cannot be moved/resized/
+    // deleted" (InsertedObject.h), and recolouring is none of the three. The
+    // icon-tint path has never checked it either. Adjust does gate on it,
+    // because re-ranging moves the object.
+    LinkObject* link = selectedLinkForBar();
+    if (!link || link->region.isEmpty())
+        return nullptr;
+    return link;
+}
+
+void DocumentViewport::finishRegionAppearanceChange(LinkObject* link,
+                                                    const HighlightRegion& oldRegion,
+                                                    const QColor& oldIconColor)
+{
+    // The badge is derived from the mark at creation, so it keeps following it:
+    // a green highlight wearing the badge of the yellow it used to be reads as
+    // a bug.
+    link->iconColor = badgeTintForHighlight(link->region.color);
+
+    markLinkContainerDirtyAndRefreshOutline(link);
+
+    // Inside an Adjust session every gesture writes straight into the object
+    // and one entry is pushed at the end, so an appearance change made
+    // mid-session rides along rather than interleaving an entry of its own.
+    const bool inSession =
+        m_adjustSession.active && m_adjustSession.objectId == link->id;
+    if (!inSession) {
+        int pageIndex = -1;
+        Document::TileCoord tileCoord{};
+        resolveRegionContainer(link, &pageIndex, nullptr, &tileCoord);
+        // Geometry is untouched, so the object cannot have changed tile and
+        // neither maxObjectExtent nor the tile margin can need recomputing.
+        pushObjectRegionChangeUndo(link, oldRegion, link->position, link->size,
+                                   oldIconColor, pageIndex, tileCoord, tileCoord);
+        if (!m_document->isEdgeless() && pageIndex >= 0) {
+            m_pendingThumbnailPages.insert(pageIndex);
+            emit pageModified(pageIndex);
+        }
+    }
+
+    emit documentModified();
+    // Appearance only: the set of annotations is unchanged, so rebuilding the
+    // notes sidebar would collapse its expanded subtrees for nothing.
+    emit linkObjectAppearanceChanged(link->id, link->description, link->iconColor);
+    update();
+}
+
+void DocumentViewport::setSelectedLinkRegionColor(const QColor& color)
+{
+    LinkObject* link = selectedHighlightForAppearance();
+    if (!link || !color.isValid())
+        return;
+
+    QColor stored = color;
+    stored.setAlpha(HighlightRegion::DEFAULT_OPACITY);
+    if (link->region.color == stored)
+        return;
+
+    const HighlightRegion oldRegion = link->region;
+    const QColor oldIconColor = link->iconColor;
+    link->region.color = stored;
+    finishRegionAppearanceChange(link, oldRegion, oldIconColor);
+}
+
+void DocumentViewport::setSelectedLinkRegionStyle(int style)
+{
+    if (style < static_cast<int>(HighlightRegion::Style::None)
+        || style > static_cast<int>(HighlightRegion::Style::DottedUnderline)) {
+        return;
+    }
+
+    LinkObject* link = selectedHighlightForAppearance();
+    if (!link)
+        return;
+
+    const auto newStyle = static_cast<HighlightRegion::Style>(style);
+    if (link->region.style == newStyle)
+        return;
+
+    const HighlightRegion oldRegion = link->region;
+    const QColor oldIconColor = link->iconColor;
+    link->region.style = newStyle;
+    finishRegionAppearanceChange(link, oldRegion, oldIconColor);
+}
+
+void DocumentViewport::setSelectedLinkDescription(const QString& description)
+{
+    LinkObject* link = selectedLinkForBar();
+    if (!link || link->description == description)
+        return;
+
+    link->description = description;
+    // This is the only path a user can type a description through, so it is
+    // also where the auto-derived / hand-written distinction is recorded.
+    // Clearing the text back to empty gives up the claim again.
+    link->descriptionUserEdited = !description.isEmpty();
+    markLinkContainerDirtyAndRefreshOutline(link);
+
+    emit documentModified();
+    emit linkObjectAppearanceChanged(link->id, description, link->iconColor);
+    update();
+}
+
+void DocumentViewport::beginTextBoxFormatInteraction()
+{
+    if (m_textBoxFormatTransaction.active)
+        return;
+    TextBoxObject* textBox = selectedTextBoxForFormatting();
+    if (!textBox)
+        return;
+
+    TextBoxFormatTransaction transaction;
+    transaction.document = m_document;
+    transaction.objectId = textBox->id;
+    transaction.startState = textBox->captureState();
+    if (!locateTextBoxObject(textBox, transaction.pageIndex,
+                             transaction.tileCoord)) {
+        return;
+    }
+    transaction.attachedToInlineEdit =
+        m_inlineEditSession.active
+        && m_inlineEditSession.document == m_document
+        && m_inlineEditSession.objectId == textBox->id;
+
+    if (textBox->usesLegacyLayout())
+        textBox->upgradeToCurrentLayout();
+    transaction.lastAcceptedState = textBox->captureState();
+    transaction.dirtyViewport = objectBoundsInViewport(textBox);
+    transaction.active = true;
+    m_textBoxFormatTransaction = transaction;
+    if (m_textBoxFormatBar)
+        m_textBoxFormatBar->setValues(transaction.lastAcceptedState);
+}
+
+void DocumentViewport::preserveTextBoxTopAnchor(
+    const TextBoxState& previous, TextBoxState& candidate)
+{
+    auto rotatedPoint = [](const TextBoxState& state,
+                           const QPointF& localPoint) {
+        const QPointF center(
+            state.size.width() / 2.0, state.size.height() / 2.0);
+        const QPointF delta = localPoint - center;
+        const qreal radians = qDegreesToRadians(state.rotation);
+        return state.position + center + QPointF(
+            delta.x() * qCos(radians) - delta.y() * qSin(radians),
+            delta.x() * qSin(radians) + delta.y() * qCos(radians));
+    };
+    const QPointF anchoredTopLeft =
+        rotatedPoint(previous, QPointF(0.0, 0.0));
+    const QPointF candidateCenter(
+        candidate.size.width() / 2.0,
+        candidate.size.height() / 2.0);
+    const QPointF candidateDelta = -candidateCenter;
+    const qreal radians = qDegreesToRadians(candidate.rotation);
+    const QPointF rotatedCandidateDelta(
+        candidateDelta.x() * qCos(radians)
+            - candidateDelta.y() * qSin(radians),
+        candidateDelta.x() * qSin(radians)
+            + candidateDelta.y() * qCos(radians));
+    candidate.position =
+        anchoredTopLeft - candidateCenter - rotatedCandidateDelta;
+}
+
+void DocumentViewport::applyTextBoxFormatPreview(
+    TextBoxFormatChange change, const QVariant& value)
+{
+    if (!m_textBoxFormatTransaction.active)
+        beginTextBoxFormatInteraction();
+    TextBoxObject* textBox = resolveTextBoxFormatTarget();
+    if (!textBox)
+        return;
+
+    const TextBoxState previous =
+        m_textBoxFormatTransaction.lastAcceptedState;
+    const QRectF oldBounds = objectBoundsInViewport(textBox);
+    textBox->applyState(previous);
+
+    switch (change) {
+        case TextBoxFormatChange::FontSize:
+            textBox->fontSize = qMax<qreal>(1.0, value.toReal());
+            break;
+        case TextBoxFormatChange::FontFamily:
+            textBox->fontFamily = value.toString();
+            break;
+        case TextBoxFormatChange::Alignment:
+            textBox->alignment =
+                static_cast<TextAlignment>(value.toInt());
+            break;
+        case TextBoxFormatChange::FontColor:
+            textBox->fontColor = value.value<QColor>();
+            break;
+        case TextBoxFormatChange::BackgroundColor:
+            textBox->backgroundColor = value.value<QColor>();
+            break;
+        case TextBoxFormatChange::BackgroundOpacity: {
+            QColor color = textBox->backgroundColor;
+            color.setAlpha(qBound(0, value.toInt(), 255));
+            textBox->backgroundColor = color;
+            break;
+        }
+        case TextBoxFormatChange::Border:
+            textBox->showBorder = value.toBool();
+            break;
+    }
+
+    textBox->reflowToWidth(previous.size.width());
+    TextBoxState candidate = textBox->captureState();
+    preserveTextBoxTopAnchor(previous, candidate);
+
+    if (!textBoxGeometryProposalAllowed(
+            m_textBoxFormatTransaction.startState, candidate,
+            m_textBoxFormatTransaction.pageIndex)) {
+        textBox->applyState(previous);
+        if (m_textBoxFormatBar)
+            m_textBoxFormatBar->setValues(previous);
+        showObjectGeometryFeedback(
+            tr("Text box cannot grow beyond the page"), oldBounds);
+        updateInlineTextEditorGeometry();
+        updateTextBoxFormatBarGeometry();
+        return;
+    }
+
+    textBox->applyState(candidate);
+    m_textBoxFormatTransaction.lastAcceptedState = candidate;
+    if (m_textBoxFormatTransaction.attachedToInlineEdit)
+        m_inlineEditSession.lastAcceptedState = candidate;
+    m_textBoxFormatTransaction.dirtyViewport =
+        m_textBoxFormatTransaction.dirtyViewport
+            .united(oldBounds)
+            .united(objectBoundsInViewport(textBox));
+    updateInlineTextEditorGeometry();
+    updateTextBoxFormatBarGeometry();
+    update(m_textBoxFormatTransaction.dirtyViewport
+               .adjusted(-10.0, -10.0, 10.0, 10.0)
+               .toAlignedRect());
+}
+
+void DocumentViewport::markTextBoxFormatCommitted(
+    int pageIndex, Document::TileCoord tileCoord)
+{
+    if (!m_document)
+        return;
+    if (m_document->isEdgeless()) {
+        m_document->markTileDirty(tileCoord);
+    } else if (pageIndex >= 0) {
+        m_document->markPageDirty(pageIndex);
+        m_pendingThumbnailPages.insert(pageIndex);
+        emit pageModified(pageIndex);
+    }
+    emit documentModified();
+    emit textBoxLayoutCommitted();
+}
+
+void DocumentViewport::finishTextBoxFormatInteraction(bool accept)
+{
+    if (!m_textBoxFormatTransaction.active)
+        return;
+
+    TextBoxObject* textBox = resolveTextBoxFormatTarget();
+    const TextBoxFormatTransaction transaction =
+        m_textBoxFormatTransaction;
+    m_textBoxFormatTransaction.clear();
+    if (!textBox) {
+        syncTextBoxFormatBar();
+        return;
+    }
+
+    if (!accept) {
+        textBox->applyState(transaction.startState);
+        if (transaction.attachedToInlineEdit)
+            m_inlineEditSession.lastAcceptedState =
+                transaction.startState;
+    } else if (transaction.attachedToInlineEdit) {
+        m_inlineEditSession.lastAcceptedState =
+            textBox->captureState();
+    } else if (!textBoxStatesEqual(
+                   transaction.startState,
+                   textBox->captureState())) {
+        const Document::TileCoord oldTile = transaction.tileCoord;
+        Document::TileCoord newTile = oldTile;
+        if (m_document->isEdgeless()) {
+            relocateObjectsToCorrectTiles();
+            int ignoredPage = -1;
+            locateTextBoxObject(textBox, ignoredPage, newTile);
+        }
+        pushObjectTextEditUndo(
+            textBox, transaction.startState, textBox->captureState(),
+            transaction.pageIndex, oldTile, newTile);
+        if (m_document->isEdgeless() && oldTile != newTile)
+            m_document->markTileDirty(oldTile);
+        markTextBoxFormatCommitted(
+            transaction.pageIndex, newTile);
+    }
+
+    if (m_textBoxFormatBar)
+        m_textBoxFormatBar->setValues(textBox->captureState());
+    updateInlineTextEditorGeometry();
+    updateTextBoxFormatBarGeometry();
+    const QRectF dirty = transaction.dirtyViewport
+        .united(objectBoundsInViewport(textBox))
+        .adjusted(-10.0, -10.0, 10.0, 10.0);
+    update(dirty.toAlignedRect());
+}
+
+void DocumentViewport::closeTextBoxFormatPopups(bool acceptPreview)
+{
+    if (m_textBoxFormatBar)
+        m_textBoxFormatBar->closePopups(acceptPreview);
+}
+
+bool DocumentViewport::textBoxStatesEqual(const TextBoxState& lhs,
+                                          const TextBoxState& rhs)
+{
+    return lhs.text == rhs.text
+        && lhs.fontFamily == rhs.fontFamily
+        && qAbs(lhs.fontSize - rhs.fontSize) < 0.001
+        && lhs.fontColor == rhs.fontColor
+        && lhs.backgroundColor == rhs.backgroundColor
+        && lhs.alignment == rhs.alignment
+        && lhs.showBorder == rhs.showBorder
+        && lhs.textLayoutVersion == rhs.textLayoutVersion
+        && QLineF(lhs.position, rhs.position).length() < 0.001
+        && qAbs(lhs.size.width() - rhs.size.width()) < 0.001
+        && qAbs(lhs.size.height() - rhs.size.height()) < 0.001
+        && qAbs(lhs.rotation - rhs.rotation) < 0.001;
+}
+
+TextBoxObject* DocumentViewport::resolveInlineTextBox() const
+{
+    if (!m_inlineEditSession.active || !m_document
+        || m_inlineEditSession.document != m_document) {
+        return nullptr;
+    }
+
+    Page* container = nullptr;
+    if (m_document->isEdgeless()) {
+        container = m_document->getTile(
+            m_inlineEditSession.tileCoord.first,
+            m_inlineEditSession.tileCoord.second);
+    } else if (m_inlineEditSession.pageIndex >= 0
+               && m_inlineEditSession.pageIndex
+                    < m_document->pageCount()) {
+        container = m_document->page(m_inlineEditSession.pageIndex);
+    }
+    if (!container)
+        return nullptr;
+
+    InsertedObject* object =
+        container->objectById(m_inlineEditSession.objectId);
+    if (!object || object->type() != QLatin1String("textbox"))
+        return nullptr;
+    return static_cast<TextBoxObject*>(object);
+}
+
+QRectF DocumentViewport::inlineTextEditorRect(TextBoxObject* textBox) const
+{
+    if (!textBox)
+        return QRectF();
+
+    const QRectF outer = objectBoundsInViewport(textBox);
+    if (outer.isEmpty())
+        return QRectF();
+
+    const qreal padding =
+        TextBoxObject::CONTENT_PADDING * m_zoomLevel;
+    QRectF content = outer.adjusted(
+        padding, padding, -padding, -padding);
+    if (content.width() < 4.0)
+        content.setWidth(4.0);
+    if (content.height() < 4.0)
+        content.setHeight(4.0);
+
+    return rotatedViewportBounds(content, outer.center(),
+                                 textBox->rotation);
+}
+
+void DocumentViewport::updateInlineTextEditorGeometry()
+{
+    if (!m_inlineTextBoxEditor || !m_inlineEditSession.active)
+        return;
+
+    TextBoxObject* textBox = resolveInlineTextBox();
+    if (!textBox) {
+        m_inlineTextBoxEditor->hide();
+        m_inlineEditSession.clear();
+        const bool hadSelection = !m_selectedObjects.isEmpty();
+        m_selectedObjects.clear();
+        m_hoveredObject = nullptr;
+        if (hadSelection)
+            emit objectSelectionChanged();
+        update();
+        return;
+    }
+
+    m_inlineTextBoxEditor->configure(
+        textBox->captureState(), m_zoomLevel, m_isDarkMode);
+    QRect geometry = inlineTextEditorRect(textBox)
+        .adjusted(-1.0, -1.0, 1.0, 1.0).toAlignedRect();
+    geometry.setWidth(qMax(8, geometry.width()));
+    geometry.setHeight(qMax(8, geometry.height()));
+    m_inlineTextBoxEditor->setGeometry(geometry);
+    m_inlineTextBoxEditor->raise();
+}
+
+void DocumentViewport::startInlineTextEdit(TextBoxObject* textBox,
+                                           bool newBox)
+{
+    if (!textBox || !m_document
+        || textBox->type() != QLatin1String("textbox")) {
+        return;
+    }
+
+    if (m_inlineEditSession.active) {
+        if (m_inlineEditSession.objectId == textBox->id)
+            return;
+        commitInlineTextEdit();
+    }
+    if (!m_selectedObjects.contains(textBox)) {
+        deselectAllObjects();
+        selectObject(textBox, false);
+    }
+
+    InlineTextEditSession session;
+    session.document = m_document;
+    session.objectId = textBox->id;
+    session.newBox = newBox;
+    session.startState = textBox->captureState();
+
+    if (m_document->isEdgeless()) {
+        bool found = false;
+        for (const auto& coord : m_document->allLoadedTileCoords()) {
+            Page* tile = m_document->getTile(coord.first, coord.second);
+            if (tile && tile->objectById(textBox->id)) {
+                session.tileCoord = coord;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            return;
+    } else {
+        session.pageIndex = pageIndexForObject(textBox);
+        if (session.pageIndex < 0)
+            return;
+    }
+
+    if (textBox->usesLegacyLayout())
+        textBox->upgradeToCurrentLayout();
+    session.lastAcceptedState = textBox->captureState();
+    session.active = true;
+    m_inlineEditSession = session;
+    syncTextBoxFormatBar();
+
+    if (!m_inlineTextBoxEditor) {
+        m_inlineTextBoxEditor = new InlineTextBoxEditor(this);
+        connect(m_inlineTextBoxEditor,
+                &InlineTextBoxEditor::sourceChanged,
+                this, &DocumentViewport::handleInlineTextSourceChanged);
+        connect(m_inlineTextBoxEditor,
+                &InlineTextBoxEditor::commitRequested,
+                this, &DocumentViewport::commitInlineTextEdit);
+        connect(m_inlineTextBoxEditor,
+                &InlineTextBoxEditor::cancelRequested,
+                this, &DocumentViewport::cancelInlineTextEdit);
+    }
+
+    m_inlineTextBoxEditor->configure(
+        session.lastAcceptedState, m_zoomLevel, m_isDarkMode);
+    m_inlineTextBoxEditor->setText(session.lastAcceptedState.text);
+    updateInlineTextEditorGeometry();
+    m_inlineTextBoxEditor->show();
+    m_inlineTextBoxEditor->raise();
+    m_inlineTextBoxEditor->editor()->setFocus(Qt::OtherFocusReason);
+    updateTextBoxFormatBarGeometry();
+    update();
+}
+
+void DocumentViewport::handleInlineTextSourceChanged(
+    const QString& source)
+{
+    if (m_revertingInlineText || !m_inlineEditSession.active
+        || !m_inlineTextBoxEditor) {
+        return;
+    }
+
+    TextBoxObject* textBox = resolveInlineTextBox();
+    if (!textBox) {
+        m_inlineTextBoxEditor->hide();
+        m_inlineEditSession.clear();
+        const bool hadSelection = !m_selectedObjects.isEmpty();
+        m_selectedObjects.clear();
+        m_hoveredObject = nullptr;
+        if (hadSelection)
+            emit objectSelectionChanged();
+        update();
+        return;
+    }
+
+    const QTextCursor cursorBeforeChange =
+        m_inlineTextBoxEditor->takeCursorBeforeLastChange();
+    const QRectF oldBounds = objectBoundsInViewport(textBox);
+    const TextBoxState previous =
+        m_inlineEditSession.lastAcceptedState;
+
+    textBox->applyState(previous);
+    textBox->text = source;
+    textBox->reflowToWidth(previous.size.width());
+    TextBoxState candidate = textBox->captureState();
+
+    // Preserve the local top-left point in world/container coordinates while
+    // content-derived height changes around the object's rotation center.
+    preserveTextBoxTopAnchor(previous, candidate);
+
+    if (!textBoxGeometryProposalAllowed(
+            previous, candidate, m_inlineEditSession.pageIndex)) {
+        textBox->applyState(previous);
+        m_revertingInlineText = true;
+        const int documentLength = previous.text.size();
+        QTextCursor restored(
+            m_inlineTextBoxEditor->editor()->document());
+        const int anchor =
+            qBound(0, cursorBeforeChange.anchor(), documentLength);
+        const int position =
+            qBound(0, cursorBeforeChange.position(), documentLength);
+        restored.setPosition(anchor);
+        restored.setPosition(position, QTextCursor::KeepAnchor);
+        m_inlineTextBoxEditor->setText(previous.text, &restored);
+        m_revertingInlineText = false;
+        showObjectGeometryFeedback(
+            tr("Text box cannot grow beyond the page"),
+            oldBounds);
+        updateInlineTextEditorGeometry();
+        return;
+    }
+
+    textBox->applyState(candidate);
+    m_inlineEditSession.lastAcceptedState = candidate;
+    updateInlineTextEditorGeometry();
+    updateTextBoxFormatBarGeometry();
+    const QRectF dirty = oldBounds.united(
+        objectBoundsInViewport(textBox))
+        .adjusted(-8.0, -8.0, 8.0, 8.0);
+    update(dirty.toAlignedRect());
+}
+
+void DocumentViewport::markInlineTextEditCommitted()
+{
+    if (!m_document || !m_inlineEditSession.active)
+        return;
+
+    if (m_document->isEdgeless()) {
+        m_document->markTileDirty(m_inlineEditSession.tileCoord);
+    } else if (m_inlineEditSession.pageIndex >= 0) {
+        m_document->markPageDirty(m_inlineEditSession.pageIndex);
+        m_pendingThumbnailPages.insert(
+            m_inlineEditSession.pageIndex);
+        emit pageModified(m_inlineEditSession.pageIndex);
+    }
+    emit documentModified();
+    emit textBoxLayoutCommitted();
+}
+
+void DocumentViewport::removeUncommittedInlineTextBox()
+{
+    if (!m_document || !m_inlineEditSession.active)
+        return;
+
+    TextBoxObject* textBox = resolveInlineTextBox();
+    const QRectF dirty = textBox
+        ? objectBoundsInViewport(textBox)
+            .adjusted(-12.0, -12.0, 12.0, 12.0)
+        : QRectF();
+    const QString objectId = m_inlineEditSession.objectId;
+    m_selectedObjects.removeAll(textBox);
+    if (m_hoveredObject == textBox)
+        m_hoveredObject = nullptr;
+
+    if (m_document->isEdgeless()) {
+        Page* tile = m_document->getTile(
+            m_inlineEditSession.tileCoord.first,
+            m_inlineEditSession.tileCoord.second);
+        if (tile)
+            tile->removeObject(objectId);
+        m_document->removeTileIfEmpty(
+            m_inlineEditSession.tileCoord.first,
+            m_inlineEditSession.tileCoord.second);
+    } else if (m_inlineEditSession.pageIndex >= 0) {
+        Page* page = m_document->page(
+            m_inlineEditSession.pageIndex);
+        if (page)
+            page->removeObject(objectId);
+    }
+    emit objectSelectionChanged();
+    if (!dirty.isEmpty())
+        update(dirty.toAlignedRect());
+    else
+        update();
+}
+
+void DocumentViewport::endInlineTextEdit(bool commit,
+                                         bool targetBeingDeleted)
+{
+    if (!m_inlineEditSession.active)
+        return;
+
+    TextBoxObject* textBox = resolveInlineTextBox();
+    if (!textBox) {
+        if (m_inlineTextBoxEditor)
+            m_inlineTextBoxEditor->hide();
+        m_inlineEditSession.clear();
+        const bool hadSelection = !m_selectedObjects.isEmpty();
+        m_selectedObjects.clear();
+        m_hoveredObject = nullptr;
+        if (hadSelection)
+            emit objectSelectionChanged();
+        update();
+        return;
+    }
+
+    const bool removeEmptyNew =
+        m_inlineEditSession.newBox
+        && textBox->text.trimmed().isEmpty();
+    if (targetBeingDeleted && m_inlineEditSession.newBox) {
+        removeUncommittedInlineTextBox();
+    } else if (targetBeingDeleted) {
+        // The delete action snapshots the current accepted object state.
+    } else if (!commit) {
+        textBox->applyState(m_inlineEditSession.startState);
+        if (m_inlineEditSession.newBox)
+            removeUncommittedInlineTextBox();
+    } else if (removeEmptyNew) {
+        removeUncommittedInlineTextBox();
+    } else {
+        const Document::TileCoord oldTile =
+            m_inlineEditSession.tileCoord;
+        Document::TileCoord newTile = oldTile;
+        if (m_document->isEdgeless()) {
+            relocateObjectsToCorrectTiles();
+            for (const auto& coord :
+                 m_document->allLoadedTileCoords()) {
+                Page* tile =
+                    m_document->getTile(coord.first, coord.second);
+                if (tile && tile->objectById(textBox->id)) {
+                    newTile = coord;
+                    break;
+                }
+            }
+        }
+
+        if (m_inlineEditSession.newBox) {
+            m_inlineEditSession.tileCoord = newTile;
+            pushObjectInsertUndo(
+                textBox, m_inlineEditSession.pageIndex,
+                m_inlineEditSession.tileCoord);
+            markInlineTextEditCommitted();
+        } else if (!textBoxStatesEqual(
+                       m_inlineEditSession.startState,
+                       textBox->captureState())) {
+            pushObjectTextEditUndo(
+                textBox, m_inlineEditSession.startState,
+                textBox->captureState(),
+                m_inlineEditSession.pageIndex,
+                oldTile, newTile);
+            m_inlineEditSession.tileCoord = newTile;
+            markInlineTextEditCommitted();
+        }
+    }
+
+    if (m_inlineTextBoxEditor)
+        m_inlineTextBoxEditor->hide();
+    m_inlineEditSession.clear();
+    update();
+}
+
+void DocumentViewport::commitInlineTextEdit()
+{
+    closeTextBoxFormatPopups(true);
+    finishTextBoxFormatInteraction(true);
+    endInlineTextEdit(true);
+    syncTextBoxFormatBar();
+}
+
+void DocumentViewport::cancelInlineTextEdit()
+{
+    closeTextBoxFormatPopups(false);
+    finishTextBoxFormatInteraction(false);
+    endInlineTextEdit(false);
+    syncTextBoxFormatBar();
+}
+
+QRectF DocumentViewport::proposedTextBoxCreationRect(
+    const QPointF& startPoint, const QPointF& currentPoint,
+    int pageIndex) const
+{
+    const qreal horizontalDistance =
+        qAbs(currentPoint.x() - startPoint.x());
+    const bool clickCreation =
+        horizontalDistance < TextBoxObject::MINIMUM_WIDTH;
+    qreal width = clickCreation
+        ? TextBoxObject::DEFAULT_CREATION_WIDTH
+        : qMax(TextBoxObject::MINIMUM_WIDTH, horizontalDistance);
+
+    if (m_document && !m_document->isEdgeless() && pageIndex >= 0) {
+        const QSizeF pageSize = m_document->pageSizeAt(pageIndex);
+        if (pageSize.width() > 0.0)
+            width = qMin(width, pageSize.width());
+    }
+    width = qMax<qreal>(1.0, width);
+
+    TextBoxObject probe;
+    probe.textLayoutVersion = TextBoxObject::CURRENT_TEXT_LAYOUT_VERSION;
+    probe.fontSize = TextBoxObject::DEFAULT_BASE_FONT_SIZE;
+    probe.fontColor = m_penColor;
+    probe.text.clear();
+    probe.size = QSizeF(width, 1.0);
+    probe.reflowToWidth(width);
+
+    const qreal left = clickCreation
+        ? startPoint.x() - width / 2.0
+        : qMin(startPoint.x(), currentPoint.x());
+    QPointF topLeft(left, startPoint.y() - probe.size.height() / 2.0);
+
+    if (m_document && !m_document->isEdgeless() && pageIndex >= 0) {
+        topLeft = ObjectConstraints::clampPosition(
+            topLeft, probe.size, m_document->pageSizeAt(pageIndex));
+    }
+    return QRectF(topLeft, probe.size);
+}
+
+QRectF DocumentViewport::proposedTextBoxCreationRectInViewport() const
+{
+    if (!m_document || !m_isCreatingTextBox)
+        return QRectF();
+
+    QPointF currentPoint;
+    if (m_document->isEdgeless()) {
+        currentPoint = viewportToDocument(m_lastPointerPos);
+        const QRectF documentRect = proposedTextBoxCreationRect(
+            m_textBoxCreateStartDoc, currentPoint, -1);
+        return QRectF(documentToViewport(documentRect.topLeft()),
+                      documentRect.size() * m_zoomLevel);
+    }
+
+    const PageHit hit = viewportToPage(m_lastPointerPos);
+    currentPoint =
+        hit.pageIndex == m_textBoxCreatePageIndex && hit.pageIndex >= 0
+        ? hit.pagePoint
+        : m_textBoxCreateStartDoc;
+    const QRectF pageRect = proposedTextBoxCreationRect(
+        m_textBoxCreateStartDoc, currentPoint, m_textBoxCreatePageIndex);
+    const QPointF documentTopLeft =
+        pagePosition(m_textBoxCreatePageIndex) + pageRect.topLeft();
+    return QRectF(documentToViewport(documentTopLeft),
+                  pageRect.size() * m_zoomLevel);
+}
+
+bool DocumentViewport::textBoxGeometryProposalAllowed(
+    const TextBoxState& oldState, const TextBoxState& proposedState,
+    int pageIndex) const
+{
+    if (!m_document || m_document->isEdgeless() || pageIndex < 0)
+        return true;
+
+    const QSizeF pageSize = m_document->pageSizeAt(pageIndex);
+    auto overflow = [&pageSize](const TextBoxState& state) {
+        const QRectF rect(state.position, state.size);
+        return QVector<qreal>{
+            qMax<qreal>(0.0, -rect.left()),
+            qMax<qreal>(0.0, -rect.top()),
+            qMax<qreal>(0.0, rect.right() - pageSize.width()),
+            qMax<qreal>(0.0, rect.bottom() - pageSize.height())
+        };
+    };
+
+    const QVector<qreal> oldOverflow = overflow(oldState);
+    const QVector<qreal> proposedOverflow = overflow(proposedState);
+    for (int i = 0; i < proposedOverflow.size(); ++i) {
+        if (proposedOverflow[i] > oldOverflow[i] + 0.01)
+            return false;
+    }
+    return true;
+}
+
+void DocumentViewport::showObjectGeometryFeedback(
+    const QString& message, const QRectF& anchorViewportRect)
+{
+    m_objectGeometryFeedbackText = message;
+    m_objectGeometryFeedbackAnchor = anchorViewportRect;
+    if (m_objectGeometryFeedbackTimer)
+        m_objectGeometryFeedbackTimer->start();
+    update(anchorViewportRect.adjusted(-16.0, -16.0, 260.0, 80.0)
+               .toAlignedRect());
+}
+
+QColor DocumentViewport::textBackdropForPage(const Page* page) const
+{
+    // PDF paper is whatever the renderer makes of it, not what the page color
+    // says, so the inversion setting decides for those pages.
+    if (page && page->backgroundType == Page::BackgroundType::PDF)
+        return TextBoxObject::defaultBackgroundColor(
+            m_isDarkMode && m_pdfDarkModeEnabled);
+
+    QColor paper;
+    if (page)
+        paper = page->backgroundColor;
+    else if (m_document)
+        paper = m_document->defaultBackgroundColor;
+
+    const bool darkPaper = paper.isValid() && paper.alpha() > 0
+        ? paper.lightness() < 128
+        : m_isDarkMode;
+    return TextBoxObject::defaultBackgroundColor(darkPaper);
+}
+
 void DocumentViewport::createTextBoxAtRect(int pageIndex, const QRectF& rect, const QPointF& viewportPos)
 {
     if (!m_document) return;
+    Q_UNUSED(viewportPos);
 
     auto textObj = std::make_unique<TextBoxObject>();
     textObj->position = rect.topLeft();
-    textObj->size = rect.size();
+    textObj->size = QSizeF(qMax<qreal>(1.0, rect.width()), 1.0);
     textObj->text = QString();
+    textObj->fontSize = TextBoxObject::DEFAULT_BASE_FONT_SIZE;
+    textObj->textLayoutVersion =
+        TextBoxObject::CURRENT_TEXT_LAYOUT_VERSION;
     textObj->showBorder = true;
     textObj->visible = true;
     textObj->fontColor = m_penColor;
-    textObj->backgroundColor = QColor(255, 255, 255, 180);
+    textObj->reflowToWidth(textObj->size.width());
 
     TextBoxObject* rawPtr = textObj.get();
-
-    Document::TileCoord insertedTileCoord = {0, 0};
 
     if (m_document->isEdgeless()) {
         auto coord = m_document->tileCoordForPoint(rect.topLeft());
@@ -8307,7 +10716,7 @@ void DocumentViewport::createTextBoxAtRect(int pageIndex, const QRectF& rect, co
         QPointF tileOrigin(coord.first * Document::EDGELESS_TILE_SIZE,
                            coord.second * Document::EDGELESS_TILE_SIZE);
         textObj->position = rect.topLeft() - tileOrigin;
-        textObj->size = rect.size();
+        textObj->backgroundColor = textBackdropForPage(targetTile);
 
         int activeLayer = m_edgelessActiveLayerIndex;
         int defaultAffinity = activeLayer - 1;
@@ -8315,41 +10724,33 @@ void DocumentViewport::createTextBoxAtRect(int pageIndex, const QRectF& rect, co
         textObj->zOrder = getNextZOrderForAffinity(targetTile, defaultAffinity);
 
         targetTile->addObject(std::move(textObj));
-        m_document->markTileDirty(coord);
-        insertedTileCoord = coord;
     } else {
         Page* page = m_document->page(pageIndex);
         if (!page) {
             qWarning() << "createTextBoxAtRect: No page at index" << pageIndex;
             return;
         }
+        textObj->backgroundColor = textBackdropForPage(page);
 
         int activeLayer = page->activeLayerIndex;
         int defaultAffinity = activeLayer - 1;
         textObj->setLayerAffinity(defaultAffinity);
         textObj->zOrder = getNextZOrderForAffinity(page, defaultAffinity);
 
-        // The rubber band can be dragged past the page edge
-        textObj->size = ObjectConstraints::shrinkToFit(textObj->size, page->size);
-        textObj->position = clampObjectPositionToPage(pageIndex, textObj->position, textObj->size);
+        const qreal pageWidth = qMax<qreal>(1.0, page->size.width());
+        if (textObj->size.width() > pageWidth)
+            textObj->reflowToWidth(pageWidth);
+        textObj->position = clampObjectPositionToPage(
+            pageIndex, textObj->position, textObj->size);
 
         page->addObject(std::move(textObj));
-        m_document->markPageDirty(pageIndex);
     }
-
-    pushObjectInsertUndo(rawPtr, pageIndex, insertedTileCoord);
 
     deselectAllObjects();
     selectObject(rawPtr, false);
 
-    if (m_objectActionMode == ObjectActionMode::Create) {
-        m_objectActionMode = ObjectActionMode::Select;
-        emit objectActionModeChanged(m_objectActionMode);
-    }
-
-    emit documentModified();
     update();
-    emit openTextEditorRequested(rawPtr);
+    startInlineTextEdit(rawPtr, true);
 }
 
 // ===== Link Slot Activation (Phase C.4.3) =====
@@ -8390,23 +10791,7 @@ void DocumentViewport::activateLinkSlot(int slotIndex)
     // Activate the slot based on type
     switch (slot.type) {
         case LinkSlot::Type::Position:
-            // Navigate to position (paged or edgeless)
-            if (slot.isEdgelessTarget) {
-#ifdef SPEEDYNOTE_DEBUG
-                qDebug() << "activateLinkSlot: Edgeless position link"
-                         << "tileX =" << slot.edgelessTileX
-                         << "tileY =" << slot.edgelessTileY
-                         << "targetPosition =" << slot.targetPosition;
-#endif
-                // Save current position before jumping (Phase 4)
-                pushPositionHistory();
-                
-                // Edgeless mode: navigate to tile + document position
-                navigateToEdgelessPosition(slot.edgelessTileX, slot.edgelessTileY, slot.targetPosition);
-            } else {
-                // Paged mode: navigate to page UUID + page-local position
-            navigateToPosition(slot.targetPageUuid, slot.targetPosition);
-            }
+            followPositionLink(link, slotIndex);
             break;
             
         case LinkSlot::Type::Url:
@@ -8432,6 +10817,7 @@ void DocumentViewport::activateLinkSlot(int slotIndex)
 
                 emit documentModified();
                 emit linkObjectListMayHaveChanged();   // M.7.3: refresh the right sidebar
+                emit linkSlotsChanged();
                 update();
                 // TODO: Notify user that note was missing
                 return;
@@ -8478,39 +10864,55 @@ void DocumentViewport::addLinkToSlot(int slotIndex)
     
     // Simple context menu (TEMPORARY UI)
     QMenu menu;
-    QAction* posAction = menu.addAction(tr("Add Position Link"));
+
+    // The position entry depends on whether a link is already half-made, and on
+    // whether this is the annotation it was started from. Only one of start /
+    // finish is ever offered, so there is no way to link an object to itself.
+    const bool pairing = m_positionPairing.active;
+    const bool isOrigin = isPairingOrigin(link);
+
+    QAction* startAction = nullptr;
+    QAction* finishAction = nullptr;
+    QAction* cancelPairAction = nullptr;
+
+    if (!pairing) {
+        startAction = menu.addAction(tr("Start position link"));
+    } else {
+        if (!isOrigin) {
+            const QString from = m_positionPairing.originDescription.trimmed();
+            finishAction = menu.addAction(
+                from.isEmpty()
+                    ? tr("Finish position link here")
+                    : tr("Finish position link from \"%1\"")
+                          .arg(from.left(40)));
+        }
+        cancelPairAction = menu.addAction(tr("Cancel position link"));
+    }
+
     QAction* urlAction = menu.addAction(tr("Add URL Link"));
     QAction* mdAction = menu.addAction(tr("Add Markdown Note"));
     
     QAction* selected = menu.exec(QCursor::pos());
     
-    if (selected == posAction) {
-        // TODO: Enter "pick position" mode (requires additional UI work)
-        #ifdef SPEEDYNOTE_DEBUG
-        qDebug() << "addLinkToSlot: Position link - TODO: implement pick position mode";
-        #endif
+    if (selected && selected == startAction) {
+        beginPositionLinkPairing(link, slotIndex);
+    } else if (selected && selected == finishAction) {
+        completePositionLinkPairing(link, slotIndex);
+    } else if (selected && selected == cancelPairAction) {
+        cancelPositionLinkPairing();
     } else if (selected == urlAction) {
         QString url = QInputDialog::getText(this, tr("Add URL"), tr("Enter URL:"));
         if (!url.isEmpty()) {
             link->linkSlots[slotIndex].type = LinkSlot::Type::Url;
             link->linkSlots[slotIndex].url = url;
             
-            // Mark page dirty - find which page contains this object
-            Document::TileCoord tileCoord;
-            Page* page = findPageContainingObject(link, &tileCoord);
-            if (page && m_document) {
-                if (m_document->isEdgeless()) {
-                    m_document->markTileDirty(tileCoord);
-                } else {
-                    // Use cached UUID→index lookup (O(1) from Phase C.0.2)
-                    int pageIndex = m_document->pageIndexByUuid(page->uuid);
-                    if (pageIndex >= 0) {
-                        m_document->markPageDirty(pageIndex);
-                    }
-                }
-            }
+            // Marks the container dirty and refreshes the outline cache, so
+            // filling the first slot on a highlight makes its scroll-bar
+            // marker appear rather than waiting for a reload.
+            markLinkContainerDirtyAndRefreshOutline(link);
             
             emit documentModified();
+            emit linkSlotsChanged();
             update();
             
             #ifdef SPEEDYNOTE_DEBUG
@@ -8523,9 +10925,313 @@ void DocumentViewport::addLinkToSlot(int slotIndex)
     }
 }
 
+// ============================================================================
+// Position link navigation
+// ============================================================================
+
+void DocumentViewport::followPositionLink(LinkObject* source, int slotIndex)
+{
+    if (!source || !m_document) return;
+    if (slotIndex < 0 || slotIndex >= LinkObject::SLOT_COUNT) return;
+
+    // Copied out before navigating: bringing the destination into view can
+    // evict the source's page, which would leave `source` dangling. The
+    // container is recorded for the same reason, so the repair below can find
+    // its way back without assuming the source is still on the current page.
+    const LinkSlot slot = source->linkSlots[slotIndex];
+    const QString sourceId = source->id;
+    int sourcePageIndex = -1;
+    Document::TileCoord sourceTile{};
+    locateObjectContainer(sourceId, sourcePageIndex, sourceTile);
+
+    if (slot.isEdgelessTarget) {
+        // Save current position before jumping (Phase 4)
+        pushPositionHistory();
+        navigateToEdgelessPosition(slot.edgelessTileX, slot.edgelessTileY,
+                                   slot.targetPosition);
+    } else {
+        navigateToPosition(slot.targetPageUuid, slot.targetPosition);
+    }
+
+    // A bare coordinate, which is every link written before pairing existed and
+    // every back-link made by copying an annotation. Nothing to correct against.
+    if (slot.targetObjectId.isEmpty()) return;
+
+    Page* targetContainer = nullptr;
+    Document::TileCoord targetTile{};
+    int targetPageIndex = -1;
+    if (slot.isEdgelessTarget) {
+        targetTile = {slot.edgelessTileX, slot.edgelessTileY};
+        targetContainer = m_document->getTile(targetTile.first, targetTile.second);
+        targetPageIndex = 0;
+    } else {
+        targetPageIndex = m_document->pageIndexByUuid(slot.targetPageUuid);
+        if (targetPageIndex >= 0) targetContainer = m_document->page(targetPageIndex);
+    }
+    if (!targetContainer) return;
+
+    auto* target =
+        dynamic_cast<LinkObject*>(targetContainer->objectById(slot.targetObjectId));
+    if (!target) return;  // Deleted, or moved off this container.
+
+    // Where the target is now, in the space the slot stores.
+    QPointF centre = target->position + QPointF(target->size.width() / 2.0,
+                                                target->size.height() / 2.0);
+    if (slot.isEdgelessTarget) {
+        centre += QPointF(targetTile.first * Document::EDGELESS_TILE_SIZE,
+                          targetTile.second * Document::EDGELESS_TILE_SIZE);
+    }
+
+    if (QLineF(centre, slot.targetPosition).length() > POSITION_LINK_DRIFT_SLOP) {
+        // Re-aim, then repair the slot so the drift is not re-measured on every
+        // future jump. Writing during activation follows the markdown branch
+        // above, which likewise clears a broken reference as it is followed.
+        if (slot.isEdgelessTarget) {
+            navigateToEdgelessPosition(targetTile.first, targetTile.second, centre);
+        } else {
+            navigateToPosition(slot.targetPageUuid, centre);
+        }
+
+        Page* sourceContainer =
+            m_document->isEdgeless()
+                ? m_document->getTile(sourceTile.first, sourceTile.second)
+                : (sourcePageIndex >= 0 ? m_document->page(sourcePageIndex) : nullptr);
+        auto* freshSource = sourceContainer
+            ? dynamic_cast<LinkObject*>(sourceContainer->objectById(sourceId))
+            : nullptr;
+        if (freshSource) {
+            freshSource->linkSlots[slotIndex].targetPosition = centre;
+            markLinkContainerDirty(sourcePageIndex, sourceTile);
+            emit documentModified();
+        }
+    }
+
+    // Selecting the destination surfaces its bar with the return slot on it, so
+    // the pairing is visible and the way back is one click.
+    selectObject(target, false);
+}
+
+// ============================================================================
+// Position link pairing
+// ============================================================================
+
+bool DocumentViewport::isPairingOrigin(const LinkObject* link, int* slotIndex) const
+{
+    if (!m_positionPairing.active || !link) return false;
+    if (link->id != m_positionPairing.originObjectId) return false;
+    if (slotIndex) *slotIndex = m_positionPairing.originSlotIndex;
+    return true;
+}
+
+void DocumentViewport::beginPositionLinkPairing(LinkObject* origin, int slotIndex)
+{
+    if (!origin || !m_document) return;
+    if (slotIndex < 0 || slotIndex >= LinkObject::SLOT_COUNT) return;
+    if (!origin->linkSlots[slotIndex].isEmpty()) return;
+
+    int pageIndex = -1;
+    Document::TileCoord tileCoord{};
+    Page* container = locateObjectContainer(origin->id, pageIndex, tileCoord);
+    if (!container) {
+        // With nowhere recorded to come back to, arming would strand the link.
+        emit userWarning(tr("Cannot start a position link from this annotation."));
+        return;
+    }
+
+    m_positionPairing.clear();
+    m_positionPairing.originObjectId = origin->id;
+    m_positionPairing.originSlotIndex = slotIndex;
+    m_positionPairing.originIsEdgeless = m_document->isEdgeless();
+    if (!m_positionPairing.originIsEdgeless) {
+        m_positionPairing.originPageUuid = container->uuid;
+    }
+    m_positionPairing.originTileCoord = tileCoord;
+    m_positionPairing.originDescription = origin->description;
+    m_positionPairing.active = true;
+
+    // Repaints the armed slot in its accent colour, which is the only standing
+    // sign that a link is half-made.
+    syncLinkObjectBar();
+    update();
+}
+
+void DocumentViewport::cancelPositionLinkPairing()
+{
+    if (!m_positionPairing.active) return;
+
+    m_positionPairing.clear();
+    syncLinkObjectBar();
+    update();
+}
+
+LinkObject* DocumentViewport::resolvePairingOrigin(int* pageIndex,
+                                                  Document::TileCoord* tileCoord)
+{
+    if (!m_positionPairing.active || !m_document) return nullptr;
+
+    Page* container = nullptr;
+    if (m_positionPairing.originIsEdgeless) {
+        container = m_document->getTile(m_positionPairing.originTileCoord.first,
+                                       m_positionPairing.originTileCoord.second);
+        if (pageIndex) *pageIndex = 0;
+        if (tileCoord) *tileCoord = m_positionPairing.originTileCoord;
+    } else {
+        const int idx =
+            m_document->pageIndexByUuid(m_positionPairing.originPageUuid);
+        if (idx < 0) return nullptr;
+        // Lazily reloads the page: the user had to navigate away to find the
+        // other end, which normally evicted it.
+        container = m_document->page(idx);
+        if (pageIndex) *pageIndex = idx;
+        if (tileCoord) *tileCoord = {0, 0};
+    }
+    if (!container) return nullptr;
+
+    return dynamic_cast<LinkObject*>(
+        container->objectById(m_positionPairing.originObjectId));
+}
+
+void DocumentViewport::setPositionTarget(LinkSlot& slot, const LinkObject* target,
+                                         int targetSlotIndex,
+                                         const QString& pageUuid,
+                                         Document::TileCoord tileCoord) const
+{
+    if (!target) return;
+
+    slot.type = LinkSlot::Type::Position;
+    slot.targetObjectId = target->id;
+    slot.targetSlotIndex = targetSlotIndex;
+
+    const QPointF centre =
+        target->position + QPointF(target->size.width() / 2.0,
+                                   target->size.height() / 2.0);
+
+    if (m_document && m_document->isEdgeless()) {
+        slot.isEdgelessTarget = true;
+        slot.edgelessTileX = tileCoord.first;
+        slot.edgelessTileY = tileCoord.second;
+        // Object positions are tile-local but edgeless navigation takes
+        // document space, so the tile origin has to be folded in.
+        slot.targetPosition =
+            centre + QPointF(tileCoord.first * Document::EDGELESS_TILE_SIZE,
+                             tileCoord.second * Document::EDGELESS_TILE_SIZE);
+    } else {
+        slot.isEdgelessTarget = false;
+        slot.targetPageUuid = pageUuid;
+        slot.targetPosition = centre;
+    }
+}
+
+LinkObject* DocumentViewport::resolvePositionLinkPartner(
+    const LinkObject* source, int slotIndex, int* partnerSlotIndex,
+    int* partnerPageIndex, Document::TileCoord* partnerTile)
+{
+    if (!source || !m_document) return nullptr;
+    if (slotIndex < 0 || slotIndex >= LinkObject::SLOT_COUNT) return nullptr;
+
+    const LinkSlot& slot = source->linkSlots[slotIndex];
+    if (slot.type != LinkSlot::Type::Position) return nullptr;
+    if (slot.targetObjectId.isEmpty()) return nullptr;
+    if (slot.targetSlotIndex < 0 || slot.targetSlotIndex >= LinkObject::SLOT_COUNT)
+        return nullptr;
+
+    // The slot records where its target lives, so the partner is reachable even
+    // when its page is not currently loaded.
+    Page* container = nullptr;
+    int pageIndex = -1;
+    Document::TileCoord tileCoord{};
+    if (slot.isEdgelessTarget) {
+        tileCoord = {slot.edgelessTileX, slot.edgelessTileY};
+        container = m_document->getTile(tileCoord.first, tileCoord.second);
+        pageIndex = 0;
+    } else {
+        pageIndex = m_document->pageIndexByUuid(slot.targetPageUuid);
+        if (pageIndex >= 0) container = m_document->page(pageIndex);
+    }
+    if (!container) return nullptr;
+
+    auto* partner =
+        dynamic_cast<LinkObject*>(container->objectById(slot.targetObjectId));
+    if (!partner) return nullptr;
+
+    // The agreement has to hold in the other direction too. Without this a slot
+    // the user re-pointed by hand, or a stale half left by an earlier teardown,
+    // would be cleared as though it were still part of this pair.
+    const LinkSlot& back = partner->linkSlots[slot.targetSlotIndex];
+    if (back.type != LinkSlot::Type::Position
+        || back.targetObjectId != source->id
+        || back.targetSlotIndex != slotIndex) {
+        return nullptr;
+    }
+
+    if (partnerSlotIndex) *partnerSlotIndex = slot.targetSlotIndex;
+    if (partnerPageIndex) *partnerPageIndex = pageIndex;
+    if (partnerTile) *partnerTile = tileCoord;
+    return partner;
+}
+
+void DocumentViewport::completePositionLinkPairing(LinkObject* target,
+                                                   int targetSlotIndex)
+{
+    if (!m_positionPairing.active || !target || !m_document) return;
+    if (targetSlotIndex < 0 || targetSlotIndex >= LinkObject::SLOT_COUNT) return;
+
+    // A link from an object to itself would navigate nowhere. The menu never
+    // offers it; this guards the programmatic path.
+    if (target->id == m_positionPairing.originObjectId) return;
+
+    int originPageIndex = -1;
+    Document::TileCoord originTile{};
+    LinkObject* origin = resolvePairingOrigin(&originPageIndex, &originTile);
+    if (!origin) {
+        emit userWarning(tr("The other end of this link no longer exists."));
+        cancelPositionLinkPairing();
+        return;
+    }
+
+    const int originSlotIndex = m_positionPairing.originSlotIndex;
+    if (originSlotIndex < 0 || originSlotIndex >= LinkObject::SLOT_COUNT
+        || !origin->linkSlots[originSlotIndex].isEmpty()
+        || !target->linkSlots[targetSlotIndex].isEmpty()) {
+        emit userWarning(tr("That link slot is no longer free."));
+        cancelPositionLinkPairing();
+        return;
+    }
+
+    int targetPageIndex = -1;
+    Document::TileCoord targetTile{};
+    Page* targetContainer =
+        locateObjectContainer(target->id, targetPageIndex, targetTile);
+    if (!targetContainer) {
+        emit userWarning(tr("Cannot finish the position link here."));
+        return;
+    }
+
+    // Each end names the other by object and by slot, so either one navigates
+    // to its partner and either one can release the pair.
+    setPositionTarget(origin->linkSlots[originSlotIndex], target, targetSlotIndex,
+                      targetContainer->uuid, targetTile);
+    setPositionTarget(target->linkSlots[targetSlotIndex], origin, originSlotIndex,
+                      m_positionPairing.originPageUuid,
+                      m_positionPairing.originTileCoord);
+
+    // Two objects that can sit on two different pages, so both containers have
+    // to be marked; the pointer-based helper would resolve both to the current
+    // page and quietly lose the origin's edit.
+    markLinkContainerDirty(originPageIndex, originTile);
+    markLinkContainerDirty(targetPageIndex, targetTile);
+
+    m_positionPairing.clear();
+
+    emit documentModified();
+    emit linkObjectListMayHaveChanged();
+    emit linkSlotsChanged();
+    update();
+}
+
 void DocumentViewport::clearLinkSlot(int slotIndex)
 {
-    // Phase D: Clear a LinkObject slot content (called from ObjectSelectSubToolbar)
+    // Phase D: Clear a LinkObject slot content (called from LinkObjectBar)
     
     if (m_selectedObjects.size() != 1) {
         #ifdef SPEEDYNOTE_DEBUG
@@ -8559,7 +11265,18 @@ void DocumentViewport::clearLinkSlot(int slotIndex)
     
     LinkSlot& slot = link->linkSlots[slotIndex];
     LinkSlot::Type oldType = slot.type;
-    
+
+    // A pairing spends a slot at each end, so releasing one end releases the
+    // other: leaving the far half behind would strand a slot on a page the user
+    // is not looking at and may not remember. Resolved before the local clear,
+    // since it reads this slot's target fields. Loading the partner's page
+    // cannot evict this one -- Document::page() only ever loads on demand.
+    int partnerSlotIndex = -1;
+    int partnerPageIndex = -1;
+    Document::TileCoord partnerTile{};
+    LinkObject* partner = resolvePositionLinkPartner(
+        link, slotIndex, &partnerSlotIndex, &partnerPageIndex, &partnerTile);
+
     // Phase M.2: If markdown slot, delete the note file
     if (slot.type == LinkSlot::Type::Markdown) {
         QString noteId = slot.markdownNoteId;
@@ -8573,9 +11290,9 @@ void DocumentViewport::clearLinkSlot(int slotIndex)
     
     // Clear the slot using LinkSlot::clear() which resets to default state
     slot.clear();
-    
+
     #ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "clearLinkSlot: Cleared slot" << slotIndex 
+    qDebug() << "clearLinkSlot: Cleared slot" << slotIndex
              << "(was type" << static_cast<int>(oldType) << ")";
     #endif
     // Mark page/tile dirty and refresh the outline cache so the right
@@ -8583,8 +11300,22 @@ void DocumentViewport::clearLinkSlot(int slotIndex)
     // "(missing note)" on its next lazy populate.
     markLinkContainerDirtyAndRefreshOutline(link);
 
+    if (partner) {
+        partner->linkSlots[partnerSlotIndex].clear();
+        // The partner's own container, not the pointer-based helper: the two
+        // ends can sit on different pages, and that helper would resolve this
+        // one to the current page and lose the edit.
+        markLinkContainerDirty(partnerPageIndex, partnerTile);
+
+        #ifdef SPEEDYNOTE_DEBUG
+        qDebug() << "clearLinkSlot: Also released partner slot"
+                 << partnerSlotIndex << "on" << partner->id;
+        #endif
+    }
+
     emit documentModified();
     emit linkObjectListMayHaveChanged();   // M.7.3: refresh the right sidebar
+    emit linkSlotsChanged();
     update();
 }
 
@@ -8666,6 +11397,9 @@ void DocumentViewport::createMarkdownNoteForSlot(int slotIndex)
     markLinkContainerDirtyAndRefreshOutline(link);
 
     emit documentModified();
+    // Emitted before requestOpenMarkdownNote so the slot buttons are already
+    // correct if the sidebar handler spins a nested event loop.
+    emit linkSlotsChanged();
     emit requestOpenMarkdownNote(noteId, link->id);
     
     update();
@@ -9206,7 +11940,7 @@ void DocumentViewport::renderObjectSelection(QPainter& painter)
     
     // ===== Phase 2C: Draw rubber-band rectangle for text box creation =====
     if (m_isCreatingTextBox) {
-        QRectF rubberBand = QRectF(m_textBoxCreateStartVP, m_lastPointerPos).normalized();
+        const QRectF rubberBand = proposedTextBoxCreationRectInViewport();
         QPen rbPenWhite(Qt::white, 1, Qt::DashLine);
         rbPenWhite.setCosmetic(true);
         QPen rbPenBlack(Qt::black, 1, Qt::DashLine);
@@ -9217,6 +11951,30 @@ void DocumentViewport::renderObjectSelection(QPainter& painter)
         painter.drawRect(rubberBand);
         painter.setPen(rbPenBlack);
         painter.drawRect(rubberBand);
+    }
+
+    if (!m_objectGeometryFeedbackText.isEmpty()) {
+        QFont feedbackFont = painter.font();
+        feedbackFont.setBold(true);
+        painter.setFont(feedbackFont);
+        const QFontMetricsF metrics(feedbackFont);
+        const QSizeF textSize(
+            metrics.horizontalAdvance(m_objectGeometryFeedbackText) + 20.0,
+            metrics.height() + 12.0);
+        QPointF topLeft(
+            m_objectGeometryFeedbackAnchor.left(),
+            m_objectGeometryFeedbackAnchor.bottom() + 8.0);
+        topLeft.setX(qBound<qreal>(
+            6.0, topLeft.x(), qMax<qreal>(6.0, width() - textSize.width() - 6.0)));
+        topLeft.setY(qBound<qreal>(
+            6.0, topLeft.y(), qMax<qreal>(6.0, height() - textSize.height() - 6.0)));
+        const QRectF messageRect(topLeft, textSize);
+        painter.setPen(QPen(QColor(180, 40, 40), 1.0));
+        painter.setBrush(QColor(120, 20, 20, 220));
+        painter.drawRoundedRect(messageRect, 5.0, 5.0);
+        painter.setPen(Qt::white);
+        painter.drawText(messageRect.adjusted(10.0, 6.0, -10.0, -6.0),
+                         Qt::AlignCenter, m_objectGeometryFeedbackText);
     }
 
     // ===== Draw selection boxes =====
@@ -9236,6 +11994,9 @@ void DocumentViewport::renderObjectSelection(QPainter& painter)
     // Draw bounding box for each selected object
     for (InsertedObject* obj : m_selectedObjects) {
         if (!obj) continue;
+        if (m_inlineEditSession.active
+            && obj->id == m_inlineEditSession.objectId)
+            continue;
         
         QPolygonF vpPoly = objectToViewportRect(obj);
         if (vpPoly.isEmpty()) continue;
@@ -9251,7 +12012,16 @@ void DocumentViewport::renderObjectSelection(QPainter& painter)
     // ===== Draw handles for single selection =====
     if (m_selectedObjects.size() == 1) {
         InsertedObject* obj = m_selectedObjects.first();
-        if (obj) {
+        // Annotations are neither resizable nor rotatable (see
+        // objectHandleAtPoint), so drawing handles would only advertise
+        // gestures that do nothing. The dashed outline still marks the
+        // selection.
+        if (obj && obj->type() == QLatin1String("link")) {
+            painter.restore();
+            return;
+        }
+        if (obj && (!m_inlineEditSession.active
+                    || obj->id != m_inlineEditSession.objectId)) {
             // Get axis-aligned bounding box in viewport coordinates
             // (consistent with objectHandleAtPoint hit testing)
             QRectF vpRect = objectBoundsInViewport(obj);
@@ -9281,13 +12051,18 @@ void DocumentViewport::renderObjectSelection(QPainter& painter)
             QPointF rotatePos = topCenter + rotateOffset;
             handles << rotatePos;  // 8: Rotate
             
-            // Draw scale handles (squares) - rotated with the object
+            // Draw scale handles (squares) - rotated with the object.
+            // User text boxes only expose left/right width handles.
             QPen handlePen(Qt::black, 1);
             painter.setPen(handlePen);
             painter.setBrush(Qt::white);
             
             qreal halfSize = HANDLE_VISUAL_SIZE / 2.0;
+            const bool userTextBox =
+                obj->type() == QLatin1String("textbox");
             for (int i = 0; i < 8; ++i) {
+                if (userTextBox && i != 3 && i != 4)
+                    continue;
                 // Draw rotated rectangles for handles
                 painter.save();
                 painter.translate(handles[i]);
@@ -9334,8 +12109,14 @@ void DocumentViewport::finalizeLassoSelection()
         
         m_lassoSelection.sourceLayerIndex = m_edgelessActiveLayerIndex;
         
-        // Get all loaded tiles
-        auto tiles = m_document->allLoadedTileCoords();
+        // Only tiles the lasso reaches can contribute, and within those, a stroke
+        // whose bounds miss the lasso cannot intersect it. Both rejections come
+        // before the per-point copy below, which used to be paid for every stroke
+        // on the canvas no matter how small the lasso was.
+        const QRectF lassoBounds = m_lassoPath.boundingRect();
+        const QVector<Document::TileCoord> tiles = m_document->tilesInRect(
+            lassoBounds.adjusted(-EDGELESS_STROKE_MARGIN, -EDGELESS_STROKE_MARGIN,
+                                 EDGELESS_STROKE_MARGIN, EDGELESS_STROKE_MARGIN));
         
         for (const auto& coord : tiles) {
             Page* tile = m_document->getTile(coord.first, coord.second);
@@ -9351,6 +12132,10 @@ void DocumentViewport::finalizeLassoSelection()
             const auto& strokes = layer->strokes();
             for (int i = 0; i < strokes.size(); ++i) {
                 const VectorStroke& stroke = strokes[i];
+                
+                if (!stroke.boundingBox.translated(tileOrigin).intersects(lassoBounds)) {
+                    continue;
+                }
                 
                 // Transform stroke to document coordinates for hit test
                 // We create a temporary copy with document coords
@@ -9398,9 +12183,14 @@ void DocumentViewport::finalizeLassoSelection()
         
         m_lassoSelection.sourceLayerIndex = page->activeLayerIndex;
         
+        // Bounds rejection first: strokeIntersectsLasso() tests every point of the
+        // stroke against the polygon, and each of those tests walks the polygon.
+        const QRectF lassoBounds = m_lassoPath.boundingRect();
         const auto& strokes = layer->strokes();
         for (int i = 0; i < strokes.size(); ++i) {
             const VectorStroke& stroke = strokes[i];
+            
+            if (!stroke.boundingBox.intersects(lassoBounds)) continue;
             
             if (strokeIntersectsLasso(stroke, m_lassoPath)) {
                 m_lassoSelection.selectedStrokes.append(stroke);
@@ -9503,7 +12293,7 @@ void DocumentViewport::captureSelectionBackground()
     m_skipSelectionRendering = true;
     
     // Capture the viewport (this triggers a paint without selection)
-    m_selectionBackgroundSnapshot = grab();
+    m_selectionBackgroundSnapshot = grabOpaqueViewport();
     m_backgroundSnapshotDpr = m_selectionBackgroundSnapshot.devicePixelRatio();
     
     // Re-enable selection rendering
@@ -9519,15 +12309,38 @@ void DocumentViewport::captureObjectDragBackground()
     // Phase O4.1.3: Start throttle timer for drag updates
     m_dragUpdateTimer.start();
     
+    // QWidget::grab() includes visible child widgets. The floating bars remain
+    // live and follow the object during a drag, so including one in the cached
+    // canvas would leave a second, frozen copy at the drag origin.
+    const bool restoreFormatBar =
+        m_textBoxFormatBar && !m_textBoxFormatBar->isHidden();
+    if (restoreFormatBar)
+        m_textBoxFormatBar->hide();
+    const bool restoreLinkBar =
+        m_linkObjectBar && !m_linkObjectBar->isHidden();
+    if (restoreLinkBar)
+        m_linkObjectBar->hide();
+
     // Temporarily disable selected object rendering
     m_skipSelectedObjectRendering = true;
     
     // Capture the viewport (this triggers a paint without selected objects)
-    m_objectDragBackgroundSnapshot = grab();
+    m_objectDragBackgroundSnapshot = grabOpaqueViewport();
     m_objectDragSnapshotDpr = m_objectDragBackgroundSnapshot.devicePixelRatio();
     
     // Re-enable selected object rendering
     m_skipSelectedObjectRendering = false;
+
+    if (restoreFormatBar) {
+        m_textBoxFormatBar->show();
+        updateTextBoxFormatBarGeometry();
+        m_textBoxFormatBar->raise();
+    }
+    if (restoreLinkBar) {
+        m_linkObjectBar->show();
+        updateLinkObjectBarGeometry();
+        m_linkObjectBar->raise();
+    }
     
     // Phase O4.1.2: Pre-render selected objects to cache at current zoom
     // This is the key optimization - no image scaling needed during drag!
@@ -10675,6 +13488,18 @@ bool DocumentViewport::handleEscapeKey()
     // Handle Escape key for cancelling selections/states.
     // Returns true if something was cancelled, false if nothing to cancel.
     // Called by MainWindow to determine whether to toggle to launcher.
+    if (m_inlineEditSession.active) {
+        cancelInlineTextEdit();
+        return true;
+    }
+
+    // Adjust ranks with the inline editor rather than with the plain text
+    // selection below: it is a modal session over a real object, and Esc is the
+    // only way to abandon a botched re-range without leaving an undo entry.
+    if (m_adjustSession.active) {
+        cancelHighlightAdjust();
+        return true;
+    }
     
     // Priority 1: Cancel lasso selection or drawing (Lasso tool only)
     // Note: Lasso selection is cleared when switching away from Lasso tool,
@@ -10686,15 +13511,22 @@ bool DocumentViewport::handleEscapeKey()
         }
     }
     
-    // Priority 2: Cancel in-progress text box creation (ObjectSelect tool)
-    if (m_currentTool == ToolType::ObjectSelect && m_isCreatingTextBox) {
-        m_isCreatingTextBox = false;
-        m_pointerActive = false;
-        update();
+    // Priority 2: Cancel an in-progress ObjectSelect gesture.
+    if (m_currentTool == ToolType::ObjectSelect
+        && (m_isCreatingTextBox || m_isDraggingObjects || m_isResizingObject)) {
+        cancelObjectPointerGesture();
         return true;
     }
 
-    // Priority 3: Deselect objects or clear object clipboard (ObjectSelect tool only)
+    // Priority 3: Abandon a half-made position link. Ranked above deselection
+    // because it is the more specific state and is not tied to a tool, and
+    // because deselecting is still one more Esc away.
+    if (m_positionPairing.active) {
+        cancelPositionLinkPairing();
+        return true;
+    }
+
+    // Priority 4: Deselect objects or clear object clipboard (ObjectSelect tool only)
     if (m_currentTool == ToolType::ObjectSelect) {
         if (hasSelectedObjects() || !s_objectClipboard.isEmpty()) {
             cancelObjectSelectAction();
@@ -10702,7 +13534,7 @@ bool DocumentViewport::handleEscapeKey()
         }
     }
     
-    // Priority 4: Cancel text selection (Highlighter tool only)
+    // Priority 5: Cancel text selection (Highlighter tool only)
     // Note: Text selection is cleared when switching away from Highlighter tool.
     if (m_currentTool == ToolType::Highlighter) {
         if (m_textSelection.isValid() || m_textSelection.isSelecting) {
@@ -11399,6 +14231,19 @@ void DocumentViewport::setAutoHighlightStyle(HighlightStyle style)
     #endif
 }
 
+void DocumentViewport::setHighlightOnRelease(bool enabled)
+{
+    if (m_highlightOnRelease == enabled) {
+        return;
+    }
+
+    m_highlightOnRelease = enabled;
+    emit highlightOnReleaseChanged(enabled);
+    #ifdef SPEEDYNOTE_DEBUG
+    qDebug() << "Highlight on release:" << enabled;
+    #endif
+}
+
 void DocumentViewport::setHighlighterMode(HighlighterMode mode)
 {
     if (m_highlighterMode == mode) {
@@ -11754,11 +14599,58 @@ void DocumentViewport::handlePointerPress_Highlighter(const PointerEvent& pe)
         }
     }
 
+    const bool adjusting = m_adjustSession.active;
+
+    if (!adjusting) {
+        // Tapping an existing highlight selects its annotation, so its slots and
+        // description are reachable without leaving the Highlighter. A tap on
+        // plain text already produced a zero-length selection that goes nowhere,
+        // so this costs no existing gesture.
+        //
+        // objectAtPoint() applies the layer-affinity filter, which is the
+        // agreed behaviour: a highlight is selectable only from the layer it was
+        // made on, consistent with every other InsertedObject.
+        InsertedObject* under = objectAtPoint(viewportToDocument(pe.viewportPos));
+        if (auto* annotation = dynamic_cast<LinkObject*>(under)) {
+            if (!annotation->region.isEmpty()) {
+                // Announce the drop: a select-only drag leaves a valid
+                // selection behind, and without this the action bar container
+                // would keep believing it is still there.
+                const bool hadTextSelection = m_textSelection.isValid();
+                m_textSelection.clear();
+                if (hadTextSelection) emit textSelectionChanged(false);
+                selectObject(annotation, false);
+                m_pointerActive = false;
+                updateHighlighterCursor();
+                update();
+                return;
+            }
+        }
+
+        // A previous highlight leaves its annotation selected so its controls are
+        // reachable. Drop that selection now, or the bar would hover over the drag
+        // that is about to start.
+        if (!m_selectedObjects.isEmpty()) {
+            deselectAllObjects();
+        }
+    }
+
     // Load the appropriate cache for this page.
     if (ocrMode) {
         loadOcrBlocksForPage(hit.pageIndex);
     } else {
         loadTextBoxesForPage(hit.pageIndex);
+    }
+
+    if (adjusting) {
+        // Inside Adjust a tap is the trim gesture, so the multi-click paths below
+        // must not fire: both replace m_textSelection wholesale and finalize it,
+        // which would drop the session's anchor mid-gesture.
+        m_adjustGestureStart = pe.viewportPos;
+        m_adjustGestureIsTap = true;
+        m_textSelection.isSelecting = true;
+        update();
+        return;
     }
 
     // Check for double-click (word selection) and triple-click (line selection)
@@ -11859,6 +14751,43 @@ void DocumentViewport::handlePointerMove_Highlighter(const PointerEvent& pe)
         charPos = findCharacterAtPoint(pdfPos);
     }
 
+    if (m_adjustSession.active && m_adjustGestureIsTap) {
+        // Decide tap versus drag once, at the moment the pointer leaves the
+        // press point. Crossing the threshold means drag-redefine, so the range
+        // is re-anchored at the press point and the code below extends it as
+        // usual; staying put keeps the session's range for tap-moves-the-edge.
+        if (QLineF(m_adjustGestureStart, pe.viewportPos).length()
+            <= ADJUST_TAP_SLOP) {
+            return;
+        }
+        m_adjustGestureIsTap = false;
+
+        CharacterPosition anchor;
+        if (m_document->isEdgeless()) {
+            anchor = findOcrCharAtPoint(viewportToDocument(m_adjustGestureStart));
+        } else {
+            const PageHit start = viewportToPage(m_adjustGestureStart);
+            if (start.valid()) {
+                if (m_textSelection.source == TextSelection::Source::Ocr) {
+                    anchor = findOcrCharAtPoint(start.pagePoint);
+                } else {
+                    anchor = findCharacterAtPoint(
+                        QPointF(start.pagePoint.x() * PAGE_TO_PDF_SCALE,
+                                start.pagePoint.y() * PAGE_TO_PDF_SCALE));
+                }
+            }
+        }
+        if (!anchor.isValid()) {
+            // The drag began off the text layer, so there is nothing to anchor
+            // to; keep the existing range rather than collapsing it.
+            return;
+        }
+        m_textSelection.startBoxIndex = anchor.boxIndex;
+        m_textSelection.startCharIndex = anchor.charIndex;
+        m_textSelection.endBoxIndex = anchor.boxIndex;
+        m_textSelection.endCharIndex = anchor.charIndex;
+    }
+
     if (charPos.isValid()) {
         // PERF: Only update if position actually changed
         // This avoids expensive string/rect rebuilding on every mouse move
@@ -11889,8 +14818,6 @@ void DocumentViewport::handlePointerMove_Highlighter(const PointerEvent& pe)
 
 void DocumentViewport::handlePointerRelease_Highlighter(const PointerEvent& pe)
 {
-    Q_UNUSED(pe);
-    
     if (!m_textSelection.isSelecting) {
         // Phase D.1: Still need to clear pointer state and update cursor
         m_pointerActive = false;
@@ -11899,15 +14826,25 @@ void DocumentViewport::handlePointerRelease_Highlighter(const PointerEvent& pe)
     }
     
     m_textSelection.isSelecting = false;
+
+    if (m_adjustSession.active) {
+        finishAdjustGesture(pe.viewportPos);
+        m_pointerActive = false;
+        updateHighlighterCursor();
+        update();
+        return;
+    }
     
     // Finalize selection
     if (m_textSelection.isValid()) {
         finalizeTextSelection();
         
-        // Auto-create strokes if a highlight style is selected
-        if (m_autoHighlightStyle != HighlightStyle::None) {
-            createHighlightStrokes();
-            // Note: createHighlightStrokes() already clears m_textSelection
+        // Commit as a highlight annotation, unless the tool is in select-only
+        // mode, where the finalized selection is deliberately left up so the
+        // action bar's Copy button stays reachable.
+        if (m_highlightOnRelease) {
+            commitHighlightAnnotation();
+            // Note: commitHighlightAnnotation() already clears m_textSelection
         }
     }
     
@@ -11916,6 +14853,104 @@ void DocumentViewport::handlePointerRelease_Highlighter(const PointerEvent& pe)
     updateHighlighterCursor();
     
     update();
+}
+
+void DocumentViewport::finishAdjustGesture(const QPointF& viewportPos)
+{
+    if (!m_adjustSession.active || !m_document) {
+        return;
+    }
+
+    const bool ocr = (m_textSelection.source == TextSelection::Source::Ocr);
+
+    // Resolve the release point into the same cache the session is selecting in.
+    CharacterPosition hitPos;
+    if (m_document->isEdgeless()) {
+        hitPos = findOcrCharAtPoint(viewportToDocument(viewportPos));
+    } else {
+        const PageHit hit = viewportToPage(viewportPos);
+        if (hit.valid() && hit.pageIndex == m_textSelection.pageIndex) {
+            if (ocr) {
+                hitPos = findOcrCharAtPoint(hit.pagePoint);
+            } else {
+                hitPos = findCharacterAtPoint(
+                    QPointF(hit.pagePoint.x() * PAGE_TO_PDF_SCALE,
+                            hit.pagePoint.y() * PAGE_TO_PDF_SCALE));
+            }
+        }
+    }
+
+    if (m_adjustGestureIsTap) {
+        // Tap moves the *near* endpoint and anchors the far one, so trimming is
+        // one tap instead of re-dragging the whole passage. The anchor is always
+        // the far end, so there is no hidden state to remember.
+        if (!hitPos.isValid() || !m_adjustSession.endpointsResolved
+            || !m_textSelection.isValid()) {
+            return;
+        }
+
+        const bool nearIsStart = tapIsNearerToSelectionStart(hitPos);
+        if (nearIsStart) {
+            m_textSelection.startBoxIndex = hitPos.boxIndex;
+            m_textSelection.startCharIndex = hitPos.charIndex;
+        } else {
+            m_textSelection.endBoxIndex = hitPos.boxIndex;
+            m_textSelection.endCharIndex = hitPos.charIndex;
+        }
+    } else if (!m_textSelection.isValid()) {
+        return;
+    }
+
+    snapSelectionToWords();
+    updateSelectedTextAndRects();
+    applyAdjustedRangeToRegion();
+}
+
+bool DocumentViewport::tapIsNearerToSelectionStart(
+    const CharacterPosition& tapPos) const
+{
+    // Compare in flattened (box, char) order rather than by pixel distance: the
+    // endpoints of a multi-line mark can be vertically far apart while being
+    // only a few characters away in reading order, which is what "near" means
+    // for a text range.
+    auto flatten = [](int boxIndex, int charIndex) {
+        return static_cast<qint64>(boxIndex) * 4096 + charIndex;
+    };
+
+    const qint64 tap = flatten(tapPos.boxIndex, tapPos.charIndex);
+    const qint64 start = flatten(m_textSelection.startBoxIndex,
+                                 m_textSelection.startCharIndex);
+    const qint64 end = flatten(m_textSelection.endBoxIndex,
+                               m_textSelection.endCharIndex);
+
+    const qint64 lo = qMin(start, end);
+    const qint64 hi = qMax(start, end);
+    const bool loIsStart = (lo == start);
+
+    const bool nearerToLo = qAbs(tap - lo) <= qAbs(tap - hi);
+    return nearerToLo ? loIsStart : !loIsStart;
+}
+
+void DocumentViewport::snapSelectionToWords()
+{
+    if (!m_textSelection.isValid()) {
+        return;
+    }
+
+    // Snap each endpoint outward, so a coarse stylus still produces whole words.
+    // "Outward" depends on which endpoint is textually first, which is not
+    // necessarily the anchor: a backwards drag puts end before start.
+    auto flatten = [](int boxIndex, int charIndex) {
+        return static_cast<qint64>(boxIndex) * 4096 + charIndex;
+    };
+    const bool startIsFirst =
+        flatten(m_textSelection.startBoxIndex, m_textSelection.startCharIndex)
+        <= flatten(m_textSelection.endBoxIndex, m_textSelection.endCharIndex);
+
+    snapEndpointToWord(m_textSelection.source, m_textSelection.startBoxIndex,
+                       m_textSelection.startCharIndex, startIsFirst);
+    snapEndpointToWord(m_textSelection.source, m_textSelection.endBoxIndex,
+                       m_textSelection.endCharIndex, !startIsFirst);
 }
 
 // =============================================================================
@@ -11943,10 +14978,142 @@ void DocumentViewport::handlePointerRelease_Pan(const PointerEvent& pe)
     Q_UNUSED(pe);
     endPanGesture();
     m_isPanToolDragging = false;
-    setCursor(Qt::OpenHandCursor);
+    // Not hard-coded to the open hand: an off-page pan runs under whatever tool
+    // the user actually selected, and its cursor has to come back afterwards.
+    updateHighlighterCursor();
     
     m_pointerActive = false;
     m_activeSource = PointerEvent::Unknown;
+}
+
+// =============================================================================
+// Off-Page Pan
+// =============================================================================
+
+bool DocumentViewport::isPointOutsideAllPages(const QPointF& viewportPos) const
+{
+    if (!m_document || m_document->isEdgeless() || m_document->pageCount() == 0) {
+        return false;
+    }
+
+    const QPointF docPt = viewportToDocument(viewportPos);
+    const int nearest = nearestPageToPoint(docPt);
+    if (nearest < 0) {
+        return false;
+    }
+
+    // The tolerance is a viewport distance, so it has to be unzoomed before it
+    // can grow a document-space rect.
+    const qreal margin = OFF_PAGE_EDGE_TOLERANCE_PX / qMax(m_zoomLevel, 0.01);
+    const QRectF tolerant =
+        pageRect(nearest).adjusted(-margin, -margin, margin, margin);
+    return !tolerant.contains(docPt);
+}
+
+bool DocumentViewport::toolClaimsOffPagePress(const PointerEvent& pe) const
+{
+    switch (m_currentTool) {
+        case ToolType::Lasso:
+            // The selection box can be dragged past a page edge, and its
+            // handles are drawn outside the box either way.
+            return m_lassoSelection.isValid()
+                && hitTestSelectionHandles(pe.viewportPos) != HandleHit::None;
+
+        case ToolType::ObjectSelect:
+            // The rotate handle sits above the object's top edge, so it is
+            // off-page by construction for an object at the top of a page.
+            if (m_selectedObjects.size() == 1
+                && objectHandleAtPoint(pe.viewportPos) != HandleHit::None) {
+                return true;
+            }
+            // Positions are clamped to the page, but rotation can push the
+            // visual bounds past the edge.
+            return objectAtPoint(viewportToDocument(pe.viewportPos)) != nullptr;
+
+        case ToolType::Highlighter:
+            return objectAtPoint(viewportToDocument(pe.viewportPos)) != nullptr;
+
+        default:
+            return false;
+    }
+}
+
+bool DocumentViewport::shouldArmOffPagePan(const PointerEvent& pe) const
+{
+    if (!s_panOutsidePagesEnabled) return false;
+    if (!m_document || m_document->isEdgeless()) return false;
+
+    // Touch already pans with two fingers, and the right button carries the
+    // context menu for ObjectSelect.
+    if (pe.source == PointerEvent::Touch) return false;
+    if (pe.button == Qt::RightButton || pe.button == Qt::MiddleButton) return false;
+
+    if (pe.pageHit.valid()) return false;
+
+    // A press should never arrive mid-gesture, but if one does the gesture in
+    // flight owns it.
+    if (m_isDrawing || m_isDrawingLasso || m_isDrawingEraserLasso
+        || m_isDrawingStraightLine || m_isTransformingSelection
+        || m_isCreatingTextBox || m_isDraggingObjects || m_isResizingObject) {
+        return false;
+    }
+
+    if (!isPointOutsideAllPages(pe.viewportPos)) return false;
+
+    return !toolClaimsOffPagePress(pe);
+}
+
+void DocumentViewport::cancelOffPagePan()
+{
+    if (!m_offPagePanArmed) {
+        return;
+    }
+    
+    if (m_offPagePanDragging) {
+        endPanGesture();
+        m_isPanToolDragging = false;
+    }
+    m_offPagePanArmed = false;
+    m_offPagePanDragging = false;
+    m_pointerActive = false;
+    m_activeSource = PointerEvent::Unknown;
+    updateHighlighterCursor();
+}
+
+void DocumentViewport::handleOffPagePanTap()
+{
+    const bool shiftHeld = (m_offPagePanModifiers & Qt::ShiftModifier);
+
+    switch (m_currentTool) {
+        case ToolType::Lasso:
+            if (m_lassoSelection.isValid()) {
+                if (m_lassoSelection.hasTransform()) {
+                    applySelectionTransform();  // Also clears the selection
+                } else {
+                    clearLassoSelection();
+                }
+            }
+            break;
+
+        case ToolType::ObjectSelect:
+            if (!shiftHeld && !m_selectedObjects.isEmpty()) {
+                deselectAllObjects();
+            }
+            break;
+
+        case ToolType::Highlighter: {
+            const bool hadTextSelection = m_textSelection.isValid();
+            m_textSelection.clear();
+            if (hadTextSelection) emit textSelectionChanged(false);
+            if (!m_selectedObjects.isEmpty()) {
+                deselectAllObjects();
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
 }
 
 // =============================================================================
@@ -12478,19 +15645,35 @@ void DocumentViewport::renderTextSelectionOverlay(QPainter& painter, int pageInd
     // Highlight rectangles are stored in PDF coords for PDF-source selections
     // (need scaling) and in page coords for OCR-source selections (no scaling).
     const bool ocrSelection = (m_textSelection.source == TextSelection::Source::Ocr);
-    for (const QRectF& rect : m_textSelection.highlightRects) {
-        QRectF pageRect;
+    auto toPageRect = [ocrSelection](const QRectF& rect) {
         if (ocrSelection) {
-            pageRect = rect;
-        } else {
-            pageRect = QRectF(
-                rect.x() * PDF_TO_PAGE_SCALE,
-                rect.y() * PDF_TO_PAGE_SCALE,
-                rect.width() * PDF_TO_PAGE_SCALE,
-                rect.height() * PDF_TO_PAGE_SCALE
-            );
+            return rect;
         }
-        painter.drawRect(pageRect);
+        return QRectF(rect.x() * PDF_TO_PAGE_SCALE, rect.y() * PDF_TO_PAGE_SCALE,
+                      rect.width() * PDF_TO_PAGE_SCALE,
+                      rect.height() * PDF_TO_PAGE_SCALE);
+    };
+
+    for (const QRectF& rect : m_textSelection.highlightRects) {
+        painter.drawRect(toPageRect(rect));
+    }
+
+    // Adjust mode gets carets at the two ends, so it is obvious which edges a
+    // tap can move. updateSelectedTextAndRects() emits the rects in reading
+    // order, so the first rect's left edge is the range's start and the last
+    // rect's right edge is its end.
+    if (m_adjustSession.active && !m_textSelection.highlightRects.isEmpty()) {
+        const QRectF startRect = toPageRect(m_textSelection.highlightRects.first());
+        const QRectF endRect = toPageRect(m_textSelection.highlightRects.last());
+
+        QPen caretPen(QColor(0, 90, 190));
+        // Constant on-screen thickness: the painter carries the page transform.
+        caretPen.setWidthF(m_zoomLevel > 0.0 ? 2.0 / m_zoomLevel : 2.0);
+        caretPen.setCapStyle(Qt::FlatCap);
+        painter.setPen(caretPen);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawLine(startRect.topLeft(), startRect.bottomLeft());
+        painter.drawLine(endRect.topRight(), endRect.bottomRight());
     }
     
     painter.restore();
@@ -12569,240 +15752,505 @@ void DocumentViewport::renderSearchMatchesOverlayEdgeless(QPainter& painter)
     painter.restore();
 }
 
-VectorStroke DocumentViewport::createHighlightStroke(const QRectF& rect,
-                                                     const QColor& color,
-                                                     HighlightStyle style) const
+LinkObject* DocumentViewport::commitHighlightAnnotation()
 {
-    VectorStroke stroke;
-    stroke.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    stroke.color = color;
-
-    // Geometry depends on style:
-    //  - Cover:     horizontal line through the center, thickness = rect height
-    //               (original "marker covers the text" behavior).
-    //  - Underline: thin horizontal line along the bottom edge.
-    //  - DottedUnderline is routed through createDottedUnderlineStrokes() and
-    //    is never passed to this helper; we treat it as Underline just so a
-    //    stray caller still produces something visible rather than a 0-thick
-    //    stroke.
-    qreal y = rect.center().y();
-    qreal thickness = rect.height();
-    if (style == HighlightStyle::Underline || style == HighlightStyle::DottedUnderline) {
-        thickness = qMax(qreal(1.5), rect.height() * qreal(0.10));
-        y = rect.bottom() - thickness * qreal(0.5);
-    }
-    stroke.baseThickness = thickness;
-
-    StrokePoint startPoint;
-    startPoint.pos = QPointF(rect.left(), y);
-    startPoint.pressure = 1.0;
-
-    StrokePoint endPoint;
-    endPoint.pos = QPointF(rect.right(), y);
-    endPoint.pressure = 1.0;
-
-    stroke.points.append(startPoint);
-    stroke.points.append(endPoint);
-
-    stroke.updateBoundingBox();
-    return stroke;
-}
-
-QVector<VectorStroke> DocumentViewport::createDottedUnderlineStrokes(const QRectF& rect,
-                                                                      const QColor& color) const
-{
-    QVector<VectorStroke> dots;
-
-    // Dot thickness scales with text height; center-to-center spacing is 3x
-    // thickness (dot + two-dot gap). Line sits on the bottom edge of the rect.
-    const qreal thickness = qMax(qreal(1.5), rect.height() * qreal(0.10));
-    const qreal step      = thickness * qreal(3.0);
-    const qreal y         = rect.bottom() - thickness * qreal(0.5);
-    const qreal firstX    = rect.left()  + thickness * qreal(0.5);
-    const qreal lastX     = rect.right() - thickness * qreal(0.5);
-    if (lastX < firstX || step <= 0.0) {
-        return dots;  // Rect too narrow for even one dot.
-    }
-
-    dots.reserve(static_cast<int>((lastX - firstX) / step) + 1);
-    for (qreal x = firstX; x <= lastX; x += step) {
-        VectorStroke dot;
-        dot.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        dot.color = color;
-        dot.baseThickness = thickness;
-        StrokePoint p;
-        p.pos = QPointF(x, y);
-        p.pressure = 1.0;
-        dot.points.append(p);
-        dot.updateBoundingBox();
-        dots.append(dot);
-    }
-    return dots;
-}
-
-QVector<QString> DocumentViewport::createHighlightStrokes()
-{
-    QVector<QString> createdIds;
-
     // Validate selection
     if (!m_textSelection.isValid() || m_textSelection.highlightRects.isEmpty()) {
-        return createdIds;
+        return nullptr;
     }
 
     if (!m_document) {
-        return createdIds;
+        return nullptr;
     }
 
-    // Nothing to do if caller reached here with None (defensive; the release
-    // handler guards this, but we stay safe for future call sites).
-    if (m_autoHighlightStyle == HighlightStyle::None) {
+    // Nothing to do in select-only mode, or if the style somehow reads None
+    // (defensive; the release handler guards both, but we stay safe for future
+    // call sites).
+    if (!m_highlightOnRelease || m_autoHighlightStyle == HighlightStyle::None) {
         m_textSelection.clear();
-        return createdIds;
+        return nullptr;
     }
 
     const bool ocrSelection = (m_textSelection.source == TextSelection::Source::Ocr);
     const bool edgeless     = m_document->isEdgeless();
-    const bool dotted       = (m_autoHighlightStyle == HighlightStyle::DottedUnderline);
     const int pageIndex     = m_textSelection.pageIndex;
-    const HighlightStyle style = m_autoHighlightStyle;
 
-    // ---------- Edgeless path: strokes are split across tiles ----------
-    if (edgeless) {
-        // Only OCR selections reach here in edgeless (PDF mode is disabled).
-        if (!ocrSelection) {
-            m_textSelection.clear();
-            return createdIds;
-        }
-
-        // Emit one UndoAction per highlight rect (line) so the undo
-        // granularity matches the paged path. A single logical highlight
-        // stroke (or for Dotted, its whole row of dots) may be split across
-        // multiple tiles; those segments are grouped into the same UndoAction
-        // so they undo together with a single Ctrl+Z.
-        for (const QRectF& srcRect : m_textSelection.highlightRects) {
-            if (srcRect.width() < 0.1 || srcRect.height() < 0.1) continue;
-
-            // OCR selection rects are already in document-space for edgeless
-            // (see loadOcrBlocksForPage edgeless branch).
-            QVector<VectorStroke> strokesForLine;
-            if (dotted) {
-                strokesForLine = createDottedUnderlineStrokes(srcRect, m_highlighterColor);
-            } else {
-                strokesForLine.append(createHighlightStroke(srcRect, m_highlighterColor, style));
-            }
-            if (strokesForLine.isEmpty()) continue;
-
-            UndoAction undoAction;
-            undoAction.type = UndoAction::AddStroke;
-            undoAction.layerIndex = m_edgelessActiveLayerIndex;
-
-            for (const auto& s : strokesForLine) {
-                auto addedSegments = addStrokeToEdgelessTiles(s, m_edgelessActiveLayerIndex);
-                if (addedSegments.isEmpty()) continue;
-                undoAction.segments.reserve(undoAction.segments.size() + addedSegments.size());
-                for (const auto& pair : addedSegments) {
-                    UndoAction::StrokeSegment seg;
-                    seg.tileCoord = pair.first;
-                    seg.stroke    = pair.second;
-                    undoAction.segments.append(seg);
-                    createdIds.append(pair.second.id);
-                }
-            }
-
-            if (!undoAction.segments.isEmpty())
-                pushUndoAction(undoAction);
-        }
-
-        // Create LinkObject on the tile containing the first highlight rect.
-        if (!createdIds.isEmpty()) {
-            createLinkObjectForHighlight(pageIndex);
-        }
-
+    // Only OCR selections reach here in edgeless (PDF mode is disabled).
+    if (edgeless && !ocrSelection) {
         m_textSelection.clear();
-
-        if (!createdIds.isEmpty()) {
-            emit documentModified();
-            update();
-        }
-        return createdIds;
+        return nullptr;
     }
 
-    // ---------- Paged path ----------
-    Page* page = m_document->page(pageIndex);
-    if (!page) {
-        return createdIds;
+    if (!edgeless && !m_document->page(pageIndex)) {
+        return nullptr;
     }
 
-    // Get the active layer for this page
-    VectorLayer* layer = page->activeLayer();
-    if (!layer) {
-        return createdIds;
+    const QVector<QRectF> regionRects = selectionRectsInContainerSpace();
+
+    if (regionRects.isEmpty()) {
+        m_textSelection.clear();
+        return nullptr;
     }
 
-    // Convert each highlight rect to one (Cover/Underline) or many (Dotted)
-    // strokes. PDF-source rects are in PDF coords (72 DPI) and need scaling
-    // to page coords (96 DPI). OCR-source rects are already in page coords.
-    for (const QRectF& srcRect : m_textSelection.highlightRects) {
-        if (srcRect.width() < 0.1 || srcRect.height() < 0.1) {
-            continue;
-        }
-
-        QRectF pageRect;
-        if (ocrSelection) {
-            pageRect = srcRect;
-        } else {
-            pageRect = QRectF(
-                srcRect.x() * PDF_TO_PAGE_SCALE,
-                srcRect.y() * PDF_TO_PAGE_SCALE,
-                srcRect.width()  * PDF_TO_PAGE_SCALE,
-                srcRect.height() * PDF_TO_PAGE_SCALE
-            );
-        }
-
-        if (dotted) {
-            QVector<VectorStroke> dots = createDottedUnderlineStrokes(pageRect, m_highlighterColor);
-            if (dots.isEmpty()) continue;
-
-            // Append dots to the layer and push a single grouped undo per line
-            // so Ctrl+Z removes the whole dotted row at once.
-            for (const auto& d : dots) {
-                layer->addStroke(d);
-                createdIds.append(d.id);
-            }
-            pushPageStrokesUndo(pageIndex, UndoAction::AddStroke, dots, page->activeLayerIndex);
-        } else {
-            VectorStroke stroke = createHighlightStroke(pageRect, m_highlighterColor, style);
-            layer->addStroke(stroke);
-            pushPageStrokeUndo(pageIndex, UndoAction::AddStroke, stroke, page->activeLayerIndex);
-            createdIds.append(stroke.id);
-        }
-    }
-
-    // Invalidate stroke cache for this page
-    layer->invalidateStrokeCache();
-
-    // Mark page dirty for lazy save
-    if (!createdIds.isEmpty()) {
-        m_document->markPageDirty(pageIndex);
-    }
-
-    // Create LinkObject alongside highlight strokes
-    if (!createdIds.isEmpty() && !m_textSelection.highlightRects.isEmpty()) {
-        createLinkObjectForHighlight(pageIndex);
-    }
+    // No ink is emitted: the annotation owns the geometry, so the entire commit
+    // is one ObjectInsert entry and undo can never leave half a highlight
+    // behind.
+    LinkObject* annotation = createLinkObjectForHighlight(pageIndex, regionRects);
 
     // Clear the text selection
     m_textSelection.clear();
 
-    if (!createdIds.isEmpty()) {
+    if (annotation) {
         emit documentModified();
+        update();
     }
 
 #ifdef SPEEDYNOTE_DEBUG
-    qDebug() << "Created" << createdIds.size() << "highlight strokes on page" << pageIndex;
+    qDebug() << "Committed highlight annotation with" << regionRects.size()
+             << "rects on page" << pageIndex;
 #endif
 
-    return createdIds;
+    return annotation;
+}
+
+// ============================================================================
+// Stage 3: Adjust mode - geometry helpers
+// ============================================================================
+
+QVector<QRectF> DocumentViewport::selectionRectsInContainerSpace() const
+{
+    // The space the annotation stores its region in: page coordinates when
+    // paged, document coordinates when edgeless. PDF text rects are 72 DPI and
+    // need scaling; OCR rects already match their container (see
+    // loadOcrBlocksForPage).
+    const bool ocrSelection =
+        (m_textSelection.source == TextSelection::Source::Ocr);
+
+    QVector<QRectF> out;
+    out.reserve(m_textSelection.highlightRects.size());
+    for (const QRectF& srcRect : m_textSelection.highlightRects) {
+        if (srcRect.width() < 0.1 || srcRect.height() < 0.1) {
+            continue;
+        }
+        if (ocrSelection) {
+            out.append(srcRect);
+        } else {
+            out.append(QRectF(srcRect.x() * PDF_TO_PAGE_SCALE,
+                              srcRect.y() * PDF_TO_PAGE_SCALE,
+                              srcRect.width() * PDF_TO_PAGE_SCALE,
+                              srcRect.height() * PDF_TO_PAGE_SCALE));
+        }
+    }
+    return out;
+}
+
+bool DocumentViewport::resolveRegionContainer(LinkObject* link, int* pageIndex,
+                                              QPointF* containerOrigin,
+                                              Document::TileCoord* tileCoordOut)
+{
+    if (!link || !m_document) {
+        return false;
+    }
+
+    Document::TileCoord tileCoord{};
+    Page* page = findPageContainingObject(link, &tileCoord);
+    if (!page) {
+        return false;
+    }
+    if (tileCoordOut) *tileCoordOut = tileCoord;
+
+    if (m_document->isEdgeless()) {
+        // The OCR cache is built in document space, but the annotation's rects
+        // are tile-local, so callers need the tile origin to bridge them.
+        if (pageIndex) *pageIndex = 0;
+        if (containerOrigin) {
+            *containerOrigin =
+                QPointF(tileCoord.first * Document::EDGELESS_TILE_SIZE,
+                        tileCoord.second * Document::EDGELESS_TILE_SIZE);
+        }
+        return true;
+    }
+
+    const int idx = m_document->pageIndexByUuid(page->uuid);
+    if (idx < 0) {
+        return false;
+    }
+    if (pageIndex) *pageIndex = idx;
+    if (containerOrigin) *containerOrigin = QPointF();
+    return true;
+}
+
+bool DocumentViewport::deriveRegionEndpoints(LinkObject* link,
+                                             TextSelection& out)
+{
+    if (!link || link->region.isEmpty() || !m_document) {
+        return false;
+    }
+
+    int pageIndex = -1;
+    QPointF containerOrigin;
+    if (!resolveRegionContainer(link, &pageIndex, &containerOrigin)) {
+        return false;
+    }
+
+    // Edgeless never had a PDF text layer to select from, so an edgeless region
+    // is OCR-sourced regardless of what an imported range claims.
+    const bool ocr = m_document->isEdgeless()
+                     || link->region.sourceRange.source
+                            == HighlightRegion::Source::Ocr;
+
+    out.clear();
+    out.source = ocr ? TextSelection::Source::Ocr : TextSelection::Source::Pdf;
+    out.pageIndex = pageIndex;
+
+    if (ocr) {
+        loadOcrBlocksForPage(pageIndex);
+    } else {
+        loadTextBoxesForPage(pageIndex);
+    }
+
+    // Probe the region's own geometry rather than trusting the stored indices.
+    // Box indices address a lazily rebuilt cache, and in edgeless the OCR cache
+    // is re-sorted across whichever tiles happen to be loaded, so a stored
+    // index can silently mean a different block than it did at commit time.
+    const QVector<QRectF> pageRects = link->regionRectsInPageSpace();
+    if (!pageRects.isEmpty()) {
+        auto probe = [&](const QRectF& rect, bool leftEdge) -> CharacterPosition {
+            QRectF r = rect.translated(containerOrigin);
+            // Nudge inward so the probe lands on a glyph rather than on the
+            // boundary between two of them.
+            const qreal inset = qMin(2.0, r.width() * 0.25);
+            const QPointF pt(leftEdge ? r.left() + inset : r.right() - inset,
+                             r.center().y());
+            if (ocr) {
+                return findOcrCharAtPoint(pt);
+            }
+            return findCharacterAtPoint(QPointF(pt.x() * PAGE_TO_PDF_SCALE,
+                                                pt.y() * PAGE_TO_PDF_SCALE));
+        };
+
+        const CharacterPosition first = probe(pageRects.first(), true);
+        const CharacterPosition last = probe(pageRects.last(), false);
+        if (first.isValid() && last.isValid()) {
+            out.startBoxIndex = first.boxIndex;
+            out.startCharIndex = first.charIndex;
+            out.endBoxIndex = last.boxIndex;
+            out.endCharIndex = last.charIndex;
+            return true;
+        }
+    }
+
+    // Geometry could not be resolved (missing PDF, OCR not run on this page,
+    // tiles not loaded). The stored range is the only remaining lead.
+    const HighlightRegion::SourceRange& stored = link->region.sourceRange;
+    if (stored.isUsable()) {
+        out.startBoxIndex = stored.startBoxIndex;
+        out.startCharIndex = stored.startCharIndex;
+        out.endBoxIndex = stored.endBoxIndex;
+        out.endCharIndex = stored.endCharIndex;
+        return true;
+    }
+
+    out.clear();
+    return false;
+}
+
+void DocumentViewport::snapEndpointToWord(TextSelection::Source source,
+                                          int boxIndex, int& charIndex,
+                                          bool toStart) const
+{
+    if (source == TextSelection::Source::Pdf) {
+        // MuPdfProvider emits one PdfTextBox per word, so the box *is* the word
+        // and snapping is just picking the right end of it.
+        if (boxIndex < 0 || boxIndex >= m_textBoxCache.size()) {
+            return;
+        }
+        const int len = m_textBoxCache[boxIndex].text.length();
+        if (len <= 0) {
+            return;
+        }
+        charIndex = toStart ? 0 : len - 1;
+        return;
+    }
+
+    // An OCR block is a whole paragraph, so word boundaries have to be found
+    // inside its text.
+    if (boxIndex < 0 || boxIndex >= m_ocrBlockCache.size()) {
+        return;
+    }
+    const QString& text = m_ocrBlockCache[boxIndex].text;
+    if (text.isEmpty()) {
+        return;
+    }
+
+    int i = qBound(0, charIndex, text.length() - 1);
+    // CJK is not space-separated: every glyph is its own word, so snapping
+    // outward would swallow the rest of the sentence.
+    if (isCjkLikeChar(text.at(i))) {
+        charIndex = i;
+        return;
+    }
+
+    auto isBoundary = [](QChar c) { return c.isSpace() || isCjkLikeChar(c); };
+    if (toStart) {
+        while (i > 0 && !isBoundary(text.at(i - 1))) --i;
+    } else {
+        while (i + 1 < text.length() && !isBoundary(text.at(i + 1))) ++i;
+    }
+    charIndex = i;
+}
+
+// ============================================================================
+// Stage 3: Adjust mode - session lifecycle
+// ============================================================================
+
+LinkObject* DocumentViewport::resolveAdjustTarget() const
+{
+    if (!m_adjustSession.active || !m_document) {
+        return nullptr;
+    }
+
+    Page* container = nullptr;
+    if (m_document->isEdgeless()) {
+        container = m_document->getTile(m_adjustSession.tileCoord.first,
+                                        m_adjustSession.tileCoord.second);
+    } else if (m_adjustSession.pageIndex >= 0
+               && m_adjustSession.pageIndex < m_document->pageCount()) {
+        container = m_document->page(m_adjustSession.pageIndex);
+    }
+    if (!container) {
+        return nullptr;
+    }
+
+    InsertedObject* object = container->objectById(m_adjustSession.objectId);
+    if (!object || object->type() != QLatin1String("link")) {
+        return nullptr;
+    }
+    return static_cast<LinkObject*>(object);
+}
+
+bool DocumentViewport::beginHighlightAdjust()
+{
+    if (m_adjustSession.active) {
+        return true;
+    }
+
+    LinkObject* link = selectedLinkForBar();
+    if (!link || link->region.isEmpty() || !m_document) {
+        return false;
+    }
+    if (link->locked) {
+        return false;
+    }
+
+    int pageIndex = -1;
+    Document::TileCoord tileCoord{};
+    if (!resolveRegionContainer(link, &pageIndex, nullptr, &tileCoord)) {
+        return false;
+    }
+
+    // Adjust is a text-range operation and needs the Highlighter's character
+    // caches and selection machinery, so it owns the mode. The guard keeps
+    // setCurrentTool()'s leave-ObjectSelect deselect from dropping our target.
+    if (m_currentTool != ToolType::Highlighter) {
+        m_enteringAdjustMode = true;
+        setCurrentTool(ToolType::Highlighter);
+        m_enteringAdjustMode = false;
+    }
+
+    m_adjustSession.clear();
+    m_adjustSession.objectId = link->id;
+    m_adjustSession.pageIndex = pageIndex;
+    m_adjustSession.tileCoord = tileCoord;
+    m_adjustSession.startRegion = link->region;
+    m_adjustSession.startPosition = link->position;
+    m_adjustSession.startSize = link->size;
+    m_adjustSession.startIconColor = link->iconColor;
+    m_adjustSession.active = true;
+
+    TextSelection derived;
+    if (deriveRegionEndpoints(link, derived)) {
+        m_textSelection = derived;
+        updateSelectedTextAndRects();
+        m_adjustSession.endpointsResolved =
+            !m_textSelection.highlightRects.isEmpty();
+    }
+    if (!m_adjustSession.endpointsResolved) {
+        // No live range recovered: there is no anchor for tap-moves-the-near-
+        // edge to hold, so only drag-redefine remains (the degradation path the
+        // design already specifies).
+        m_textSelection.clear();
+    }
+
+    syncLinkObjectBar();
+    updateHighlighterCursor();
+    update();
+    return true;
+}
+
+bool DocumentViewport::applyAdjustedRangeToRegion()
+{
+    LinkObject* link = resolveAdjustTarget();
+    if (!link || !m_document || !m_textSelection.isValid()) {
+        return false;
+    }
+
+    QVector<QRectF> rects = selectionRectsInContainerSpace();
+    if (rects.isEmpty()) {
+        return false;
+    }
+
+    if (m_document->isEdgeless()) {
+        // Region rects are stored tile-local, and the tile is fixed for the
+        // whole session; re-homing happens once at commit.
+        const QPointF tileOrigin(
+            m_adjustSession.tileCoord.first * Document::EDGELESS_TILE_SIZE,
+            m_adjustSession.tileCoord.second * Document::EDGELESS_TILE_SIZE);
+        for (QRectF& r : rects) {
+            r.translate(-tileOrigin);
+        }
+    }
+
+    const HighlightRegion::Style style = link->region.style;
+    const QColor color = link->region.color;
+    link->setRegionFromPageRects(rects);
+    link->region.style = style;
+    link->region.color = color;
+    link->region.sourceRange = buildHighlightSourceRange(
+        m_document->isEdgeless() ? 0 : m_adjustSession.pageIndex);
+
+    m_document->updateMaxObjectExtent(link);
+    if (m_document->isEdgeless()) {
+        m_document->markTileDirty(m_adjustSession.tileCoord);
+    } else if (m_adjustSession.pageIndex >= 0) {
+        m_document->markPageDirty(m_adjustSession.pageIndex);
+    }
+
+    updateLinkObjectBarGeometry();
+    return true;
+}
+
+void DocumentViewport::commitHighlightAdjust()
+{
+    if (!m_adjustSession.active) {
+        return;
+    }
+
+    LinkObject* link = resolveAdjustTarget();
+    const AdjustSession session = m_adjustSession;
+    m_adjustSession.clear();
+
+    if (link && m_document) {
+        // Appearance counts too: a recolour or restyle made mid-session folds
+        // into this one entry rather than pushing its own.
+        const bool changed =
+            link->region.rects != session.startRegion.rects
+            || link->region.style != session.startRegion.style
+            || link->region.color != session.startRegion.color
+            || link->position != session.startPosition
+            || link->size != session.startSize;
+
+        if (changed) {
+            Document::TileCoord newTile = session.tileCoord;
+            if (m_document->isEdgeless()) {
+                // Re-ranging moves the bounding box, which is the object's
+                // position, so the mark may now belong to a different tile.
+                relocateObjectsToCorrectTiles();
+                for (const auto& coord : m_document->allLoadedTileCoords()) {
+                    Page* tile = m_document->getTile(coord.first, coord.second);
+                    if (tile && tile->objectById(link->id)) {
+                        newTile = coord;
+                        break;
+                    }
+                }
+            }
+
+            pushObjectRegionChangeUndo(link, session.startRegion,
+                                       session.startPosition, session.startSize,
+                                       session.startIconColor,
+                                       session.pageIndex, session.tileCoord,
+                                       newTile);
+            markLinkContainerDirtyAndRefreshOutline(link);
+            emit documentModified();
+            if (!m_document->isEdgeless() && session.pageIndex >= 0) {
+                m_pendingThumbnailPages.insert(session.pageIndex);
+                emit pageModified(session.pageIndex);
+            }
+        }
+    }
+
+    if (m_textSelection.isValid()) {
+        m_textSelection.clear();
+        emit textSelectionChanged(false);
+    }
+
+    syncLinkObjectBar();
+    updateHighlighterCursor();
+    update();
+}
+
+void DocumentViewport::discardHighlightAdjust()
+{
+    if (!m_adjustSession.active) {
+        return;
+    }
+
+    // Neither commit nor revert: used when the target or the whole document is
+    // going away, where a region-change undo entry would be stray noise ahead
+    // of the delete and reverting would fight the delete's own snapshot.
+    m_adjustSession.clear();
+    if (m_textSelection.isValid()) {
+        m_textSelection.clear();
+        emit textSelectionChanged(false);
+    }
+}
+
+void DocumentViewport::cancelHighlightAdjust()
+{
+    if (!m_adjustSession.active) {
+        return;
+    }
+
+    LinkObject* link = resolveAdjustTarget();
+    const AdjustSession session = m_adjustSession;
+    m_adjustSession.clear();
+
+    if (link && m_document) {
+        const bool tintReverted = session.startIconColor.isValid()
+                                  && link->iconColor != session.startIconColor;
+
+        link->region = session.startRegion;
+        link->position = session.startPosition;
+        link->size = session.startSize;
+        if (session.startIconColor.isValid())
+            link->iconColor = session.startIconColor;
+        m_document->updateMaxObjectExtent(link);
+        if (m_document->isEdgeless()) {
+            m_document->markTileDirty(session.tileCoord);
+        } else if (session.pageIndex >= 0) {
+            m_document->markPageDirty(session.pageIndex);
+        }
+
+        if (tintReverted) {
+            // A recolour mid-session already pushed the new tint into the
+            // outline cache and the notes sidebar; both have to come back with
+            // it. Only the appearance signal fires: the set of annotations is
+            // unchanged, so rebuilding the sidebar would collapse its subtrees
+            // for nothing.
+            markLinkContainerDirtyAndRefreshOutline(link);
+            emit linkObjectAppearanceChanged(link->id, link->description,
+                                             link->iconColor);
+        }
+    }
+
+    if (m_textSelection.isValid()) {
+        m_textSelection.clear();
+        emit textSelectionChanged(false);
+    }
+
+    syncLinkObjectBar();
+    updateHighlighterCursor();
+    update();
 }
 
 void DocumentViewport::copySelectedTextToClipboard()
@@ -12912,14 +16360,97 @@ void DocumentViewport::resetCurrentStrokeCache()
     m_cachePan = m_panOffset;
 }
 
+QRect DocumentViewport::currentStrokeTailRect(int fromIndex, const QTransform& toCache) const
+{
+    const int n = static_cast<int>(m_currentStroke.points.size());
+    if (fromIndex < 0 || fromIndex >= n) {
+        return QRect();
+    }
+    
+    qreal minX = m_currentStroke.points[fromIndex].pos.x();
+    qreal maxX = minX;
+    qreal minY = m_currentStroke.points[fromIndex].pos.y();
+    qreal maxY = minY;
+    for (int i = fromIndex + 1; i < n; ++i) {
+        const QPointF& pos = m_currentStroke.points[i].pos;
+        minX = qMin(minX, pos.x());
+        maxX = qMax(maxX, pos.x());
+        minY = qMin(minY, pos.y());
+        maxY = qMax(maxY, pos.y());
+    }
+    
+    // A full thickness of padding: half covers the outline's own half-width at
+    // maximum pressure, the rest absorbs the Catmull-Rom curve bowing outside the
+    // control points it was built from.
+    const qreal pad = m_currentStroke.baseThickness + 2.0;
+    const QRectF bounds(minX - pad, minY - pad,
+                        (maxX - minX) + pad * 2.0, (maxY - minY) + pad * 2.0);
+    
+    // Two more pixels after mapping for the antialiased fringe.
+    return toCache.mapRect(bounds).toAlignedRect().adjusted(-2, -2, 2, 2)
+        .intersected(QRect(0, 0, width(), height()));
+}
+
+QVector<QPair<int, int>> DocumentViewport::currentStrokeRangesTouching(
+    const QRect& cacheRect, const QTransform& toCache) const
+{
+    QVector<QPair<int, int>> runs;
+    const int n = static_cast<int>(m_currentStroke.points.size());
+    if (n < 2) {
+        return runs;
+    }
+    
+    // Same padding the target region was built with, so a segment is only
+    // discarded when its outline cannot reach the region.
+    const qreal pad = m_currentStroke.baseThickness + 2.0;
+    const QRectF target(cacheRect);
+    
+    // Testing segments rather than points keeps a long segment that merely
+    // passes through the region from being missed.
+    int runStart = -1;
+    for (int i = 0; i + 1 < n; ++i) {
+        const QPointF& a = m_currentStroke.points[i].pos;
+        const QPointF& b = m_currentStroke.points[i + 1].pos;
+        const QRectF box(QPointF(qMin(a.x(), b.x()) - pad, qMin(a.y(), b.y()) - pad),
+                         QPointF(qMax(a.x(), b.x()) + pad, qMax(a.y(), b.y()) + pad));
+        
+        if (toCache.mapRect(box).intersects(target)) {
+            if (runStart < 0) {
+                runStart = i;
+            }
+        } else if (runStart >= 0) {
+            runs.append({runStart, i});
+            runStart = -1;
+        }
+    }
+    if (runStart >= 0) {
+        runs.append({runStart, n - 1});
+    }
+    
+    // Widen each run with curve context and merge the runs that meet, so every
+    // repainted segment sees the neighbours a full-stroke render would give it.
+    QVector<QPair<int, int>> merged;
+    merged.reserve(runs.size());
+    for (const QPair<int, int>& run : runs) {
+        const int first = qMax(0, run.first - STROKE_TAIL_CONTEXT_POINTS);
+        const int last = qMin(n - 1, run.second + STROKE_TAIL_CONTEXT_POINTS);
+        if (!merged.isEmpty() && first <= merged.last().second + 1) {
+            merged.last().second = qMax(merged.last().second, last);
+        } else {
+            merged.append({first, last});
+        }
+    }
+    return merged;
+}
+
 void DocumentViewport::renderCurrentStrokeIncremental(QPainter& painter)
 {
     // ========== In-Progress Stroke Rendering ==========
     // Renders the current stroke to m_currentStrokeCache using the same
     // VectorLayer::renderStroke() path as finalized strokes, giving it
-    // Catmull-Rom smoothed curves. The cache is re-rendered when new
-    // points arrive (tracked via m_lastRenderedPointIndex) and reused
-    // for repaints where no new points were added.
+    // Catmull-Rom smoothed curves. New points rewrite only the tail of the
+    // cache (tracked via m_lastRenderedPointIndex); repaints that added no
+    // points reuse it as-is.
     
     const int n = static_cast<int>(m_currentStroke.points.size());
     if (n < 1) return;
@@ -12978,40 +16509,75 @@ void DocumentViewport::renderCurrentStrokeIncremental(QPainter& painter)
     int strokeAlpha = m_currentStroke.color.alpha();
     bool hasSemiTransparency = (strokeAlpha < 255);
     
-    // Re-render the full stroke to cache when new points arrive.
-    // Uses VectorLayer::renderStroke() for Catmull-Rom smoothed curves,
-    // giving the in-progress stroke the same visual quality as finalized strokes.
-    // Performance: a single stroke with ~100-300 points renders in <1ms.
+    // Update the cache when new points arrive, rewriting only the tail whose
+    // shape can still change and leaving the settled prefix in place. Redrawing
+    // the whole stroke per point costs O(n) each frame and O(n^2) across the
+    // stroke, which is what drags a long stroke below 1 fps on slower tablets.
     if (n > m_lastRenderedPointIndex && n >= 2) {
-        m_currentStrokeCache.fill(Qt::transparent);
-        
-        QPainter cachePainter(&m_currentStrokeCache);
-        cachePainter.setRenderHint(QPainter::Antialiasing, true);
-        
-        // Snap page/tile origin to integer physical pixel (see comment above)
-        cachePainter.translate(snapTxLogical, snapTyLogical);
-        
-        // Apply transform to convert coords to viewport coords
-        // The cache is in viewport coordinates (widget pixels)
-        cachePainter.translate(-m_panOffset.x() * m_zoomLevel, -m_panOffset.y() * m_zoomLevel);
-        cachePainter.scale(m_zoomLevel, m_zoomLevel);
-        
-        // For paged mode, translate to page position
-        // For edgeless, stroke points are already in document coords - no extra translate
+        // Same mapping the cache was rasterized with, kept as a QTransform so the
+        // tail bounds can be carried into cache pixels by exactly that mapping.
+        QTransform toCache;
+        toCache.translate(snapTxLogical, snapTyLogical);
+        toCache.translate(-m_panOffset.x() * m_zoomLevel, -m_panOffset.y() * m_zoomLevel);
+        toCache.scale(m_zoomLevel, m_zoomLevel);
         if (!isEdgeless) {
-            cachePainter.translate(snapOrigin);
+            toCache.translate(snapOrigin.x(), snapOrigin.y());
         }
         
-        // Render using the same path as finalized strokes (Catmull-Rom smoothing).
-        // For semi-transparent strokes, create a copy with full opacity (alpha
-        // is applied during the blit step below). For opaque strokes, render
-        // directly to avoid copying the stroke's point vector.
-        if (hasSemiTransparency) {
-            VectorStroke drawStroke = m_currentStroke;
-            drawStroke.color.setAlpha(255);
-            VectorLayer::renderStroke(cachePainter, drawStroke);
+        // Everything drawn into the cache is fully opaque; the stroke's own alpha
+        // is applied once at blit time, so overlapping ranges, caps and joints
+        // cannot compound and repainting a region twice is harmless.
+        auto renderRange = [&](QPainter& cachePainter, int first, int last) {
+            // Copying the stroke shares its point vector, so slicing a range out
+            // of the copy costs only that range.
+            VectorStroke segment = m_currentStroke;
+            segment.points = m_currentStroke.points.mid(first, last - first + 1);
+            if (hasSemiTransparency) {
+                segment.color.setAlpha(255);
+            }
+            VectorLayer::renderStroke(cachePainter, segment);
+        };
+        
+        // A reset cache holds nothing, so there is no settled content to preserve.
+        if (m_lastRenderedPointIndex <= 0) {
+            m_currentStrokeCache.fill(Qt::transparent);
+            
+            QPainter cachePainter(&m_currentStrokeCache);
+            cachePainter.setRenderHint(QPainter::Antialiasing, true);
+            cachePainter.setWorldTransform(toCache);
+            renderRange(cachePainter, 0, n - 1);
         } else {
-            VectorLayer::renderStroke(cachePainter, m_currentStroke);
+            // Whatever the previous render left volatile has to be redone, along
+            // with every point added since.
+            const int redrawFrom =
+                qBound(0, m_lastRenderedPointIndex - 1 - STROKE_TAIL_VOLATILE_POINTS, n - 1);
+            const QRect tailRect = currentStrokeTailRect(redrawFrom, toCache);
+            
+            // An empty rect means the new points are off-screen; the cache only
+            // spans the viewport, so there is nothing to repaint.
+            if (!tailRect.isEmpty()) {
+                // Clearing the region also removes any older part of the stroke
+                // that crosses it, so the repaint covers every range reaching in,
+                // not just the tail.
+                const QVector<QPair<int, int>> ranges =
+                    currentStrokeRangesTouching(tailRect, toCache);
+                
+                QPainter cachePainter(&m_currentStrokeCache);
+                cachePainter.setCompositionMode(QPainter::CompositionMode_Clear);
+                cachePainter.fillRect(tailRect, Qt::transparent);
+                cachePainter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+                
+                // A hard-edged clip keeps settled pixels outside the region
+                // untouched, and the context points make the geometry inside it
+                // identical to a full render, so the two meet without a seam.
+                cachePainter.setClipRect(tailRect);
+                cachePainter.setRenderHint(QPainter::Antialiasing, true);
+                cachePainter.setWorldTransform(toCache);
+                
+                for (const QPair<int, int>& range : ranges) {
+                    renderRange(cachePainter, range.first, range.second);
+                }
+            }
         }
         
         m_lastRenderedPointIndex = n;
@@ -13140,19 +16706,23 @@ void DocumentViewport::eraseAtEdgeless(QPointF viewportPos)
     // Convert viewport position to document coordinates
     QPointF docPt = viewportToDocument(viewportPos);
     
-    // Get center tile coordinate
-    Document::TileCoord centerTile = m_document->tileCoordForPoint(docPt);
     int tileSize = Document::EDGELESS_TILE_SIZE;
     
     UndoAction undoAction;
     undoAction.type = UndoAction::RemoveStroke;
     undoAction.layerIndex = m_edgelessActiveLayerIndex;
 
-    for (int dx = -1; dx <= 1; ++dx) {
-        for (int dy = -1; dy <= 1; ++dy) {
-            int tx = centerTile.first + dx;
-            int ty = centerTile.second + dy;
+    // Scan only the tiles the eraser disc can actually reach. A fixed 3x3
+    // neighbourhood scanned nine tiles' worth of strokes on every pointer move,
+    // and at a 1024-unit tile size an ordinary eraser touches one.
+    const qreal reach = m_eraserSize + EDGELESS_STROKE_MARGIN;
+    const int minTx = static_cast<int>(std::floor((docPt.x() - reach) / tileSize));
+    const int maxTx = static_cast<int>(std::floor((docPt.x() + reach) / tileSize));
+    const int minTy = static_cast<int>(std::floor((docPt.y() - reach) / tileSize));
+    const int maxTy = static_cast<int>(std::floor((docPt.y() + reach) / tileSize));
 
+    for (int tx = minTx; tx <= maxTx; ++tx) {
+        for (int ty = minTy; ty <= maxTy; ++ty) {
             Page* tile = m_document->getTile(tx, ty);
             if (!tile) continue;
             if (m_edgelessActiveLayerIndex >= tile->layerCount()) continue;
@@ -13194,6 +16764,75 @@ void DocumentViewport::eraseAtEdgeless(QPointF viewportPos)
         QRectF dirtyRectF(viewportPos.x() - eraserRadius, viewportPos.y() - eraserRadius,
                           eraserRadius * 2, eraserRadius * 2);
         update(QRegion(dirtyRectF.toAlignedRect(), QRegion::Ellipse));
+    }
+}
+
+QPixmap DocumentViewport::grabOpaqueViewport()
+{
+    if (width() <= 0 || height() <= 0) {
+        return QPixmap();
+    }
+    
+    // Mirrors what grab() does, differing only in the format it renders into.
+    const qreal dpr = devicePixelRatioF();
+    QImage frame(QSize(qRound(width() * dpr), qRound(height() * dpr)),
+                 QImage::Format_RGB32);
+    if (frame.isNull()) {
+        return grab();  // Allocation failed; the slower snapshot beats none at all.
+    }
+    frame.setDevicePixelRatio(dpr);
+    
+    // RGB32 has no transparency to start from, so any pixel render() leaves
+    // untouched would show uninitialized memory rather than blank canvas.
+    frame.fill(m_backgroundColor);
+    render(&frame);
+    
+    QPixmap snapshot = QPixmap::fromImage(std::move(frame));
+    // fromImage() may or may not carry the ratio across; callers scale by it.
+    snapshot.setDevicePixelRatio(dpr);
+    return snapshot;
+}
+
+void DocumentViewport::fillBackgroundAround(QPainter& painter, const QRectF& coveredLogical)
+{
+    const QRect vp = rect();
+    
+    // Round inward: only pixels certain to be overdrawn may be skipped, so a
+    // fractional edge ends up in a band instead of becoming an unfilled seam.
+    const int left = static_cast<int>(std::ceil(coveredLogical.left()));
+    const int top = static_cast<int>(std::ceil(coveredLogical.top()));
+    const int right = static_cast<int>(std::floor(coveredLogical.left() + coveredLogical.width()));
+    const int bottom = static_cast<int>(std::floor(coveredLogical.top() + coveredLogical.height()));
+    const QRect covered = QRect(left, top, std::max(0, right - left),
+                                std::max(0, bottom - top)).intersected(vp);
+    
+    if (covered.isEmpty()) {
+        // Panned further than a full viewport: nothing survives, clear it all.
+        painter.fillRect(vp, m_backgroundColor);
+        return;
+    }
+    
+    // Top and bottom bands span the full width; the side bands cover only the
+    // remaining vertical extent. Together with `covered` these tile the
+    // viewport exactly - no overlap, no gap.
+    if (covered.top() > vp.top()) {
+        painter.fillRect(QRect(vp.left(), vp.top(), vp.width(), covered.top() - vp.top()),
+                         m_backgroundColor);
+    }
+    if (covered.bottom() < vp.bottom()) {
+        painter.fillRect(QRect(vp.left(), covered.bottom() + 1, vp.width(),
+                               vp.bottom() - covered.bottom()),
+                         m_backgroundColor);
+    }
+    if (covered.left() > vp.left()) {
+        painter.fillRect(QRect(vp.left(), covered.top(), covered.left() - vp.left(),
+                               covered.height()),
+                         m_backgroundColor);
+    }
+    if (covered.right() < vp.right()) {
+        painter.fillRect(QRect(covered.right() + 1, covered.top(),
+                               vp.right() - covered.right(), covered.height()),
+                         m_backgroundColor);
     }
 }
 
@@ -13246,7 +16885,12 @@ void DocumentViewport::finalizeEraserLasso()
 
         const QRectF lassoBounds = m_lassoPath.boundingRect();
 
-        auto tiles = m_document->allLoadedTileCoords();
+        // Only tiles the lasso reaches can hold strokes it selects, so scanning
+        // every loaded tile made this proportional to canvas size rather than to
+        // the gesture.
+        const QVector<Document::TileCoord> tiles = m_document->tilesInRect(
+            lassoBounds.adjusted(-EDGELESS_STROKE_MARGIN, -EDGELESS_STROKE_MARGIN,
+                                 EDGELESS_STROKE_MARGIN, EDGELESS_STROKE_MARGIN));
         for (const auto& coord : tiles) {
             Page* tile = m_document->getTile(coord.first, coord.second);
             if (!tile || layerIdx >= tile->layerCount()) continue;
@@ -13284,7 +16928,10 @@ void DocumentViewport::finalizeEraserLasso()
                     layerStrokes.removeAt(i);
                 }
             }
-            layer->invalidateStrokeCache();
+            // Every removal was inside the lasso, so repairing that region is
+            // enough. Invalidating instead threw away a cache the next paint
+            // then had to rebuild at full tile size.
+            layer->patchCacheAfterRemovals(lassoBounds.translated(-tileOrigin));
             m_document->markTileDirty(coord);
         }
     } else {
@@ -13296,8 +16943,13 @@ void DocumentViewport::finalizeEraserLasso()
 
         undoAction.layerIndex = page->activeLayerIndex;
 
+        // Bounds rejection before the per-point polygon test, matching the
+        // edgeless branch above.
+        const QRectF lassoBounds = m_lassoPath.boundingRect();
+
         QSet<QString> idsToRemove;
         for (const VectorStroke& stroke : layer->strokes()) {
+            if (!stroke.boundingBox.intersects(lassoBounds)) continue;
             if (strokeIntersectsLasso(stroke, m_lassoPath)) {
                 idsToRemove.insert(stroke.id);
             }
@@ -13314,7 +16966,7 @@ void DocumentViewport::finalizeEraserLasso()
                     layerStrokes.removeAt(i);
                 }
             }
-            layer->invalidateStrokeCache();
+            layer->patchCacheAfterRemovals(lassoBounds);
             m_document->markPageDirty(m_eraserLassoPageIndex);
         }
     }
@@ -13515,11 +17167,18 @@ bool DocumentViewport::importPagesWithUndo(Document* srcDoc, const QStringList& 
 
     UndoAction action;
     action.type = UndoAction::PageInsert;
+    QSet<QString> retainedSourceIds;
     for (int k = 0; k < result.insertedPageJson.size(); ++k) {
         UndoAction::DeletedPageSnapshot snap;
         snap.index = result.destStartIndex + k;
         snap.pageJson = result.insertedPageJson[k];
         action.deletedPages.append(snap);
+
+        const QString sourceId = snap.pageJson.value(QStringLiteral("pdfSourceId")).toString();
+        if (!sourceId.isEmpty()) retainedSourceIds.insert(sourceId);
+    }
+    for (const QString& sourceId : retainedSourceIds) {
+        m_document->retainPdfSourceForUndo(sourceId);
     }
 
     const int focusIndex = result.destStartIndex >= 0 ? result.destStartIndex : destIndex;
@@ -13545,6 +17204,28 @@ void DocumentViewport::setEdgelessActiveLayerIndex(int layerIndex)
 void DocumentViewport::trimUndoStack()
 {
     while (m_undoStack.size() > MAX_UNDO_ACTIONS) {
+        m_undoStack.remove(0);
+    }
+
+    // Count limits alone are unsafe for image history: 100 clipboard 4K
+    // snapshots can retain several GiB. Preserve the newest action while
+    // evicting older history until recovery payloads fit a platform budget.
+    const qint64 imageRecoveryBudget = sizeof(void*) >= 8
+        ? 512LL * 1024 * 1024
+        : 128LL * 1024 * 1024;
+    auto recoveryBytes = [](const UndoAction& action) {
+        return static_cast<qint64>(action.objectImageEncodedData.size())
+            + (action.objectImageSnapshot.isNull()
+                   ? 0
+                   : static_cast<qint64>(
+                         action.objectImageSnapshot.sizeInBytes()));
+    };
+    qint64 retainedBytes = 0;
+    for (const UndoAction& action : m_undoStack) {
+        retainedBytes += recoveryBytes(action);
+    }
+    while (m_undoStack.size() > 1 && retainedBytes > imageRecoveryBudget) {
+        retainedBytes -= recoveryBytes(m_undoStack.first());
         m_undoStack.remove(0);
     }
 }
@@ -13648,6 +17329,79 @@ static void markObjDirty(Document* doc, const UndoAction& a)
         doc->markPageDirty(a.objectPageIndex);
 }
 
+/**
+ * @brief Apply one side of an ObjectRegionChange to its annotation.
+ * @param toOld true to restore the pre-Adjust snapshot, false for the new one.
+ *
+ * Re-ranging moves the region's bounding box, which is the object's position,
+ * so in edgeless mode an Adjust can push the annotation into a different tile.
+ * That is why this mirrors ObjectTextEdit's extract-and-rehome shape rather
+ * than mutating in place: the object has to physically leave its old tile.
+ */
+static void applyObjectRegionChange(Document* doc, const UndoAction& a, bool toOld)
+{
+    const HighlightRegion& region = toOld ? a.objectOldRegion : a.objectNewRegion;
+    const QPointF& pos = toOld ? a.objectOldPosition : a.objectNewPosition;
+    const QSizeF& size = toOld ? a.objectOldSize : a.objectNewSize;
+    const QColor& tint = toOld ? a.objectOldIconColor : a.objectNewIconColor;
+
+    auto assign = [](InsertedObject* obj, const HighlightRegion& r,
+                     const QPointF& p, const QSizeF& s, const QColor& t) {
+        if (auto* link = dynamic_cast<LinkObject*>(obj)) {
+            link->region = r;
+            link->position = p;
+            link->size = s;
+            if (t.isValid())
+                link->iconColor = t;
+        }
+    };
+
+    // Tile the object currently sits in is the one it was moved *to* by the
+    // direction being reversed, so undo pulls from newTile and redo from oldTile.
+    const Document::TileCoord from = toOld ? a.objectNewTile : a.objectOldTile;
+    const Document::TileCoord to = toOld ? a.objectOldTile : a.objectNewTile;
+
+    if (doc->isEdgeless() && from != to) {
+        Page* source = doc->getTile(from.first, from.second);
+        std::unique_ptr<InsertedObject> moved =
+            source ? source->extractObject(a.objectId) : nullptr;
+        if (!moved)
+            return;
+        assign(moved.get(), region, pos, size, tint);
+        if (Page* target = doc->getOrCreateTile(to.first, to.second)) {
+            target->addObject(std::move(moved));
+            doc->markTileDirty(to);
+            doc->markTileDirty(from);
+            // Both tiles' cached outlines are now wrong: the annotation left one
+            // and arrived in the other.
+            doc->refreshLinkOutlineFor(to);
+            doc->refreshLinkOutlineFor(from);
+            doc->removeTileIfEmpty(from.first, from.second);
+        } else if (source) {
+            // Target tile could not be created; roll the object back into its
+            // old tile with the state it arrived with rather than dropping it.
+            assign(moved.get(),
+                   toOld ? a.objectNewRegion : a.objectOldRegion,
+                   toOld ? a.objectNewPosition : a.objectOldPosition,
+                   toOld ? a.objectNewSize : a.objectOldSize,
+                   toOld ? a.objectNewIconColor : a.objectOldIconColor);
+            source->addObject(std::move(moved));
+        }
+        return;
+    }
+
+    if (Page* c = getObjContainer(doc, a, false)) {
+        assign(c->objectById(a.objectId), region, pos, size, tint);
+        markObjDirty(doc, a);
+        // Re-ranging can change which annotation is topmost on the container,
+        // which is what pageLinkMarkers() reports, so the cache has to follow.
+        if (doc->isEdgeless())
+            doc->refreshLinkOutlineFor(a.objectTileCoord);
+        else if (a.objectPageIndex >= 0)
+            doc->refreshLinkOutlineFor(a.objectPageIndex);
+    }
+}
+
 static QSet<int> collectAffectedPages(const UndoAction& action)
 {
     QSet<int> pages;
@@ -13662,6 +17416,14 @@ static QSet<int> collectAffectedPages(const UndoAction& action)
 
 void DocumentViewport::undo()
 {
+    closeTextBoxFormatPopups(true);
+    closeLinkObjectBarPopups(true);
+    finishTextBoxFormatInteraction(true);
+    if (m_inlineEditSession.active)
+        commitInlineTextEdit();
+    // Land the session's own entry on the stack before popping, so the first
+    // Ctrl+Z undoes the adjusting rather than whatever came before it.
+    commitHighlightAdjust();
     if (m_undoStack.isEmpty() || !m_document) return;
 
     UndoAction action = m_undoStack.pop();
@@ -13708,10 +17470,16 @@ void DocumentViewport::undo()
                            action.type == UndoAction::ObjectAffinityChange ||
                            action.type == UndoAction::ObjectResize ||
                            action.type == UndoAction::ObjectTextEdit ||
-                           action.type == UndoAction::OcrLockChange);
+                           action.type == UndoAction::ObjectRegionChange ||
+                           action.type == UndoAction::OcrLockChange ||
+                           action.type == UndoAction::OcrConvertToTextBox);
 
     if (isObjectAction) {
         switch (action.type) {
+            case UndoAction::OcrConvertToTextBox: {
+                revertOcrConversion(action);
+                break;
+            }
             case UndoAction::ObjectInsert: {
                 deselectObjectById(action.objectId);
                 Page* c = getObjContainer(m_document, action, false);
@@ -13730,7 +17498,25 @@ void DocumentViewport::undo()
                 if (c) {
                     auto obj = InsertedObject::fromJson(action.objectData);
                     if (obj) {
-                        obj->loadAssets(m_document->bundlePath());
+                        if (dynamic_cast<ImageObject*>(obj.get())
+                            && action.objectImageSnapshot.isNull()
+                            && action.objectImageEncodedData.isEmpty()) {
+                            m_document->flushPendingImageWrites();
+                        }
+                        const bool assetLoaded = obj->loadAssets(m_document->bundlePath());
+                        if (!assetLoaded) {
+                            if (auto* image = dynamic_cast<ImageObject*>(obj.get())) {
+                                QImage recovery = action.objectImageSnapshot;
+                                if (recovery.isNull() && !action.objectImageEncodedData.isEmpty()) {
+                                    recovery.loadFromData(action.objectImageEncodedData);
+                                }
+                                if (!recovery.isNull()) {
+                                    image->setSourceImage(recovery,
+                                                          action.objectImageEncodedData,
+                                                          action.objectImageFormat);
+                                }
+                            }
+                        }
                         m_document->updateMaxObjectExtent(obj.get());
                         c->addObject(std::move(obj));
                         markObjDirty(m_document, action);
@@ -13789,35 +17575,131 @@ void DocumentViewport::undo()
                 break;
             }
             case UndoAction::ObjectResize: {
-                Page* c = getObjContainer(m_document, action, false);
-                if (c) {
-                    InsertedObject* obj = c->objectById(action.objectId);
-                    if (obj) {
+                Page* c = nullptr;
+                const bool crossTile = m_document->isEdgeless()
+                    && action.objectOldTile != action.objectNewTile;
+                std::unique_ptr<InsertedObject> movedObject;
+                Page* sourceTile = nullptr;
+                if (crossTile) {
+                    sourceTile = m_document->getTile(
+                        action.objectNewTile.first,
+                        action.objectNewTile.second);
+                    if (sourceTile)
+                        movedObject =
+                            sourceTile->extractObject(action.objectId);
+                } else {
+                    c = getObjContainer(m_document, action, false);
+                }
+                InsertedObject* obj = movedObject
+                    ? movedObject.get()
+                    : (c ? c->objectById(action.objectId) : nullptr);
+                if (obj) {
+                    if (action.objectHasTextBoxState) {
+                        if (auto* textBox =
+                                dynamic_cast<TextBoxObject*>(obj)) {
+                            textBox->applyState(
+                                action.objectOldTextBoxState);
+                        }
+                    } else {
                         obj->position = action.objectOldPosition;
                         obj->size = action.objectOldSize;
                         obj->rotation = action.objectOldRotation;
-                        if (obj->type() == "image") {
-                            if (auto* img = dynamic_cast<ImageObject*>(obj))
-                                img->maintainAspectRatio = action.objectOldAspectLock;
-                        }
                     }
+                    if (obj->type() == "image") {
+                        if (auto* img = dynamic_cast<ImageObject*>(obj))
+                            img->maintainAspectRatio =
+                                action.objectOldAspectLock;
+                    }
+                }
+                if (movedObject) {
+                    Page* oldTile = m_document->getOrCreateTile(
+                        action.objectOldTile.first,
+                        action.objectOldTile.second);
+                    if (oldTile) {
+                        oldTile->addObject(std::move(movedObject));
+                        m_document->markTileDirty(action.objectOldTile);
+                        m_document->markTileDirty(action.objectNewTile);
+                        m_document->removeTileIfEmpty(
+                            action.objectNewTile.first,
+                            action.objectNewTile.second);
+                    } else if (sourceTile) {
+                        if (action.objectHasTextBoxState) {
+                            if (auto* textBox =
+                                    dynamic_cast<TextBoxObject*>(
+                                        movedObject.get())) {
+                                textBox->applyState(
+                                    action.objectNewTextBoxState);
+                            }
+                        } else {
+                            movedObject->position =
+                                action.objectNewPosition;
+                            movedObject->size = action.objectNewSize;
+                            movedObject->rotation =
+                                action.objectNewRotation;
+                        }
+                        sourceTile->addObject(std::move(movedObject));
+                    }
+                } else if (c) {
                     markObjDirty(m_document, action);
                 }
                 break;
             }
             case UndoAction::ObjectTextEdit: {
-                Page* c = getObjContainer(m_document, action, false);
-                if (c) {
-                    InsertedObject* obj = c->objectById(action.objectId);
-                    if (auto* tbox = dynamic_cast<TextBoxObject*>(obj)) {
-                        tbox->text = action.objectOldText;
-                        tbox->alignment = static_cast<TextAlignment>(action.objectOldTextAlignment);
-                        tbox->backgroundColor.setAlpha(action.objectOldBgAlpha);
-                        tbox->fontColor = action.objectOldFontColor;
-                        tbox->invalidateDocCache();
+                if (m_document->isEdgeless()
+                    && action.objectOldTile != action.objectNewTile) {
+                    Page* source = m_document->getTile(
+                        action.objectNewTile.first,
+                        action.objectNewTile.second);
+                    std::unique_ptr<InsertedObject> moved =
+                        source ? source->extractObject(action.objectId)
+                               : nullptr;
+                    if (moved) {
+                        if (auto* textBox =
+                                dynamic_cast<TextBoxObject*>(moved.get())) {
+                            textBox->applyState(
+                                action.objectOldTextBoxState);
+                        }
+                        Page* target = m_document->getOrCreateTile(
+                            action.objectOldTile.first,
+                            action.objectOldTile.second);
+                        if (target) {
+                            target->addObject(std::move(moved));
+                            m_document->markTileDirty(
+                                action.objectOldTile);
+                            m_document->markTileDirty(
+                                action.objectNewTile);
+                            m_document->removeTileIfEmpty(
+                                action.objectNewTile.first,
+                                action.objectNewTile.second);
+                        } else {
+                            if (auto* textBox =
+                                    dynamic_cast<TextBoxObject*>(
+                                        moved.get())) {
+                                textBox->applyState(
+                                    action.objectNewTextBoxState);
+                            }
+                            source->addObject(std::move(moved));
+                        }
                     }
-                    markObjDirty(m_document, action);
+                } else {
+                    Page* c = getObjContainer(
+                        m_document, action, false);
+                    if (c) {
+                        InsertedObject* obj =
+                            c->objectById(action.objectId);
+                        if (auto* tbox =
+                                dynamic_cast<TextBoxObject*>(obj)) {
+                            tbox->applyState(
+                                action.objectOldTextBoxState);
+                        }
+                        markObjDirty(m_document, action);
+                    }
                 }
+                break;
+            }
+            case UndoAction::ObjectRegionChange: {
+                applyObjectRegionChange(m_document, action, true);
+                m_document->recalculateMaxObjectExtent();
                 break;
             }
             case UndoAction::OcrLockChange: {
@@ -13957,6 +17839,9 @@ void DocumentViewport::undo()
     emit undoAvailableChanged(canUndo());
     emit redoAvailableChanged(canRedo());
     emit documentModified();
+    if (UndoAction::affectsTextLayout(action.type)) {
+        emit textBoxLayoutCommitted();
+    }
     if (action.type == UndoAction::ObjectInsert || action.type == UndoAction::ObjectDelete) {
         // Phase M.9: refresh the single container this action touches.
         if (m_document->isEdgeless()) {
@@ -13986,6 +17871,14 @@ void DocumentViewport::undo()
 
 void DocumentViewport::redo()
 {
+    closeTextBoxFormatPopups(true);
+    closeLinkObjectBarPopups(true);
+    finishTextBoxFormatInteraction(true);
+    if (m_inlineEditSession.active)
+        commitInlineTextEdit();
+    // Committing pushes onto the undo stack, which clears the redo stack, so an
+    // active session makes this redo a no-op by design.
+    commitHighlightAdjust();
     if (m_redoStack.isEmpty() || !m_document) return;
 
     UndoAction action = m_redoStack.pop();
@@ -14029,16 +17922,40 @@ void DocumentViewport::redo()
                            action.type == UndoAction::ObjectAffinityChange ||
                            action.type == UndoAction::ObjectResize ||
                            action.type == UndoAction::ObjectTextEdit ||
-                           action.type == UndoAction::OcrLockChange);
+                           action.type == UndoAction::ObjectRegionChange ||
+                           action.type == UndoAction::OcrLockChange ||
+                           action.type == UndoAction::OcrConvertToTextBox);
 
     if (isObjectAction) {
         switch (action.type) {
+            case UndoAction::OcrConvertToTextBox: {
+                applyOcrConversion(action);
+                break;
+            }
             case UndoAction::ObjectInsert: {
                 Page* c = getObjContainer(m_document, action, true);
                 if (c) {
                     auto obj = InsertedObject::fromJson(action.objectData);
                     if (obj) {
-                        obj->loadAssets(m_document->bundlePath());
+                        if (dynamic_cast<ImageObject*>(obj.get())
+                            && action.objectImageSnapshot.isNull()
+                            && action.objectImageEncodedData.isEmpty()) {
+                            m_document->flushPendingImageWrites();
+                        }
+                        const bool assetLoaded = obj->loadAssets(m_document->bundlePath());
+                        if (!assetLoaded) {
+                            if (auto* image = dynamic_cast<ImageObject*>(obj.get())) {
+                                QImage recovery = action.objectImageSnapshot;
+                                if (recovery.isNull() && !action.objectImageEncodedData.isEmpty()) {
+                                    recovery.loadFromData(action.objectImageEncodedData);
+                                }
+                                if (!recovery.isNull()) {
+                                    image->setSourceImage(recovery,
+                                                          action.objectImageEncodedData,
+                                                          action.objectImageFormat);
+                                }
+                            }
+                        }
                         m_document->updateMaxObjectExtent(obj.get());
                         c->addObject(std::move(obj));
                         markObjDirty(m_document, action);
@@ -14113,35 +18030,131 @@ void DocumentViewport::redo()
                 break;
             }
             case UndoAction::ObjectResize: {
-                Page* c = getObjContainer(m_document, action, false);
-                if (c) {
-                    InsertedObject* obj = c->objectById(action.objectId);
-                    if (obj) {
+                Page* c = nullptr;
+                const bool crossTile = m_document->isEdgeless()
+                    && action.objectOldTile != action.objectNewTile;
+                std::unique_ptr<InsertedObject> movedObject;
+                Page* sourceTile = nullptr;
+                if (crossTile) {
+                    sourceTile = m_document->getTile(
+                        action.objectOldTile.first,
+                        action.objectOldTile.second);
+                    if (sourceTile)
+                        movedObject =
+                            sourceTile->extractObject(action.objectId);
+                } else {
+                    c = getObjContainer(m_document, action, false);
+                }
+                InsertedObject* obj = movedObject
+                    ? movedObject.get()
+                    : (c ? c->objectById(action.objectId) : nullptr);
+                if (obj) {
+                    if (action.objectHasTextBoxState) {
+                        if (auto* textBox =
+                                dynamic_cast<TextBoxObject*>(obj)) {
+                            textBox->applyState(
+                                action.objectNewTextBoxState);
+                        }
+                    } else {
                         obj->position = action.objectNewPosition;
                         obj->size = action.objectNewSize;
                         obj->rotation = action.objectNewRotation;
-                        if (obj->type() == "image") {
-                            if (auto* img = dynamic_cast<ImageObject*>(obj))
-                                img->maintainAspectRatio = action.objectNewAspectLock;
-                        }
                     }
+                    if (obj->type() == "image") {
+                        if (auto* img = dynamic_cast<ImageObject*>(obj))
+                            img->maintainAspectRatio =
+                                action.objectNewAspectLock;
+                    }
+                }
+                if (movedObject) {
+                    Page* newTile = m_document->getOrCreateTile(
+                        action.objectNewTile.first,
+                        action.objectNewTile.second);
+                    if (newTile) {
+                        newTile->addObject(std::move(movedObject));
+                        m_document->markTileDirty(action.objectOldTile);
+                        m_document->markTileDirty(action.objectNewTile);
+                        m_document->removeTileIfEmpty(
+                            action.objectOldTile.first,
+                            action.objectOldTile.second);
+                    } else if (sourceTile) {
+                        if (action.objectHasTextBoxState) {
+                            if (auto* textBox =
+                                    dynamic_cast<TextBoxObject*>(
+                                        movedObject.get())) {
+                                textBox->applyState(
+                                    action.objectOldTextBoxState);
+                            }
+                        } else {
+                            movedObject->position =
+                                action.objectOldPosition;
+                            movedObject->size = action.objectOldSize;
+                            movedObject->rotation =
+                                action.objectOldRotation;
+                        }
+                        sourceTile->addObject(std::move(movedObject));
+                    }
+                } else if (c) {
                     markObjDirty(m_document, action);
                 }
                 break;
             }
             case UndoAction::ObjectTextEdit: {
-                Page* c = getObjContainer(m_document, action, false);
-                if (c) {
-                    InsertedObject* obj = c->objectById(action.objectId);
-                    if (auto* tbox = dynamic_cast<TextBoxObject*>(obj)) {
-                        tbox->text = action.objectNewText;
-                        tbox->alignment = static_cast<TextAlignment>(action.objectNewTextAlignment);
-                        tbox->backgroundColor.setAlpha(action.objectNewBgAlpha);
-                        tbox->fontColor = action.objectNewFontColor;
-                        tbox->invalidateDocCache();
+                if (m_document->isEdgeless()
+                    && action.objectOldTile != action.objectNewTile) {
+                    Page* source = m_document->getTile(
+                        action.objectOldTile.first,
+                        action.objectOldTile.second);
+                    std::unique_ptr<InsertedObject> moved =
+                        source ? source->extractObject(action.objectId)
+                               : nullptr;
+                    if (moved) {
+                        if (auto* textBox =
+                                dynamic_cast<TextBoxObject*>(moved.get())) {
+                            textBox->applyState(
+                                action.objectNewTextBoxState);
+                        }
+                        Page* target = m_document->getOrCreateTile(
+                            action.objectNewTile.first,
+                            action.objectNewTile.second);
+                        if (target) {
+                            target->addObject(std::move(moved));
+                            m_document->markTileDirty(
+                                action.objectOldTile);
+                            m_document->markTileDirty(
+                                action.objectNewTile);
+                            m_document->removeTileIfEmpty(
+                                action.objectOldTile.first,
+                                action.objectOldTile.second);
+                        } else {
+                            if (auto* textBox =
+                                    dynamic_cast<TextBoxObject*>(
+                                        moved.get())) {
+                                textBox->applyState(
+                                    action.objectOldTextBoxState);
+                            }
+                            source->addObject(std::move(moved));
+                        }
                     }
-                    markObjDirty(m_document, action);
+                } else {
+                    Page* c = getObjContainer(
+                        m_document, action, false);
+                    if (c) {
+                        InsertedObject* obj =
+                            c->objectById(action.objectId);
+                        if (auto* tbox =
+                                dynamic_cast<TextBoxObject*>(obj)) {
+                            tbox->applyState(
+                                action.objectNewTextBoxState);
+                        }
+                        markObjDirty(m_document, action);
+                    }
                 }
+                break;
+            }
+            case UndoAction::ObjectRegionChange: {
+                applyObjectRegionChange(m_document, action, false);
+                m_document->recalculateMaxObjectExtent();
                 break;
             }
             case UndoAction::OcrLockChange: {
@@ -14281,6 +18294,9 @@ void DocumentViewport::redo()
     emit undoAvailableChanged(canUndo());
     emit redoAvailableChanged(canRedo());
     emit documentModified();
+    if (UndoAction::affectsTextLayout(action.type)) {
+        emit textBoxLayoutCommitted();
+    }
     if (action.type == UndoAction::ObjectInsert || action.type == UndoAction::ObjectDelete) {
         // Phase M.9: refresh the single container this action touches.
         if (m_document->isEdgeless()) {
@@ -14327,7 +18343,16 @@ void DocumentViewport::pushObjectInsertUndo(InsertedObject* obj, int pageIndex,
 
     UndoAction action;
     action.type = UndoAction::ObjectInsert;
-    action.objectData = obj->toJson();
+    if (auto* image = dynamic_cast<ImageObject*>(obj)) {
+        action.objectData = image->toJsonWithoutRecoveryData();
+        action.objectImageEncodedData = image->encodedAssetData();
+        action.objectImageFormat = image->assetFormat();
+        if (action.objectImageEncodedData.isEmpty()) {
+            action.objectImageSnapshot = image->pixmap().toImage();
+        }
+    } else {
+        action.objectData = obj->toJson();
+    }
     action.objectId = obj->id;
     if (m_document && m_document->isEdgeless()) {
         action.objectTileCoord = tileCoord;
@@ -14344,7 +18369,16 @@ void DocumentViewport::pushObjectDeleteUndo(InsertedObject* obj, int pageIndex,
 
     UndoAction action;
     action.type = UndoAction::ObjectDelete;
-    action.objectData = obj->toJson();
+    if (auto* image = dynamic_cast<ImageObject*>(obj)) {
+        action.objectData = image->toJsonWithoutRecoveryData();
+        action.objectImageEncodedData = image->encodedAssetData();
+        action.objectImageFormat = image->assetFormat();
+        if (action.objectImageEncodedData.isEmpty()) {
+            action.objectImageSnapshot = image->pixmap().toImage();
+        }
+    } else {
+        action.objectData = obj->toJson();
+    }
     action.objectId = obj->id;
     if (m_document && m_document->isEdgeless()) {
         action.objectTileCoord = tileCoord;
@@ -14385,14 +18419,19 @@ void DocumentViewport::pushObjectResizeUndo(InsertedObject* obj,
                                             const QPointF& oldPos,
                                             const QSizeF& oldSize,
                                             qreal oldRotation,
-                                            bool oldAspectLock)
+                                            bool oldAspectLock,
+                                            const TextBoxState* oldTextBoxState)
 {
     if (!obj) return;
 
     UndoAction action;
     action.type = UndoAction::ObjectResize;
     action.objectId = obj->id;
-    action.objectData = obj->toJson();
+    if (auto* image = dynamic_cast<ImageObject*>(obj)) {
+        action.objectData = image->toJsonWithoutRecoveryData();
+    } else {
+        action.objectData = obj->toJson();
+    }
     action.objectOldPosition = oldPos;
     action.objectNewPosition = obj->position;
     action.objectOldSize = oldSize;
@@ -14400,6 +18439,13 @@ void DocumentViewport::pushObjectResizeUndo(InsertedObject* obj,
     action.objectOldRotation = oldRotation;
     action.objectNewRotation = obj->rotation;
     action.objectOldAspectLock = oldAspectLock;
+    if (oldTextBoxState) {
+        if (auto* textBox = dynamic_cast<TextBoxObject*>(obj)) {
+            action.objectHasTextBoxState = true;
+            action.objectOldTextBoxState = *oldTextBoxState;
+            action.objectNewTextBoxState = textBox->captureState();
+        }
+    }
     if (obj->type() == "image") {
         if (auto* img = dynamic_cast<ImageObject*>(obj))
             action.objectNewAspectLock = img->maintainAspectRatio;
@@ -14407,15 +18453,18 @@ void DocumentViewport::pushObjectResizeUndo(InsertedObject* obj,
         action.objectNewAspectLock = oldAspectLock;
     }
     if (m_document && m_document->isEdgeless()) {
+        action.objectOldTile = m_dragObjectTileCoord;
         for (const auto& coord : m_document->allLoadedTileCoords()) {
             Page* tile = m_document->getTile(coord.first, coord.second);
             if (tile && tile->objectById(obj->id)) {
                 action.objectTileCoord = coord;
+                action.objectNewTile = coord;
                 break;
             }
         }
     } else {
-        action.objectPageIndex = m_currentPageIndex;
+        action.objectPageIndex = m_resizeObjectPageIndex >= 0
+            ? m_resizeObjectPageIndex : m_currentPageIndex;
     }
     pushUndoAction(action);
 }
@@ -14444,43 +18493,52 @@ void DocumentViewport::pushObjectAffinityUndo(InsertedObject* obj, int oldAffini
 }
 
 void DocumentViewport::pushObjectTextEditUndo(
-    InsertedObject* obj, const QString& oldText, const QString& newText,
-    int oldAlign, int newAlign, int oldAlpha, int newAlpha,
-    const QColor& oldFontColor, const QColor& newFontColor)
+    TextBoxObject* obj, const TextBoxState& oldState,
+    const TextBoxState& newState, int pageIndex,
+    Document::TileCoord oldTile, Document::TileCoord newTile)
 {
-    if (!obj) return;
+    if (!obj)
+        return;
 
     UndoAction action;
     action.type = UndoAction::ObjectTextEdit;
     action.objectId = obj->id;
     action.objectData = obj->toJson();
-    action.objectOldText = oldText;
-    action.objectNewText = newText;
-    action.objectOldTextAlignment = oldAlign;
-    action.objectNewTextAlignment = newAlign;
-    action.objectOldBgAlpha = oldAlpha;
-    action.objectNewBgAlpha = newAlpha;
-    action.objectOldFontColor = oldFontColor;
-    action.objectNewFontColor = newFontColor;
-    if (m_document && m_document->isEdgeless()) {
-        for (const auto& coord : m_document->allLoadedTileCoords()) {
-            Page* tile = m_document->getTile(coord.first, coord.second);
-            if (tile && tile->objectById(obj->id)) {
-                action.objectTileCoord = coord;
-                break;
-            }
-        }
-    } else if (m_document) {
-        for (int i = 0; i < m_document->pageCount(); ++i) {
-            Page* page = m_document->page(i);
-            if (page && page->objectById(obj->id)) {
-                action.objectPageIndex = i;
-                break;
-            }
-        }
-    }
+    action.objectHasTextBoxState = true;
+    action.objectOldTextBoxState = oldState;
+    action.objectNewTextBoxState = newState;
+    action.objectPageIndex = pageIndex;
+    action.objectOldTile = oldTile;
+    action.objectNewTile = newTile;
+    action.objectTileCoord = newTile;
     pushUndoAction(action);
-    emit documentModified();
+}
+
+void DocumentViewport::pushObjectRegionChangeUndo(
+    LinkObject* obj,
+    const HighlightRegion& oldRegion, const QPointF& oldPosition,
+    const QSizeF& oldSize, const QColor& oldIconColor, int pageIndex,
+    Document::TileCoord oldTile, Document::TileCoord newTile)
+{
+    if (!obj)
+        return;
+
+    UndoAction action;
+    action.type = UndoAction::ObjectRegionChange;
+    action.objectId = obj->id;
+    action.objectOldRegion = oldRegion;
+    action.objectNewRegion = obj->region;
+    action.objectOldIconColor = oldIconColor;
+    action.objectNewIconColor = obj->iconColor;
+    action.objectOldPosition = oldPosition;
+    action.objectNewPosition = obj->position;
+    action.objectOldSize = oldSize;
+    action.objectNewSize = obj->size;
+    action.objectPageIndex = pageIndex;
+    action.objectOldTile = oldTile;
+    action.objectNewTile = newTile;
+    action.objectTileCoord = newTile;
+    pushUndoAction(action);
 }
 
 void DocumentViewport::pushOcrLockUndo(const QVector<QString>& objectIds, bool newState)
@@ -14547,15 +18605,24 @@ void DocumentViewport::markLinkContainerDirtyAndRefreshOutline(LinkObject* link)
     if (!page) return;
 
     if (m_document->isEdgeless()) {
-        m_document->markTileDirty(tileCoord);
-        m_document->refreshLinkOutlineFor(tileCoord);
+        markLinkContainerDirty(0, tileCoord);
     } else {
         // Use cached UUID→index lookup (O(1) from Phase C.0.2)
-        int pageIndex = m_document->pageIndexByUuid(page->uuid);
-        if (pageIndex >= 0) {
-            m_document->markPageDirty(pageIndex);
-            m_document->refreshLinkOutlineFor(pageIndex);
-        }
+        markLinkContainerDirty(m_document->pageIndexByUuid(page->uuid), tileCoord);
+    }
+}
+
+void DocumentViewport::markLinkContainerDirty(int pageIndex,
+                                              Document::TileCoord tileCoord)
+{
+    if (!m_document) return;
+
+    if (m_document->isEdgeless()) {
+        m_document->markTileDirty(tileCoord);
+        m_document->refreshLinkOutlineFor(tileCoord);
+    } else if (pageIndex >= 0) {
+        m_document->markPageDirty(pageIndex);
+        m_document->refreshLinkOutlineFor(pageIndex);
     }
 }
 
@@ -14578,36 +18645,75 @@ int DocumentViewport::getMaxAffinity() const
     }
 }
 
-// ===== Benchmark (Task 2.6) =====
+// ===== Performance Instrumentation =====
 
 void DocumentViewport::startBenchmark()
 {
-    m_benchmarking = true;
-    m_paintTimestamps.clear();
-    m_benchmarkTimer.start();
-    
-    // Start periodic display updates (1000ms = 1 update/sec)
-    m_benchmarkDisplayTimer.start(1000);
+    m_perf.setEnabled(true);
 }
 
 void DocumentViewport::stopBenchmark()
 {
-    m_benchmarking = false;
-    m_benchmarkDisplayTimer.stop();
+    m_perf.setEnabled(false);
 }
 
 int DocumentViewport::getPaintRate() const
 {
-    if (!m_benchmarking) return 0;
+    return m_perf.stats(ViewportPerfMonitor::Bucket::All).frames;
+}
+
+DocumentViewport::PerfContext DocumentViewport::perfContext() const
+{
+    PerfContext ctx;
     
-    qint64 now = m_benchmarkTimer.elapsed();
+    const qreal dpr = devicePixelRatioF();
+    ctx.viewportLogical = size();
+    ctx.viewportPhysical = QSize(qRound(width() * dpr), qRound(height() * dpr));
+    ctx.devicePixelRatio = dpr;
     
-    // Remove timestamps older than 1 second
-    while (!m_paintTimestamps.empty() && now - m_paintTimestamps.front() > 1000) {
-        m_paintTimestamps.pop_front();
+    if (const QScreen* s = screen()) {
+        ctx.screenRefreshRate = s->refreshRate();
     }
     
-    return static_cast<int>(m_paintTimestamps.size());
+    ctx.strokeCacheTier = QStringLiteral("n/a");
+    if (!m_document) {
+        return ctx;
+    }
+    
+    // Reproduce what renderPage/dispatchTileLayer would pick for the content
+    // the user is currently looking at.
+    QSizeF tileSize;
+    QPointF tileOrigin;
+    bool haveTile = false;
+    
+    if (m_document->isEdgeless()) {
+        const int tilePx = Document::EDGELESS_TILE_SIZE;
+        const QPointF center = visibleRect().center();
+        tileOrigin = QPointF(std::floor(center.x() / tilePx) * tilePx,
+                             std::floor(center.y() / tilePx) * tilePx);
+        tileSize = QSizeF(tilePx, tilePx);
+        haveTile = true;
+    } else if (Page* page = m_document->page(currentPageIndex())) {
+        tileOrigin = pagePosition(currentPageIndex());
+        tileSize = page->size;
+        haveTile = true;
+    }
+    
+    if (haveTile) {
+        switch (chooseRenderTier(tileSize, visibleRect().translated(-tileOrigin), nullptr)) {
+        case VectorLayer::RenderTier::Capped:
+            ctx.strokeCacheTier = QStringLiteral("Capped");
+            break;
+        case VectorLayer::RenderTier::Focus:
+            ctx.strokeCacheTier = QStringLiteral("Focus");
+            break;
+        case VectorLayer::RenderTier::Direct:
+            ctx.strokeCacheTier = QStringLiteral("Direct");
+            break;
+        }
+    }
+    
+    return ctx;
 }
 
 // ===== Rendering Helpers (Task 1.3.3) =====
@@ -14739,8 +18845,16 @@ void DocumentViewport::renderPage(QPainter& painter, Page* page, int pageIndex)
         }
     }
     const QSet<QString>* objectExcludePtr = objectExcludeIds.isEmpty() ? nullptr : &objectExcludeIds;
+    const QString suppressedTextObjectId =
+        m_inlineEditSession.active
+        && m_inlineEditSession.document == m_document
+        && m_inlineEditSession.pageIndex == pageIndex
+            ? m_inlineEditSession.objectId
+            : QString();
     
-    page->renderObjectsWithAffinity(painter, 1.0, -1, layer0Visible, objectExcludePtr);
+    page->renderObjectsWithAffinity(
+        painter, 1.0, -1, layer0Visible, objectExcludePtr,
+        suppressedTextObjectId);
     
     // 4. Render vector layers with ZOOM-AWARE stroke cache, interleaved with objects
     // The cache is built at pageSize * zoom * dpr physical pixels, ensuring
@@ -14799,7 +18913,9 @@ void DocumentViewport::renderPage(QPainter& painter, Page* page, int pageIndex)
         // Objects with affinity K are tied to Layer K+1, so check visibility of Layer K+1
         VectorLayer* nextLayer = page->layer(layerIdx + 1);
         bool nextLayerVisible = nextLayer ? nextLayer->visible : true;  // If no next layer, show objects
-        page->renderObjectsWithAffinity(painter, 1.0, layerIdx, nextLayerVisible, objectExcludePtr);
+        page->renderObjectsWithAffinity(
+            painter, 1.0, layerIdx, nextLayerVisible,
+            objectExcludePtr, suppressedTextObjectId);
     }
     
     // 5. Render text selection overlay (Phase A: Highlighter tool)
@@ -14819,31 +18935,45 @@ void DocumentViewport::renderPage(QPainter& painter, Page* page, int pageIndex)
 
 // ===== Edgeless Mode Rendering (Phase E2) =====
 
-void DocumentViewport::renderEdgelessMode(QPainter& painter)
+void DocumentViewport::renderEdgelessMode(QPainter& painter, const QRect& dirtyRect)
 {
     if (!m_document || !m_document->isEdgeless()) return;
     
-    // Get visible rect in document coordinates
-    QRectF viewRect = visibleRect();
+    // Confine the tile walk to the damaged area. Qt clips the rasterization
+    // either way, but every visible tile's background pattern, stroke layers and
+    // objects were still being walked and issued each frame - so a live stroke,
+    // whose dirty rect is a few pixels across, paid for the whole viewport.
+    // Widened slightly so rounding cannot drop a tile that just reaches in.
+    const QRectF dirtyF(dirtyRect);
+    const qreal slack = 2.0 / m_zoomLevel;
+    const QRectF dirtyDoc = QRectF(viewportToDocument(dirtyF.topLeft()),
+                                   viewportToDocument(dirtyF.bottomRight()))
+                                .adjusted(-slack, -slack, slack, slack);
+    const QRectF viewRect = visibleRect().intersected(dirtyDoc);
     
     // ========== TILE RENDERING STRATEGY ==========
     // With stroke splitting, cross-tile strokes are stored as separate segments in each tile.
     // Each segment is rendered when its tile is rendered - no margin needed for cross-tile!
     // Small margin handles thick strokes extending slightly beyond tile boundary.
-    // CR-9: STROKE_MARGIN is max expected stroke width + anti-aliasing buffer
-    constexpr int STROKE_MARGIN = 100;
+    // CR-9: EDGELESS_STROKE_MARGIN is max expected stroke width + anti-aliasing buffer
     
     // Phase O1.5: Object margin - objects can extend beyond tile boundaries
     // Calculate extra margin based on largest object in document
     int objectMargin = m_document->maxObjectExtent();
     
     // Total margin is max of stroke margin and object margin
-    int totalMargin = qMax(STROKE_MARGIN, objectMargin);
+    int totalMargin = qMax(EDGELESS_STROKE_MARGIN, objectMargin);
     
     // CR-5: Single tilesInRect() call - use total margin for all tiles
     // Background pass will filter to viewRect bounds
-    QRectF strokeRect = viewRect.adjusted(-totalMargin, -totalMargin, totalMargin, totalMargin);
-    QVector<Document::TileCoord> allTiles = m_document->tilesInRect(strokeRect);
+    // An empty viewRect means nothing damaged intersects the canvas; leaving the
+    // tile list empty skips every tile pass below while the overlays and the
+    // in-progress stroke at the end of this function still run.
+    QVector<Document::TileCoord> allTiles;
+    if (!viewRect.isEmpty()) {
+        QRectF strokeRect = viewRect.adjusted(-totalMargin, -totalMargin, totalMargin, totalMargin);
+        allTiles = m_document->tilesInRect(strokeRect);
+    }
     
     // Pre-calculate visible tile range for background filtering
     int tileSize = Document::EDGELESS_TILE_SIZE;
@@ -15174,7 +19304,16 @@ void DocumentViewport::renderEdgelessObjectsWithAffinity(
             // If we translate to docPos AND render applies position, position gets doubled!
             painter.save();
             painter.translate(tileOrigin);
-            obj->render(painter, 1.0);  // render() will add obj->position
+            if (m_inlineEditSession.active
+                && m_inlineEditSession.document == m_document
+                && m_inlineEditSession.tileCoord == coord
+                && m_inlineEditSession.objectId == obj->id
+                && obj->type() == QLatin1String("textbox")) {
+                static_cast<TextBoxObject*>(obj)
+                    ->renderWithTextSuppressed(painter, 1.0);
+            } else {
+                obj->render(painter, 1.0);
+            }
             painter.restore();
         }
     }

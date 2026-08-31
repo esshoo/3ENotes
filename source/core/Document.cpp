@@ -5,15 +5,55 @@
 // ============================================================================
 
 #include "Document.h"
+#include "../objects/ImageObject.h"
 #include "../objects/OcrTextObject.h"
 #include "../objects/LinkObject.h"
 #include "../pdf/PdfMaterializer.h"
+#include <QBuffer>
 #include <QCryptographicHash>
+#include <QImageReader>
+#include <QSaveFile>
 #include <QSettings>
+#include <QtConcurrent>
 #include <cmath>
 #include <algorithm>  // Phase 5.4: for std::sort, std::greater in merge
 #include <functional>
 #include <limits>
+
+namespace {
+
+bool imageAssetMatches(const QString& path, const QString& expectedHash,
+                       const QByteArray& encodedData, const QImage& sourceImage)
+{
+    if (!QFileInfo::exists(path)) {
+        return false;
+    }
+    if (!encodedData.isEmpty()) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        QCryptographicHash hasher(QCryptographicHash::Sha256);
+        if (!hasher.addData(&file)) {
+            return false;
+        }
+        return QString::fromLatin1(hasher.result().toHex()) == expectedHash;
+    }
+
+    QImageReader reader(path);
+    const QImage persisted = reader.read();
+    return !persisted.isNull() && !sourceImage.isNull()
+        && persisted.convertToFormat(QImage::Format_RGBA8888)
+            == sourceImage.convertToFormat(QImage::Format_RGBA8888);
+}
+
+bool isDecodableImageAsset(const QString& path)
+{
+    QImageReader reader(path);
+    return !reader.read().isNull();
+}
+
+}  // namespace
 
 #ifdef __GLIBC__
 #include <malloc.h>
@@ -23,6 +63,10 @@
 
 Document::Document()
 {
+    m_imageWritePool = std::make_unique<QThreadPool>();
+    m_imageWritePool->setMaxThreadCount(2);
+    m_imageWritePool->setExpiryTimeout(30000);
+
     // Generate unique ID
     id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     
@@ -37,6 +81,10 @@ Document::Document()
 
 Document::~Document()
 {
+    // A worker must never outlive the Document or write into a bundle after
+    // close-time orphan cleanup has completed.
+    flushPendingImageWrites();
+
 #ifdef SPEEDYNOTE_DEBUG
     qDebug() << "Document DESTROYED:" << this << "id=" << id.left(8) 
              << "pages=" << m_pageOrder.size() << "tiles=" << m_tiles.size();
@@ -56,6 +104,15 @@ Document::~Document()
 #ifdef __GLIBC__
     malloc_trim(0);
 #endif
+}
+
+void Document::setBundlePath(const QString& path)
+{
+    if (m_bundlePath == path) {
+        return;
+    }
+    flushPendingImageWrites();
+    m_bundlePath = path;
 }
 
 // ===== Factory Methods =====
@@ -158,32 +215,151 @@ PdfSource* Document::pdfSourceById(const QString& sourceId)
     return nullptr;
 }
 
-// Whether a source can be served from its ORIGINAL external PDF (present on disk).
-// When true, the provider opens the full PDF and original page numbers are valid
-// verbatim; when false, a bundled source falls back to its compact mini-PDF (which
-// only holds referenced pages, remapped through pageMap). pdfPathForSource() and
-// resolveSourcePageIndex() must agree on this so the opened file and the page index
-// passed to it stay consistent.
-static bool sourceUsesOriginalFile(const PdfSource* s)
+void Document::cachePdfProviderPath(const QString& registryId, const QString& path) const
 {
-    return s && !s->path.isEmpty() && QFileInfo::exists(s->path);
+    const QFileInfo info(path);
+    m_pdfProviderPaths[registryId] = info.absoluteFilePath();
+    m_pdfProviderPathSizes[registryId] = info.size();
+    m_pdfProviderPathModifiedTimes[registryId] =
+        info.lastModified().toMSecsSinceEpoch();
+}
+
+bool Document::cachedPdfProviderPathIsCurrent(const QString& registryId) const
+{
+    auto pathIt = m_pdfProviderPaths.find(registryId);
+    auto sizeIt = m_pdfProviderPathSizes.find(registryId);
+    auto modifiedIt = m_pdfProviderPathModifiedTimes.find(registryId);
+    if (pathIt == m_pdfProviderPaths.end()
+        || sizeIt == m_pdfProviderPathSizes.end()
+        || modifiedIt == m_pdfProviderPathModifiedTimes.end()) {
+        return false;
+    }
+
+    const QFileInfo info(pathIt->second);
+    return info.exists() && info.isFile()
+        && sizeIt->second == info.size()
+        && modifiedIt->second == info.lastModified().toMSecsSinceEpoch();
+}
+
+void Document::clearCachedPdfProvider(const QString& registryId) const
+{
+    m_pdfProviders.erase(registryId);
+    m_pdfProviderPaths.erase(registryId);
+    m_pdfProviderPathSizes.erase(registryId);
+    m_pdfProviderPathModifiedTimes.erase(registryId);
+    m_pdfProvidersUsingBundled.remove(registryId);
+    m_pdfProvidersUsingRelative.remove(registryId);
+    m_pdfSourceFailures.erase(registryId);
+}
+
+Document::PdfSourceOpenResult Document::openBestPdfSourceCandidate(const PdfSource& source) const
+{
+    PdfSourceOpenResult result;
+    if (!PdfProvider::isAvailable()) {
+        result.failureStatus = PdfSourceHealthStatus::Unreadable;
+        return result;
+    }
+
+    struct Candidate {
+        QString path;
+        bool bundled = false;
+        bool relative = false;
+    };
+    QVector<Candidate> candidates;
+    QSet<QString> seen;
+    auto appendCandidate = [&](const QString& path, bool bundled, bool relative) {
+        if (path.isEmpty()) return;
+        const QString absolute = QFileInfo(path).absoluteFilePath();
+        const QString key = QDir::cleanPath(absolute);
+        if (seen.contains(key)) return;
+        seen.insert(key);
+        candidates.append({absolute, bundled, relative});
+    };
+
+    appendCandidate(source.path, false, false);
+    if (!source.relativePath.isEmpty() && !m_bundlePath.isEmpty()) {
+        appendCandidate(QDir(m_bundlePath).absoluteFilePath(source.relativePath), false, true);
+    }
+    if (source.bundled && !source.bundledFile.isEmpty() && !m_bundlePath.isEmpty()) {
+        appendCandidate(QDir(m_bundlePath).absoluteFilePath(source.bundledFile), true, false);
+    }
+
+    bool foundExisting = false;
+    bool foundIdentityMismatch = false;
+    bool foundUnreadable = false;
+    for (const Candidate& candidate : candidates) {
+        QFileInfo info(candidate.path);
+        if (!info.exists() || !info.isFile()) {
+            continue;
+        }
+        foundExisting = true;
+
+        // A bundled mini-PDF intentionally differs from the original full-file
+        // identity. Only full external candidates are verified against hash+size.
+        if (!candidate.bundled && !source.hash.isEmpty()) {
+            const bool sizeMatches = source.size <= 0 || info.size() == source.size;
+            const bool hashMatches = sizeMatches && computePdfHash(candidate.path) == source.hash;
+            if (!hashMatches) {
+                foundIdentityMismatch = true;
+                continue;
+            }
+        }
+
+        std::unique_ptr<PdfProvider> provider = PdfProvider::create(candidate.path);
+        if (!provider || !provider->isValid()) {
+            foundUnreadable = true;
+            continue;
+        }
+
+        result.provider = std::move(provider);
+        result.path = candidate.path;
+        result.bundled = candidate.bundled;
+        result.relative = candidate.relative;
+        return result;
+    }
+
+    if (foundUnreadable) {
+        result.failureStatus = PdfSourceHealthStatus::Unreadable;
+    } else if (foundIdentityMismatch) {
+        result.failureStatus = PdfSourceHealthStatus::IdentityMismatch;
+    } else if (foundExisting) {
+        result.failureStatus = PdfSourceHealthStatus::Unreadable;
+    } else {
+        result.failureStatus = PdfSourceHealthStatus::Missing;
+    }
+    return result;
 }
 
 QString Document::pdfPathForSource(const QString& sourceId) const
 {
     const PdfSource* s = pdfSourceById(sourceId);
     if (!s) return QString();
-    // Prefer the original external PDF whenever it is present: full fidelity, every
-    // original page number is valid, and no page-map translation is required. The
-    // bundled mini-PDF is only a portability fallback (e.g. the .snb was moved
-    // away from its source PDFs).
-    if (sourceUsesOriginalFile(s)) {
-        return s->path;
+    auto pathIt = m_pdfProviderPaths.find(s->id);
+    if (pathIt != m_pdfProviderPaths.end()) {
+        if (cachedPdfProviderPathIsCurrent(s->id)) {
+            return pathIt->second;
+        }
+        clearCachedPdfProvider(s->id);
     }
-    if (s->bundled && !s->bundledFile.isEmpty() && !m_bundlePath.isEmpty()) {
-        return QDir(m_bundlePath).absoluteFilePath(s->bundledFile);
+    if (m_pdfSourceFailures.find(s->id) != m_pdfSourceFailures.end()) {
+        return QString();
     }
-    return s->path;
+
+    // Resolve and validate without retaining a provider. Some consumers (notably
+    // MuPdfExporter) intentionally own their own MuPDF context and must not race a
+    // cached Document provider for the same file.
+    PdfSourceOpenResult opened = openBestPdfSourceCandidate(*s);
+    if (!opened.provider) {
+        m_pdfSourceFailures[s->id] = opened.failureStatus;
+        return QString();
+    }
+    m_pdfSourceFailures.erase(s->id);
+    cachePdfProviderPath(s->id, opened.path);
+    if (opened.bundled) m_pdfProvidersUsingBundled.insert(s->id);
+    else m_pdfProvidersUsingBundled.remove(s->id);
+    if (opened.relative) m_pdfProvidersUsingRelative.insert(s->id);
+    else m_pdfProvidersUsingRelative.remove(s->id);
+    return opened.path;
 }
 
 PdfProvider* Document::providerForSource(const QString& sourceId) const
@@ -196,42 +372,155 @@ PdfProvider* Document::providerForSource(const QString& sourceId) const
     if (it != m_pdfProviders.end() && it->second && it->second->isValid()) {
         return it->second.get();
     }
-
-    // Lazily open from the resolved path.
-    QString path = pdfPathForSource(sourceId);
-    if (path.isEmpty()) {
-        // No reference at all (e.g. the user chose to continue without this source).
-        // Nothing to relink - just render a blank background.
+    if (m_pdfSourceFailures.find(s->id) != m_pdfSourceFailures.end()) {
         return nullptr;
     }
-    if (!QFileInfo::exists(path) || !PdfProvider::isAvailable()) {
-        // Mark for relink so the UI can offer to locate it. Requires a non-const
-        // pointer into the (mutable) source list.
-        if (PdfSource* mut = const_cast<Document*>(this)->pdfSourceById(s->id)) {
-            mut->needsRelink = true;
+
+    auto resolvedIt = m_pdfProviderPaths.find(s->id);
+    if (resolvedIt != m_pdfProviderPaths.end()) {
+        if (cachedPdfProviderPathIsCurrent(s->id)) {
+            std::unique_ptr<PdfProvider> provider = PdfProvider::create(resolvedIt->second);
+            if (provider && provider->isValid()) {
+                PdfProvider* raw = provider.get();
+                m_pdfProviders[s->id] = std::move(provider);
+                m_pdfSourceFailures.erase(s->id);
+                return raw;
+            }
         }
+        clearCachedPdfProvider(s->id);
+    }
+
+    PdfSourceOpenResult opened = openBestPdfSourceCandidate(*s);
+    if (!opened.provider) {
+        clearCachedPdfProvider(s->id);
+        m_pdfSourceFailures[s->id] = opened.failureStatus;
         return nullptr;
     }
 
-    std::unique_ptr<PdfProvider> provider = PdfProvider::create(path);
-    if (!provider || !provider->isValid()) {
-        if (PdfSource* mut = const_cast<Document*>(this)->pdfSourceById(s->id)) {
-            mut->needsRelink = true;
-        }
-        return nullptr;
-    }
-
-    PdfProvider* raw = provider.get();
-    m_pdfProviders[s->id] = std::move(provider);
+    PdfProvider* raw = opened.provider.get();
+    m_pdfProviders[s->id] = std::move(opened.provider);
+    cachePdfProviderPath(s->id, opened.path);
+    m_pdfSourceFailures.erase(s->id);
+    if (opened.bundled) m_pdfProvidersUsingBundled.insert(s->id);
+    else m_pdfProvidersUsingBundled.remove(s->id);
+    if (opened.relative) m_pdfProvidersUsingRelative.insert(s->id);
+    else m_pdfProvidersUsingRelative.remove(s->id);
     return raw;
+}
+
+int Document::notebookPageCountForSource(const QString& sourceId) const
+{
+    int count = 0;
+    for (const auto& [uuid, pdfPage] : m_pagePdfIndex) {
+        Q_UNUSED(pdfPage);
+        auto sourceIt = m_pagePdfSource.find(uuid);
+        const QString pageSource = sourceIt != m_pagePdfSource.end()
+            ? sourceIt->second : QString();
+        if (pageSource == sourceId) ++count;
+    }
+    return count;
+}
+
+void Document::retryPdfSource(const QString& sourceId) const
+{
+    const PdfSource* source = pdfSourceById(sourceId);
+    if (source) clearCachedPdfProvider(source->id);
+}
+
+QVector<PdfSourceHealth> Document::pdfSourceHealthSnapshot() const
+{
+    QHash<QString, int> referencedCounts;
+    QHash<QString, QVector<int>> referencedOriginalPages;
+    for (const auto& [uuid, originalPage] : m_pagePdfIndex) {
+        auto sourceIt = m_pagePdfSource.find(uuid);
+        const QString pageSource = sourceIt != m_pagePdfSource.end()
+            ? sourceIt->second : QString();
+        ++referencedCounts[pageSource];
+        referencedOriginalPages[pageSource].append(originalPage);
+    }
+
+    QVector<PdfSourceHealth> result;
+    result.reserve(static_cast<int>(m_pdfSources.size()));
+    for (const PdfSource& source : m_pdfSources) {
+        const QString sourceId = normalizedPdfSourceId(source);
+        const QString activePath = pdfPathForSource(sourceId);
+
+        PdfSourceHealth health;
+        health.sourceId = sourceId;
+        health.activePath = activePath;
+        health.referencedPages = referencedCounts.value(sourceId);
+
+        auto providerIt = m_pdfProviders.find(source.id);
+        if (providerIt != m_pdfProviders.end()
+            && providerIt->second && providerIt->second->isValid()) {
+            health.title = providerIt->second->title().trimmed();
+        }
+        if (health.title.isEmpty()) {
+            const QString displayPath = !source.path.isEmpty()
+                ? source.path
+                : (!source.relativePath.isEmpty() ? source.relativePath : activePath);
+            health.title = QFileInfo(displayPath).completeBaseName();
+        }
+        if (health.title.isEmpty()) {
+            const int slot = paletteSlotForSource(sourceId);
+            health.title = QCoreApplication::translate("Document", "Source %1")
+                .arg(slot >= 0 ? slot + 1 : 1);
+        }
+
+        if (!activePath.isEmpty()) {
+            if (m_pdfProvidersUsingBundled.contains(source.id)) {
+                int unavailable = 0;
+                PdfProvider* bundledProvider = providerForSource(sourceId);
+                const int bundledPageCount =
+                    bundledProvider ? bundledProvider->pageCount() : 0;
+                QSet<int> usedBundledPages;
+                auto pagesIt = referencedOriginalPages.constFind(sourceId);
+                if (pagesIt != referencedOriginalPages.cend()) {
+                    for (int originalPage : pagesIt.value()) {
+                        auto mappedIt = source.pageMap.constFind(originalPage);
+                        if (mappedIt == source.pageMap.constEnd()
+                            || mappedIt.value() < 0
+                            || mappedIt.value() >= bundledPageCount
+                            || usedBundledPages.contains(mappedIt.value())) {
+                            ++unavailable;
+                        } else {
+                            usedBundledPages.insert(mappedIt.value());
+                        }
+                    }
+                }
+                health.unavailablePages = unavailable;
+                health.status = unavailable > 0
+                    ? PdfSourceHealthStatus::PartialBundled
+                    : PdfSourceHealthStatus::AvailableBundled;
+            } else {
+                health.status = m_pdfProvidersUsingRelative.contains(source.id)
+                    ? PdfSourceHealthStatus::AvailableRelative
+                    : PdfSourceHealthStatus::AvailableExternal;
+            }
+        } else {
+            auto failureIt = m_pdfSourceFailures.find(source.id);
+            health.status = failureIt != m_pdfSourceFailures.end()
+                ? failureIt->second
+                : PdfSourceHealthStatus::Missing;
+            health.unavailablePages = health.referencedPages;
+        }
+        result.append(health);
+    }
+    return result;
 }
 
 QString Document::registerSource(const QString& path, const QString& hash, qint64 size, bool bundled)
 {
     // Dedup by identity (hash + size) against existing sources.
     if (!hash.isEmpty()) {
-        for (const PdfSource& s : m_pdfSources) {
+        for (PdfSource& s : m_pdfSources) {
             if (s.hash == hash && s.size == size) {
+                // A newly selected copy can recover an existing deduplicated
+                // source whose old absolute path has gone stale.
+                if (!path.isEmpty() && QFileInfo::exists(path)
+                    && (s.path.isEmpty() || !QFileInfo::exists(s.path))) {
+                    locateSource(s.id, path);
+                }
                 return s.id;
             }
         }
@@ -248,55 +537,39 @@ QString Document::registerSource(const QString& path, const QString& hash, qint6
     return src.id;
 }
 
-bool Document::relinkSource(const QString& sourceId, const QString& newPath)
+bool Document::locateSource(const QString& sourceId, const QString& newPath)
 {
-    PdfSource* s = pdfSourceById(sourceId);
-    if (!s) {
-        return false;
-    }
+    PdfSource* source = pdfSourceById(sourceId);
+    if (!source || newPath.isEmpty()) return false;
 
-    if (newPath.isEmpty() || !QFileInfo::exists(newPath) || !PdfProvider::isAvailable()) {
-        return false;
+    QFileInfo info(newPath);
+    if (!info.exists() || !info.isFile() || !PdfProvider::isAvailable()) return false;
+
+    const QString candidateHash = computePdfHash(newPath);
+    if (candidateHash.isEmpty()) return false;
+    if (!source->hash.isEmpty()) {
+        if (candidateHash != source->hash
+            || (source->size > 0 && info.size() != source->size)) {
+            return false;
+        }
     }
 
     std::unique_ptr<PdfProvider> provider = PdfProvider::create(newPath);
-    if (!provider || !provider->isValid()) {
-        return false;
-    }
+    if (!provider || !provider->isValid()) return false;
 
-    // Update identity for the relinked file (it may be a different copy).
-    s->path = newPath;
-    s->hash = computePdfHash(newPath);
-    s->size = getPdfFileSize(newPath);
-    s->needsRelink = false;
+    if (source->hash.isEmpty()) {
+        source->hash = candidateHash;
+        source->size = info.size();
+    }
+    source->path = info.absoluteFilePath();
     if (!m_bundlePath.isEmpty()) {
-        s->relativePath = QDir(m_bundlePath).relativeFilePath(newPath);
+        source->relativePath = QDir(m_bundlePath).relativeFilePath(source->path);
     }
-    m_pdfProviders[s->id] = std::move(provider);
-
+    clearCachedPdfProvider(source->id);
+    cachePdfProviderPath(source->id, source->path);
+    m_pdfProviders[source->id] = std::move(provider);
     markModified();
     return true;
-}
-
-void Document::dismissSourceRelink(const QString& sourceId)
-{
-    PdfSource* s = pdfSourceById(sourceId);
-    if (!s) {
-        return;
-    }
-    // Primary: clearing the whole reference matches legacy "continue without PDF".
-    if (primarySource() == s) {
-        clearPdfReference();
-        return;
-    }
-    // Non-primary: drop the file reference and stop prompting for relink.
-    m_pdfProviders.erase(s->id);
-    s->path.clear();
-    s->relativePath.clear();
-    s->bundled = false;
-    s->bundledFile.clear();
-    s->needsRelink = false;
-    markModified();
 }
 
 QStringList Document::unreferencedSourceIds() const
@@ -316,6 +589,9 @@ QStringList Document::unreferencedSourceIds() const
 
     QStringList result;
     for (const PdfSource& s : m_pdfSources) {
+        if (m_undoRetainedPdfSourceIds.contains(s.id)) {
+            continue;
+        }
         if (s.primary) {
             if (!primaryReferenced) result.append(s.id);
         } else if (!referenced.contains(s.id)) {
@@ -325,6 +601,12 @@ QStringList Document::unreferencedSourceIds() const
     return result;
 }
 
+void Document::retainPdfSourceForUndo(const QString& sourceId)
+{
+    const PdfSource* source = pdfSourceById(sourceId);
+    if (source) m_undoRetainedPdfSourceIds.insert(source->id);
+}
+
 int Document::pruneUnreferencedSources()
 {
     const QStringList stale = unreferencedSourceIds();
@@ -332,31 +614,39 @@ int Document::pruneUnreferencedSources()
         return 0;
     }
 
-    QSet<QString> staleSet(stale.begin(), stale.end());
+    QSet<QString> removable;
 
     // Close cached providers for the sources being removed, and delete any bundled
     // mini-PDF file on disk (Plan B2) so the bundle doesn't keep orphaned PDFs.
     for (const QString& id : stale) {
-        m_pdfProviders.erase(id);
+        clearCachedPdfProvider(id);
         const PdfSource* s = pdfSourceById(id);
+        bool bundledFileRemoved = true;
         if (s && s->bundled && !s->bundledFile.isEmpty() && !m_bundlePath.isEmpty()) {
             const QString abs = QDir(m_bundlePath).absoluteFilePath(s->bundledFile);
             if (QFile::exists(abs)) {
-                QFile::remove(abs);
+                bundledFileRemoved = QFile::remove(abs);
+                if (!bundledFileRemoved) {
+                    qWarning() << "pruneUnreferencedSources: keeping source because its"
+                                  " bundled PDF could not be removed:" << abs;
+                }
             }
         }
+        if (bundledFileRemoved) removable.insert(id);
     }
+
+    if (removable.isEmpty()) return 0;
 
     // Erase the sources from the registry. toJson() will re-derive the legacy
     // pdf_path mirror from whatever primary survives (or write an empty path
     // when the registry becomes empty).
     m_pdfSources.erase(
         std::remove_if(m_pdfSources.begin(), m_pdfSources.end(),
-                       [&staleSet](const PdfSource& s) { return staleSet.contains(s.id); }),
+                       [&removable](const PdfSource& s) { return removable.contains(s.id); }),
         m_pdfSources.end());
 
     markModified();
-    return stale.size();
+    return removable.size();
 }
 
 int Document::resolveSourcePageIndex(const QString& sourceId, int originalPage) const
@@ -365,14 +655,17 @@ int Document::resolveSourcePageIndex(const QString& sourceId, int originalPage) 
     if (!s) {
         return originalPage;
     }
-    // Consistent with pdfPathForSource(): when the original PDF is present the
-    // provider opens it and the original page number is used verbatim. Only when we
-    // fall back to a bundled mini-PDF do we remap through the compact page map.
-    if (sourceUsesOriginalFile(s) || !s->bundled) {
+    pdfPathForSource(sourceId);
+    if (!m_pdfProvidersUsingBundled.contains(s->id)) {
         return originalPage;
     }
     auto it = s->pageMap.constFind(originalPage);
-    return (it != s->pageMap.constEnd()) ? it.value() : -1;
+    if (it == s->pageMap.constEnd() || it.value() < 0) return -1;
+    for (auto other = s->pageMap.constBegin(); other != s->pageMap.constEnd(); ++other) {
+        if (other.key() != originalPage && other.value() == it.value()) return -1;
+    }
+    PdfProvider* provider = providerForSource(sourceId);
+    return provider && it.value() < provider->pageCount() ? it.value() : -1;
 }
 
 bool Document::needsMaterialization() const
@@ -380,6 +673,7 @@ bool Document::needsMaterialization() const
     if (m_bundlePath.isEmpty()) {
         return false;
     }
+    QHash<QString, int> bundledPageCounts;
     // Collect referenced (sourceId -> original pages) from live pages, skipping
     // the primary source (empty id), which always stays external.
     for (int i = 0; i < pageCount(); ++i) {
@@ -393,7 +687,25 @@ bool Document::needsMaterialization() const
         }
         // A referenced page not present in the (bundled) source's page map means
         // there is un-bundled imported content to materialize.
-        if (!s->bundled || !s->pageMap.contains(p->pdfPageNumber)) {
+        auto mappedIt = s->pageMap.constFind(p->pdfPageNumber);
+        if (!s->bundled || mappedIt == s->pageMap.constEnd()
+            || mappedIt.value() < 0) {
+            return true;
+        }
+        for (auto other = s->pageMap.constBegin(); other != s->pageMap.constEnd(); ++other) {
+            if (other.key() != p->pdfPageNumber && other.value() == mappedIt.value()) {
+                return true;
+            }
+        }
+
+        if (!bundledPageCounts.contains(s->id)) {
+            const QString bundledPath =
+                QDir(m_bundlePath).absoluteFilePath(s->bundledFile);
+            std::unique_ptr<PdfProvider> provider = PdfProvider::create(bundledPath);
+            bundledPageCounts.insert(
+                s->id, provider && provider->isValid() ? provider->pageCount() : 0);
+        }
+        if (mappedIt.value() >= bundledPageCounts.value(s->id)) {
             return true;
         }
     }
@@ -430,8 +742,32 @@ int Document::materializeSources(QString* errorOut)
         // Skip sources that already have every referenced page bundled.
         bool anyMissing = !s->bundled;
         if (s->bundled) {
+            const QString bundledPath =
+                QDir(m_bundlePath).absoluteFilePath(s->bundledFile);
+            std::unique_ptr<PdfProvider> bundledProvider =
+                PdfProvider::create(bundledPath);
+            if (!bundledProvider || !bundledProvider->isValid()) {
+                bundledProvider.reset();
+                clearCachedPdfProvider(s->id);
+                QFile::remove(bundledPath);
+                s->pageMap.clear();
+                s->bundled = false;
+                anyMissing = true;
+            }
+            const int bundledCount = bundledProvider && bundledProvider->isValid()
+                ? bundledProvider->pageCount() : 0;
+            QSet<int> usedBundledPages;
             for (int pg : pages) {
-                if (!s->pageMap.contains(pg)) { anyMissing = true; break; }
+                auto mappedIt = s->pageMap.constFind(pg);
+                if (mappedIt == s->pageMap.constEnd()
+                    || mappedIt.value() < 0
+                    || mappedIt.value() >= bundledCount
+                    || usedBundledPages.contains(mappedIt.value())) {
+                    s->pageMap.remove(pg);
+                    anyMissing = true;
+                } else {
+                    usedBundledPages.insert(mappedIt.value());
+                }
             }
         }
         if (!anyMissing) {
@@ -446,15 +782,15 @@ int Document::materializeSources(QString* errorOut)
         const QString relFile = QStringLiteral("pdfs/src-%1.pdf").arg(s->id);
         const QString absFile = QDir(m_bundlePath).absoluteFilePath(relFile);
 
-        // Origin: prefer the original full PDF; fall back to the existing bundled
-        // mini-PDF (keep-only, when the original is gone).
-        QString originPath = s->path;
-        if (originPath.isEmpty() || !QFileInfo::exists(originPath)) {
-            originPath = s->bundled ? absFile : QString();
-        }
+        // Resolve a validated full source. A bundled mini-PDF cannot be used as
+        // the origin because its compact page indices differ from originalPages.
+        PdfSourceOpenResult origin = openBestPdfSourceCandidate(*s);
+        const QString originPath =
+            origin.provider && !origin.bundled ? origin.path : QString();
+        origin.provider.reset();
 
         // Release any cached provider before we overwrite the mini-PDF file.
-        m_pdfProviders.erase(s->id);
+        clearCachedPdfProvider(s->id);
 
         QString err;
         if (PdfMaterializer::materialize(originPath, absFile, pages, s->pageMap, &err)) {
@@ -468,7 +804,7 @@ int Document::materializeSources(QString* errorOut)
             *errorOut = err;
         }
         // Drop the provider again so the next open uses the (now bundled) file.
-        m_pdfProviders.erase(s->id);
+        clearCachedPdfProvider(s->id);
     }
 
     return materialized;
@@ -529,7 +865,7 @@ bool Document::loadPdf(const QString& path)
     PdfSource& primary = ensurePrimarySource();
     
     // Unload any existing primary provider first
-    m_pdfProviders.erase(primary.id);
+    clearCachedPdfProvider(primary.id);
     
     // Store the path regardless of load success (for relink)
     primary.path = path;
@@ -561,43 +897,29 @@ bool Document::loadPdf(const QString& path)
         primary.size = getPdfFileSize(path);
     }
     
-    primary.needsRelink = false;
+    cachePdfProviderPath(primary.id, path);
     m_pdfProviders[primary.id] = std::move(provider);
     return true;
 }
 
-bool Document::relinkPdf(const QString& newPath)
-{
-    PdfSource* s = primarySource();
-    if (!s) {
-        // No primary yet: treat as a fresh load (creates the primary source).
-        if (loadPdf(newPath)) {
-            if (PdfSource* p = primarySource()) {
-                p->hash = computePdfHash(newPath);
-                p->size = getPdfFileSize(newPath);
-                if (!m_bundlePath.isEmpty()) {
-                    p->relativePath = QDir(m_bundlePath).relativeFilePath(newPath);
-                }
-            }
-            markModified();
-            return true;
-        }
-        return false;
-    }
-    return relinkSource(s->id, newPath);
-}
-
 void Document::unloadPdf()
 {
-    // Release the primary provider only; the source (path/hash) is preserved for relink.
+    // Release the primary provider only; source metadata is preserved for recovery.
     if (const PdfSource* s = primarySource()) {
-        m_pdfProviders.erase(s->id);
+        clearCachedPdfProvider(s->id);
     }
 }
 
 void Document::clearPdfReference()
 {
     m_pdfProviders.clear();
+    m_pdfProviderPaths.clear();
+    m_pdfProviderPathSizes.clear();
+    m_pdfProviderPathModifiedTimes.clear();
+    m_pdfProvidersUsingBundled.clear();
+    m_pdfProvidersUsingRelative.clear();
+    m_pdfSourceFailures.clear();
+    m_undoRetainedPdfSourceIds.clear();
     m_pdfSources.clear();
     m_pagePdfSource.clear();
     markModified();
@@ -780,9 +1102,8 @@ int Document::originalPageForProviderIndex(const QString& sourceId, int provider
         return -1;
     }
     const PdfSource* s = pdfSourceById(sourceId);
-    // External/full-file or non-bundled sources: the provider opens the original
-    // PDF, so the provider index already is the original page number.
-    if (!s || sourceUsesOriginalFile(s) || !s->bundled) {
+    pdfPathForSource(sourceId);
+    if (!s || !m_pdfProvidersUsingBundled.contains(s->id)) {
         return providerPage;
     }
     // Bundled mini-PDF: reverse the original->bundled page map.
@@ -797,7 +1118,7 @@ int Document::originalPageForProviderIndex(const QString& sourceId, int provider
 void Document::ensureAllPdfProvidersLoaded() const
 {
     for (const PdfSource& s : m_pdfSources) {
-        providerForSource(s.id);  // Opens + caches (or marks needsRelink); ignore result.
+        providerForSource(s.id);  // Open + cache; ignore unavailable sources.
     }
 }
 
@@ -1290,6 +1611,13 @@ bool Document::savePage(int index)
     if (m_bundlePath.isEmpty()) {
         return false;
     }
+
+    // Page JSON must never reference an asset whose background write has not
+    // completed. A failed worker is retried synchronously from in-memory data.
+    flushPendingImageWrites();
+    if (saveUnsavedImages(m_bundlePath) < 0) {
+        return false;
+    }
     
     if (index < 0 || index >= m_pageOrder.size()) {
         return false;
@@ -1302,18 +1630,24 @@ bool Document::savePage(int index)
     }
     
     // Ensure pages directory exists
-    QDir().mkpath(m_bundlePath + "/pages");
+    if (!QDir().mkpath(m_bundlePath + "/pages")) {
+        return false;
+    }
     
     QString pagePath = m_bundlePath + "/pages/" + uuid + ".json";
-    QFile file(pagePath);
+    QSaveFile file(pagePath);
+    file.setDirectWriteFallback(false);
     if (!file.open(QIODevice::WriteOnly)) {
         qWarning() << "Cannot save page:" << pagePath;
         return false;
     }
     
     QJsonDocument jsonDoc(it->second->toJson());
-    file.write(jsonDoc.toJson(QJsonDocument::Compact));
-    file.close();
+    const QByteArray pageData = jsonDoc.toJson(QJsonDocument::Compact);
+    if (file.write(pageData) != pageData.size() || !file.commit()) {
+        qWarning() << "Cannot commit page:" << pagePath;
+        return false;
+    }
     
     // Save OCR sidecar file
     savePageOcr(uuid, it->second.get());
@@ -1350,7 +1684,7 @@ void Document::evictPage(int index)
     if (m_dirtyPages.count(uuid) > 0) {
         if (!savePage(index)) {
             qWarning() << "Failed to save page before eviction" << index;
-            // Continue with eviction anyway to free memory
+            return;  // Keep the authoritative in-memory page.
         }
     }
     
@@ -1907,6 +2241,36 @@ void Document::remapImportedLinkTargets(QJsonObject& pageJson,
 
         if (slotsChanged) {
             obj["slots"] = slotArr;
+        }
+
+        // A highlight's source range points at the page it lives on, which is
+        // by definition in the copy set, so it normally maps cleanly. The rects
+        // are the rendering truth and must survive regardless: an unresolvable
+        // range is marked stale (Adjust falls back to drag-redefine) rather
+        // than dropping the highlight.
+        bool regionChanged = false;
+        if (obj.contains(QStringLiteral("region"))) {
+            QJsonObject region = obj.value("region").toObject();
+            if (region.contains(QStringLiteral("sourceRange"))) {
+                QJsonObject range = region.value("sourceRange").toObject();
+                const QString targetUuid = range.value("pageUuid").toString();
+
+                if (!targetUuid.isEmpty()) {
+                    auto it = pageUuidMap.find(targetUuid);
+                    if (it != pageUuidMap.end()) {
+                        range["pageUuid"] = it.value();
+                    } else {
+                        range.remove(QStringLiteral("pageUuid"));
+                        range["stale"] = true;
+                    }
+                    region["sourceRange"] = range;
+                    obj["region"] = region;
+                    regionChanged = true;
+                }
+            }
+        }
+
+        if (slotsChanged || regionChanged) {
             objects[i] = obj;
             objectsChanged = true;
         }
@@ -2982,6 +3346,11 @@ bool Document::saveTile(TileCoord coord)
         qWarning() << "Cannot save tile: bundle path not set";
         return false;
     }
+
+    flushPendingImageWrites();
+    if (saveUnsavedImages(m_bundlePath) < 0) {
+        return false;
+    }
     
     auto it = m_tiles.find(coord);
     if (it == m_tiles.end()) {
@@ -2991,13 +3360,16 @@ bool Document::saveTile(TileCoord coord)
     
     // Ensure tiles directory exists
     QString tilesDir = m_bundlePath + "/tiles";
-    QDir().mkpath(tilesDir);
+    if (!QDir().mkpath(tilesDir)) {
+        return false;
+    }
     
     // Build tile file path
     QString tilePath = tilesDir + "/" + 
                        QString("%1,%2.json").arg(coord.first).arg(coord.second);
     
-    QFile file(tilePath);
+    QSaveFile file(tilePath);
+    file.setDirectWriteFallback(false);
     if (!file.open(QIODevice::WriteOnly)) {
         qWarning() << "Cannot save tile: failed to open file" << tilePath;
         return false;
@@ -3053,8 +3425,11 @@ bool Document::saveTile(TileCoord coord)
     }
     
     QJsonDocument jsonDoc(tileObj);
-    file.write(jsonDoc.toJson(QJsonDocument::Compact));
-    file.close();
+    const QByteArray tileData = jsonDoc.toJson(QJsonDocument::Compact);
+    if (file.write(tileData) != tileData.size() || !file.commit()) {
+        qWarning() << "Cannot commit tile:" << tilePath;
+        return false;
+    }
     
     // Save OCR sidecar file
     saveTileOcr(coord);
@@ -3238,7 +3613,7 @@ void Document::evictTile(TileCoord coord)
     if (m_dirtyTiles.count(coord) > 0) {
         if (!saveTile(coord)) {
             qWarning() << "Failed to save tile before eviction" << coord.first << coord.second;
-            // Continue with eviction anyway to free memory
+            return;  // Keep the authoritative in-memory tile.
         }
     }
     
@@ -3251,6 +3626,153 @@ void Document::evictTile(TileCoord coord)
 #endif
 }
 
+ImageObject* Document::findLoadedImageObject(const QString& objectId) const
+{
+    auto findInPage = [&objectId](Page* page) -> ImageObject* {
+        if (!page) {
+            return nullptr;
+        }
+        for (const auto& object : page->objects) {
+            if (object && object->id == objectId) {
+                return dynamic_cast<ImageObject*>(object.get());
+            }
+        }
+        return nullptr;
+    };
+
+    for (const auto& entry : m_loadedPages) {
+        if (ImageObject* image = findInPage(entry.second.get())) {
+            return image;
+        }
+    }
+    for (const auto& entry : m_tiles) {
+        if (ImageObject* image = findInPage(entry.second.get())) {
+            return image;
+        }
+    }
+    return nullptr;
+}
+
+bool Document::collectFinishedImageWrites(bool waitForAll)
+{
+    bool allSucceeded = true;
+    for (int i = m_pendingImageWrites.size() - 1; i >= 0; --i) {
+        PendingImageWrite& pending = m_pendingImageWrites[i];
+        if (!waitForAll && !pending.future.isFinished()) {
+            continue;
+        }
+        if (waitForAll) {
+            pending.future.waitForFinished();
+        }
+
+        const bool succeeded = pending.future.result() && QFile::exists(pending.fullPath);
+        allSucceeded = allSucceeded && succeeded;
+        if (succeeded) {
+            if (ImageObject* image = findLoadedImageObject(pending.objectId)) {
+                image->markAssetPersisted();
+            }
+        }
+        m_pendingImageWrites.removeAt(i);
+    }
+    return allSucceeded;
+}
+
+void Document::confirmPersistedImageAssets()
+{
+    auto confirmPage = [this](Page* page) {
+        if (!page) {
+            return;
+        }
+        for (const auto& object : page->objects) {
+            auto* image = dynamic_cast<ImageObject*>(object.get());
+            if (image && !image->assetPersisted() && !image->imagePath.isEmpty()
+                && isDecodableImageAsset(image->fullPath(m_bundlePath))) {
+                image->markAssetPersisted();
+            }
+        }
+    };
+
+    for (const auto& entry : m_loadedPages) {
+        confirmPage(entry.second.get());
+    }
+    for (const auto& entry : m_tiles) {
+        confirmPage(entry.second.get());
+    }
+}
+
+bool Document::enqueueImageAssetWrite(ImageObject* imageObject, const QImage& sourceImage)
+{
+    if (!imageObject || m_bundlePath.isEmpty() || imageObject->imagePath.isEmpty()
+        || (sourceImage.isNull() && imageObject->encodedAssetData().isEmpty())) {
+        return false;
+    }
+
+    collectFinishedImageWrites(false);
+
+    const QString assetsDir = m_bundlePath + "/assets/images";
+    if (!QDir().mkpath(assetsDir)) {
+        return false;
+    }
+    const QString fullPath = assetsDir + "/" + imageObject->imagePath;
+    const QByteArray encodedData = imageObject->encodedAssetData();
+    const QImage workerImage = encodedData.isEmpty() ? sourceImage : QImage();
+    const QString expectedHash = imageObject->imageHash;
+    if (imageAssetMatches(fullPath, expectedHash, encodedData, sourceImage)) {
+        imageObject->markAssetPersisted();
+        return true;
+    }
+    for (const PendingImageWrite& pending : m_pendingImageWrites) {
+        if (pending.fullPath == fullPath) {
+            return true;
+        }
+    }
+
+    constexpr int MAX_PENDING_IMAGE_WRITES = 4;
+    while (m_pendingImageWrites.size() >= MAX_PENDING_IMAGE_WRITES) {
+        // Bound retained full-resolution images and encoded payloads. Waiting
+        // for the oldest task provides backpressure during bulk insertion.
+        m_pendingImageWrites.first().future.waitForFinished();
+        collectFinishedImageWrites(false);
+    }
+    PendingImageWrite pending;
+    pending.objectId = imageObject->id;
+    pending.fullPath = fullPath;
+    pending.future = QtConcurrent::run(m_imageWritePool.get(),
+                                       [fullPath, expectedHash, encodedData,
+                                        workerImage]() -> bool {
+        QByteArray bytes = encodedData;
+        if (bytes.isEmpty()) {
+            QBuffer buffer(&bytes);
+            if (!buffer.open(QIODevice::WriteOnly)
+                || !workerImage.save(&buffer, "PNG")) {
+                return false;
+            }
+        }
+
+        // Another deduplicated write may have won the race.
+        if (imageAssetMatches(fullPath, expectedHash, encodedData, workerImage)) {
+            return true;
+        }
+
+        QSaveFile output(fullPath);
+        output.setDirectWriteFallback(false);
+        return output.open(QIODevice::WriteOnly)
+            && output.write(bytes) == bytes.size()
+            && output.commit();
+    });
+    m_pendingImageWrites.append(std::move(pending));
+    return true;
+}
+
+bool Document::flushPendingImageWrites()
+{
+    const bool succeeded = collectFinishedImageWrites(true);
+    if (!m_bundlePath.isEmpty()) {
+        confirmPersistedImageAssets();
+    }
+    return succeeded;
+}
+
 int Document::saveUnsavedImages(const QString& bundlePath)
 {
     if (bundlePath.isEmpty()) {
@@ -3258,6 +3780,7 @@ int Document::saveUnsavedImages(const QString& bundlePath)
     }
     
     int savedCount = 0;
+    bool hadFailure = false;
     
     // CR-O2: Use virtual saveAssets() instead of type-specific code
     // This allows future object types with assets (audio, video, etc.) to work automatically.
@@ -3266,7 +3789,8 @@ int Document::saveUnsavedImages(const QString& bundlePath)
     // We call it for all objects with loaded assets - the virtual method no-ops for
     // objects without external assets (base class returns true immediately).
     auto processPage = [&](Page* page) {
-        if (!page) return;
+        bool imagePathChanged = false;
+        if (!page) return imagePathChanged;
         
         for (auto& obj : page->objects) {
             // Images: data-integrity guard. As long as we still hold the
@@ -3278,9 +3802,12 @@ int Document::saveUnsavedImages(const QString& bundlePath)
             // the file is already present.
             if (auto* img = dynamic_cast<ImageObject*>(obj.get())) {
                 if (img->isLoaded()) {
+                    const QString previousPath = img->imagePath;
                     bool needsWrite = img->imagePath.isEmpty() ||
                         !QFile::exists(img->fullPath(bundlePath));
                     if (img->saveAssets(bundlePath)) {
+                        imagePathChanged = imagePathChanged
+                            || img->imagePath != previousPath;
                         if (needsWrite) {
                             savedCount++;
                             if (!img->imagePath.isEmpty()) {
@@ -3289,6 +3816,7 @@ int Document::saveUnsavedImages(const QString& bundlePath)
                             }
                         }
                     } else {
+                        hadFailure = true;
                         qWarning() << "saveUnsavedImages: Failed to save asset for"
                                    << img->type() << "object" << img->id;
                     }
@@ -3303,6 +3831,7 @@ int Document::saveUnsavedImages(const QString& bundlePath)
                 // saveAssets() handles deduplication internally - safe to call even
                 // if asset was previously saved (just updates imagePath if needed)
                 if (!obj->saveAssets(bundlePath)) {
+                    hadFailure = true;
                     qWarning() << "saveUnsavedImages: Failed to save asset for" 
                                << obj->type() << "object" << obj->id;
                     } else {
@@ -3310,17 +3839,27 @@ int Document::saveUnsavedImages(const QString& bundlePath)
                 }
             }
         }
+        return imagePathChanged;
     };
     
     if (mode == Mode::Edgeless) {
         // Process all loaded tiles
         for (auto& pair : m_tiles) {
-            processPage(pair.second.get());
+            if (processPage(pair.second.get())) {
+                markTileDirty(pair.first);
+            }
         }
     } else {
         // Paged mode: process loaded pages
         for (auto& pair : m_loadedPages) {
-            processPage(pair.second.get());
+            if (processPage(pair.second.get())) {
+                const auto it = std::find(m_pageOrder.begin(), m_pageOrder.end(),
+                                          pair.first);
+                if (it != m_pageOrder.end()) {
+                    markPageDirty(static_cast<int>(
+                        std::distance(m_pageOrder.begin(), it)));
+                }
+            }
         }
     }
     
@@ -3330,7 +3869,7 @@ int Document::saveUnsavedImages(const QString& bundlePath)
         #endif
     }
     
-    return savedCount;
+    return hadFailure ? -1 : savedCount;
 }
 
 // =========================================================================
@@ -3339,6 +3878,8 @@ int Document::saveUnsavedImages(const QString& bundlePath)
 
 void Document::cleanupOrphanedAssets()
 {
+    flushPendingImageWrites();
+
     if (m_bundlePath.isEmpty()) {
         return;  // Unsaved document, nothing on disk
     }
@@ -3555,7 +4096,8 @@ Document::extractLinkOutlineFromPage(const Page* page,
                                       int tileX,
                                       int tileY,
                                       bool edgeless,
-                                      bool requireMarkdown)
+                                      bool requireMarkdown,
+                                      bool requireContent)
 {
     QVector<LinkOutlineEntry> out;
     if (!page) return out;
@@ -3578,6 +4120,12 @@ Document::extractLinkOutlineFromPage(const Page* page,
             entry.markdownSlots.push_back({ i, s.markdownNoteId });
         }
         if (requireMarkdown && entry.markdownSlots.isEmpty()) continue;
+        // A highlight auto-describes itself from the selected text, so only a
+        // description the user actually wrote counts as content.
+        if (requireContent && link->filledSlotCount() == 0
+            && !link->descriptionUserEdited) {
+            continue;
+        }
 
         entry.linkObjectId = link->id;
         entry.description  = link->description;
@@ -3600,7 +4148,8 @@ Document::extractLinkOutlineFromJsonObjects(const QJsonArray& objects,
                                              int  tileX,
                                              int  tileY,
                                              const QPointF& tileOrigin,
-                                             bool requireMarkdown)
+                                             bool requireMarkdown,
+                                             bool requireContent)
 {
     QVector<LinkOutlineEntry> out;
     const QColor kDefaultIcon(100, 100, 100, 180);
@@ -3615,14 +4164,23 @@ Document::extractLinkOutlineFromJsonObjects(const QJsonArray& objects,
         const QJsonArray slotArray = o["slots"].toArray();
         const int slotMax = qMin(static_cast<int>(slotArray.size()),
                                   LinkObject::SLOT_COUNT);
+        int filledSlots = 0;
         for (int i = 0; i < slotMax; ++i) {
             const QJsonObject s = slotArray[i].toObject();
-            if (s["type"].toString() != QLatin1String("markdown")) continue;
+            const QString slotType = s["type"].toString();
+            if (slotType != QLatin1String("empty")) ++filledSlots;
+            if (slotType != QLatin1String("markdown")) continue;
             const QString noteId = s["noteId"].toString();
             if (noteId.isEmpty()) continue;
             entry.markdownSlots.push_back({ i, noteId });
         }
         if (requireMarkdown && entry.markdownSlots.isEmpty()) continue;
+        // Mirrors the live-object predicate above: an auto-derived description
+        // is not content, so the flag rather than non-emptiness is the trigger.
+        if (requireContent && filledSlots == 0
+            && !o["descriptionUserEdited"].toBool()) {
+            continue;
+        }
 
         entry.linkObjectId = o["id"].toString();
         entry.description  = o["description"].toString();
@@ -3651,7 +4209,8 @@ Document::extractLinkOutlineFromJsonObjects(const QJsonArray& objects,
 // -------- Disk peek: tile JSON → outline entries ---------------------------
 
 QVector<LinkOutlineEntry>
-Document::peekTileLinkOutlineFromDisk(TileCoord coord, bool requireMarkdown) const
+Document::peekTileLinkOutlineFromDisk(TileCoord coord, bool requireMarkdown,
+                                      bool requireContent) const
 {
     if (m_bundlePath.isEmpty()) return {};
 
@@ -3669,13 +4228,15 @@ Document::peekTileLinkOutlineFromDisk(TileCoord coord, bool requireMarkdown) con
                               coord.second * static_cast<qreal>(EDGELESS_TILE_SIZE));
     return extractLinkOutlineFromJsonObjects(
         jd.object()["objects"].toArray(),
-        /*pageIndex=*/ -1, coord.first, coord.second, tileOrigin, requireMarkdown);
+        /*pageIndex=*/ -1, coord.first, coord.second, tileOrigin, requireMarkdown,
+        requireContent);
 }
 
 // -------- Disk peek: page JSON → outline entries ---------------------------
 
 QVector<LinkOutlineEntry>
-Document::peekPageLinkOutlineFromDisk(int pageIndex, bool requireMarkdown) const
+Document::peekPageLinkOutlineFromDisk(int pageIndex, bool requireMarkdown,
+                                      bool requireContent) const
 {
     if (m_bundlePath.isEmpty()) return {};
     if (pageIndex < 0 || pageIndex >= m_pageOrder.size()) return {};
@@ -3691,7 +4252,8 @@ Document::peekPageLinkOutlineFromDisk(int pageIndex, bool requireMarkdown) const
 
     return extractLinkOutlineFromJsonObjects(
         jd.object()["objects"].toArray(),
-        pageIndex, /*tileX=*/0, /*tileY=*/0, /*tileOrigin=*/QPointF(), requireMarkdown);
+        pageIndex, /*tileX=*/0, /*tileY=*/0, /*tileOrigin=*/QPointF(), requireMarkdown,
+        requireContent);
 }
 
 // -------- Cache maintenance -------------------------------------------------
@@ -3772,22 +4334,24 @@ void Document::refreshLinkOutlineFor(int pageIndex) const
         return;
     }
 
-    // Re-extract from the most authoritative source once, then filter per cache
-    // via requireMarkdown.
+    // Re-extract from the most authoritative source once, then filter per cache.
     const QString uuid = m_pageOrder[pageIndex];
     auto it = m_loadedPages.find(uuid);
     const bool loaded = (it != m_loadedPages.end() && it->second);
 
-    auto compute = [&](bool requireMarkdown) -> QVector<LinkOutlineEntry> {
+    auto compute = [&](bool requireMarkdown, bool requireContent) -> QVector<LinkOutlineEntry> {
         if (loaded) {
             return extractLinkOutlineFromPage(
-                it->second.get(), pageIndex, 0, 0, false, requireMarkdown);
+                it->second.get(), pageIndex, 0, 0, false, requireMarkdown,
+                requireContent);
         }
-        return peekPageLinkOutlineFromDisk(pageIndex, requireMarkdown);
+        return peekPageLinkOutlineFromDisk(pageIndex, requireMarkdown, requireContent);
     };
 
-    if (m_linkOutlineCacheReady) m_pageOutline[pageIndex] = compute(/*requireMarkdown=*/true);
-    if (m_markerCacheReady)      m_pageMarkers[pageIndex] = compute(/*requireMarkdown=*/false);
+    if (m_linkOutlineCacheReady)
+        m_pageOutline[pageIndex] = compute(/*requireMarkdown=*/true, /*requireContent=*/false);
+    if (m_markerCacheReady)
+        m_pageMarkers[pageIndex] = compute(/*requireMarkdown=*/false, /*requireContent=*/true);
 }
 
 void Document::dropLinkOutlineFor(TileCoord coord) const
@@ -3842,9 +4406,11 @@ void Document::buildMarkerCache() const
             QVector<LinkOutlineEntry> entries;
             if (it != m_loadedPages.end() && it->second) {
                 entries = extractLinkOutlineFromPage(
-                    it->second.get(), i, 0, 0, false, /*requireMarkdown=*/false);
+                    it->second.get(), i, 0, 0, false, /*requireMarkdown=*/false,
+                    /*requireContent=*/true);
             } else {
-                entries = peekPageLinkOutlineFromDisk(i, /*requireMarkdown=*/false);
+                entries = peekPageLinkOutlineFromDisk(i, /*requireMarkdown=*/false,
+                                                      /*requireContent=*/true);
             }
             m_pageMarkers[i] = std::move(entries);
         }
@@ -3874,7 +4440,8 @@ QVector<Document::PageLinkMarker> Document::pageLinkMarkers() const
         auto lit = m_loadedPages.find(uuid);
         if (lit != m_loadedPages.end() && lit->second) {
             live = extractLinkOutlineFromPage(lit->second.get(), i, 0, 0,
-                                              /*edgeless=*/false, /*requireMarkdown=*/false);
+                                              /*edgeless=*/false, /*requireMarkdown=*/false,
+                                              /*requireContent=*/true);
             entries = &live;
         } else {
             auto cit = m_pageMarkers.find(i);
@@ -3923,6 +4490,34 @@ bool Document::saveBundle(const QString& path, bool finalize)
 {
     // Save old bundle path before overwriting - needed for copying evicted tiles/pages
     QString oldBundlePath = m_bundlePath;
+    const bool savingToNewLocation = !oldBundlePath.isEmpty()
+        && QDir::cleanPath(oldBundlePath) != QDir::cleanPath(path);
+    auto copyAtomically = [](const QString& sourcePath, const QString& destPath) {
+        QFile source(sourcePath);
+        if (!source.open(QIODevice::ReadOnly)) return false;
+        if (!QDir().mkpath(QFileInfo(destPath).absolutePath())) return false;
+
+        QSaveFile dest(destPath);
+        dest.setDirectWriteFallback(false);
+        if (!dest.open(QIODevice::WriteOnly)) return false;
+        constexpr qint64 chunkSize = 1024 * 1024;
+        while (!source.atEnd()) {
+            const QByteArray chunk = source.read(chunkSize);
+            if (chunk.isEmpty() && source.error() != QFileDevice::NoError) {
+                dest.cancelWriting();
+                return false;
+            }
+            if (dest.write(chunk) != chunk.size()) {
+                dest.cancelWriting();
+                return false;
+            }
+        }
+        return dest.commit();
+    };
+
+    // Complete writes against the old bundle before Save As changes the path
+    // and before any page/tile JSON is serialized.
+    flushPendingImageWrites();
     m_bundlePath = path;
     
     // Phase P.1.1: Write .snb_marker file to identify this as a SpeedyNote bundle
@@ -3940,6 +4535,30 @@ bool Document::saveBundle(const QString& path, bool finalize)
         qWarning() << "Cannot create assets/images directory" << path;
         return false;
     }
+
+    // Copy existing assets before saveUnsavedImages(). Otherwise every loaded
+    // original-format image appears missing in the new bundle and is needlessly
+    // re-encoded from its pixmap, while evicted pages can retain dangling paths
+    // if the later best-effort copy fails.
+    if (savingToNewLocation) {
+        const QString oldAssetsPath = oldBundlePath + "/assets/images";
+        const QString newAssetsPath = path + "/assets/images";
+        QDir oldAssetsDir(oldAssetsPath);
+        if (oldAssetsDir.exists()) {
+            const QStringList assetFiles = oldAssetsDir.entryList(QDir::Files);
+            for (const QString& fileName : assetFiles) {
+                const QString oldFilePath = oldAssetsPath + "/" + fileName;
+                const QString newFilePath = newAssetsPath + "/" + fileName;
+                if (!QFile::exists(newFilePath)
+                    && !copyAtomically(oldFilePath, newFilePath)) {
+                    qWarning() << "Failed to copy asset" << oldFilePath
+                               << "to" << newFilePath;
+                    m_bundlePath = oldBundlePath;
+                    return false;
+                }
+            }
+        }
+    }
     
     // Phase O2 (BF.2): Save any unsaved images to assets folder BEFORE saving page JSON.
     // 
@@ -3948,7 +4567,10 @@ bool Document::saveBundle(const QString& path, bool finalize)
     // - The image exists only as cachedPixmap with imagePath = ""
     // - Here we finally have a bundle path, so we can save images and set imagePath
     // - Then the serialized page JSON will have the correct imagePath reference
-    saveUnsavedImages(path);
+    if (saveUnsavedImages(path) < 0) {
+        m_bundlePath = oldBundlePath;
+        return false;
+    }
 
     // Plan A2 / Q7.2: drop any PDF source no page references anymore (e.g. after
     // deleting all pages backed by an imported source, or every primary-PDF page).
@@ -3956,13 +4578,36 @@ bool Document::saveBundle(const QString& path, bool finalize)
     // pdf_sources[] and legacy pdf_path mirror reflect only live sources.
     pruneUnreferencedSources();
 
+    // Save As must carry existing bundled fallbacks to the new bundle before
+    // finalization decides that every referenced page is already materialized.
+    if (!oldBundlePath.isEmpty()
+        && QDir::cleanPath(oldBundlePath) != QDir::cleanPath(path)) {
+        for (const PdfSource& source : m_pdfSources) {
+            if (!source.bundled || source.bundledFile.isEmpty()) continue;
+            const QString oldFile =
+                QDir(oldBundlePath).absoluteFilePath(source.bundledFile);
+            const QString newFile = QDir(path).absoluteFilePath(source.bundledFile);
+            if (!QFileInfo::exists(oldFile) || !copyAtomically(oldFile, newFile)) {
+                qWarning() << "Cannot copy bundled PDF during Save As:" << oldFile;
+                m_bundlePath = oldBundlePath;
+                return false;
+            }
+        }
+    }
+
     // Plan B2 (Q12.1 Option D): on finalize (document close / .snbx export), graft
     // each non-primary imported source's referenced pages into a bundled mini-PDF so
     // the bundle is self-contained. Done before the relative-path refresh and toJson()
     // so the serialized pdf_sources[] carry bundled/bundled_file/page_map. Ordinary
     // saves/autosaves pass finalize=false and skip this entirely.
     if (finalize) {
-        materializeSources();
+        QString materializeError;
+        materializeSources(&materializeError);
+        if (needsMaterialization()) {
+            qWarning() << "Cannot finalize bundle PDF sources:" << materializeError;
+            m_bundlePath = oldBundlePath;
+            return false;
+        }
     }
     
     // Refresh each PDF source's relative path against the bundle location so the
@@ -4082,40 +4727,20 @@ bool Document::saveBundle(const QString& path, bool finalize)
     
     // Write manifest
     QString manifestPath = path + "/document.json";
-    QFile manifestFile(manifestPath);
+    QSaveFile manifestFile(manifestPath);
+    manifestFile.setDirectWriteFallback(false);
     if (!manifestFile.open(QIODevice::WriteOnly)) {
         qWarning() << "Cannot write manifest" << manifestPath;
+        m_bundlePath = oldBundlePath;
         return false;
     }
-    manifestFile.write(QJsonDocument(manifest).toJson(QJsonDocument::Indented));
-    manifestFile.close();
-    
-    bool savingToNewLocation = !oldBundlePath.isEmpty() && oldBundlePath != path;
-    
-    // ========== COPY ASSETS WHEN SAVING TO NEW LOCATION (Phase O1.6 fix) ==========
-    if (savingToNewLocation) {
-        QString oldAssetsPath = oldBundlePath + "/assets/images";
-        QString newAssetsPath = path + "/assets/images";
-        
-        QDir oldAssetsDir(oldAssetsPath);
-        if (oldAssetsDir.exists()) {
-            QStringList assetFiles = oldAssetsDir.entryList(QDir::Files);
-            for (const QString& fileName : assetFiles) {
-                QString oldFilePath = oldAssetsPath + "/" + fileName;
-                QString newFilePath = newAssetsPath + "/" + fileName;
-                
-                // Skip if already exists (e.g., newly added images saved above)
-                if (!QFile::exists(newFilePath)) {
-                    if (QFile::copy(oldFilePath, newFilePath)) {
-#ifdef SPEEDYNOTE_DEBUG
-                        qDebug() << "Copied asset" << fileName;
-#endif
-                    } else {
-                        qWarning() << "Failed to copy asset" << oldFilePath << "to" << newFilePath;
-                    }
-                }
-            }
-        }
+    const QByteArray manifestData =
+        QJsonDocument(manifest).toJson(QJsonDocument::Indented);
+    if (manifestFile.write(manifestData) != manifestData.size()
+        || !manifestFile.commit()) {
+        qWarning() << "Cannot commit manifest" << manifestPath;
+        m_bundlePath = oldBundlePath;
+        return false;
     }
     
     // ========== MODE-SPECIFIC FILE HANDLING ==========
@@ -4138,12 +4763,14 @@ bool Document::saveBundle(const QString& path, bool finalize)
                 
                 // Copy tile file from old location to new location
                 if (QFile::exists(oldTilePath)) {
-                    if (QFile::copy(oldTilePath, newTilePath)) {
+                    if (copyAtomically(oldTilePath, newTilePath)) {
 #ifdef SPEEDYNOTE_DEBUG
                         qDebug() << "Copied evicted tile" << coord.first << "," << coord.second;
 #endif
                     } else {
                         qWarning() << "Failed to copy tile" << oldTilePath << "to" << newTilePath;
+                        m_bundlePath = oldBundlePath;
+                        return false;
                     }
                 }
                 
@@ -4151,8 +4778,10 @@ bool Document::saveBundle(const QString& path, bool finalize)
                 QString ocrFileName = QString("%1,%2.ocr.json").arg(coord.first).arg(coord.second);
                 QString oldOcrPath = oldBundlePath + "/tiles/" + ocrFileName;
                 QString newOcrPath = path + "/tiles/" + ocrFileName;
-                if (QFile::exists(oldOcrPath)) {
-                    QFile::copy(oldOcrPath, newOcrPath);
+                if (QFile::exists(oldOcrPath)
+                    && !copyAtomically(oldOcrPath, newOcrPath)) {
+                    m_bundlePath = oldBundlePath;
+                    return false;
                 }
             }
         }
@@ -4166,7 +4795,10 @@ bool Document::saveBundle(const QString& path, bool finalize)
                              m_dirtyTiles.count(coord) > 0 || 
                              m_tileIndex.count(coord) == 0;
             if (needsSave) {
-                saveTile(coord);
+                if (!saveTile(coord)) {
+                    m_bundlePath = oldBundlePath;
+                    return false;
+                }
             }
         }
         
@@ -4213,22 +4845,25 @@ bool Document::saveBundle(const QString& path, bool finalize)
                 QString newPagePath = path + "/pages/" + pageFileName;
                 
                 if (QFile::exists(oldPagePath)) {
-                    if (QFile::copy(oldPagePath, newPagePath)) {
+                    if (copyAtomically(oldPagePath, newPagePath)) {
 #ifdef SPEEDYNOTE_DEBUG
                         qDebug() << "Copied evicted page" << uuid;
 #endif
                     } else {
-                        #ifdef SPEEDYNOTE_DEBUG
-                            qDebug() << "Failed to copy page" << oldPagePath << "to" << newPagePath;
-                        #endif
+                        qWarning() << "Failed to copy page" << oldPagePath
+                                   << "to" << newPagePath;
+                        m_bundlePath = oldBundlePath;
+                        return false;
                     }
                 }
                 
                 // Copy OCR sidecar file if it exists
                 QString oldOcrPath = oldBundlePath + "/pages/" + uuid + ".ocr.json";
                 QString newOcrPath = path + "/pages/" + uuid + ".ocr.json";
-                if (QFile::exists(oldOcrPath)) {
-                    QFile::copy(oldOcrPath, newOcrPath);
+                if (QFile::exists(oldOcrPath)
+                    && !copyAtomically(oldOcrPath, newOcrPath)) {
+                    m_bundlePath = oldBundlePath;
+                    return false;
                 }
             }
         }
@@ -4267,18 +4902,20 @@ bool Document::saveBundle(const QString& path, bool finalize)
             bool needsSave = savingToNewLocation || m_dirtyPages.count(uuid) > 0;
             if (needsSave) {
                 QString pagePath = path + "/pages/" + uuid + ".json";
-                QFile file(pagePath);
-                if (file.open(QIODevice::WriteOnly)) {
-                    QJsonDocument doc(pagePtr->toJson());
-                    file.write(doc.toJson(QJsonDocument::Compact));
-                    file.close();
+                QSaveFile file(pagePath);
+                file.setDirectWriteFallback(false);
+                QJsonDocument doc(pagePtr->toJson());
+                const QByteArray pageData = doc.toJson(QJsonDocument::Compact);
+                if (file.open(QIODevice::WriteOnly)
+                    && file.write(pageData) == pageData.size()
+                    && file.commit()) {
 #ifdef SPEEDYNOTE_DEBUG
                     qDebug() << "Saved page" << uuid;
 #endif
                 } else {
-                    #ifdef SPEEDYNOTE_DEBUG
-                        qDebug() << "Failed to save page" << pagePath;
-                    #endif
+                    qWarning() << "Failed to save page" << pagePath;
+                    m_bundlePath = oldBundlePath;
+                    return false;
                 }
             }
         }
@@ -4469,73 +5106,22 @@ std::unique_ptr<Document> Document::loadBundle(const QString& path)
         }
     }
     
-    // ========== RESOLVE & LOAD PDF SOURCES (Phase SHARE: Dual Path Resolution) ==========
-    // Each source stores an absolute path and a bundle-relative path (portable .snbx),
-    // or a bundled file when materialized. The primary source (flagged primary) is
-    // opened eagerly (preserving today's fast path and isPdfLoaded() semantics);
-    // non-primary sources are opened lazily on first render via providerForSource().
+    // ========== RESOLVE & LOAD PDF SOURCES ==========
+    // Probe all referenced sources through the same validated candidate resolver used
+    // by rendering/search/export. This makes missing or corrupt non-primary sources
+    // visible to the UI immediately instead of waiting for their first repaint.
     if (!doc->m_pdfSources.empty()) {
-        QString bundleDir = QFileInfo(manifestPath).absolutePath();
-
-        auto resolveSourcePath = [&](const PdfSource& s) -> QString {
-            // Bundled sources live inside the .snb.
-            if (s.bundled && !s.bundledFile.isEmpty()) {
-                QString bundledPath = QDir(bundleDir).absoluteFilePath(s.bundledFile);
-                if (QFile::exists(bundledPath)) {
-                    return bundledPath;
-                }
+        // Preserve the established API contract: the primary provider is eager,
+        // while imported sources remain path-probed and open lazily on first use.
+        if (doc->primarySource()) {
+            doc->providerForSource(QString());
+        }
+        const QVector<PdfSourceHealth> health = doc->pdfSourceHealthSnapshot();
+        for (const PdfSourceHealth& item : health) {
+            if (item.requiresRepair()) {
+                qWarning() << "loadBundle: PDF source needs repair:"
+                           << item.title << item.activePath;
             }
-            // Absolute path first.
-            if (!s.path.isEmpty() && QFile::exists(s.path)) {
-                return s.path;
-            }
-            // Then bundle-relative path (canonicalized).
-            if (!s.relativePath.isEmpty()) {
-                QString rawPath = QDir(bundleDir).absoluteFilePath(s.relativePath);
-                QFileInfo fi(rawPath);
-                if (fi.exists()) {
-                    return fi.canonicalFilePath();
-                }
-            }
-            return QString();
-        };
-
-        for (size_t i = 0; i < doc->m_pdfSources.size(); ++i) {
-            PdfSource& s = doc->m_pdfSources[i];
-            const bool isPrimary = s.primary;
-
-            const bool hasReference = !s.path.isEmpty() || !s.relativePath.isEmpty()
-                                      || (s.bundled && !s.bundledFile.isEmpty());
-            if (!hasReference) {
-                continue;
-            }
-
-            QString resolved = resolveSourcePath(s);
-            if (resolved.isEmpty()) {
-                s.needsRelink = true;
-                qWarning() << "loadBundle: PDF source not found:" << s.path << "/" << s.relativePath;
-                continue;
-            }
-
-            // Keep members in sync with the resolved location (bundled files keep their
-            // stored path so relative-path recomputation on save stays correct).
-            if (!s.bundled) {
-                s.path = resolved;
-                s.relativePath = QDir(bundleDir).relativeFilePath(resolved);
-            }
-
-            if (isPrimary) {
-                if (!doc->loadPdf(resolved)) {
-                    s.needsRelink = true;
-                    qWarning() << "loadBundle: Failed to load primary PDF:" << resolved;
-                }
-#ifdef SPEEDYNOTE_DEBUG
-                else {
-                    qDebug() << "loadBundle: Loaded primary PDF from:" << resolved;
-                }
-#endif
-            }
-            // Non-primary: opened lazily on demand.
         }
     }
     
@@ -5004,7 +5590,8 @@ bool Document::savePageOcr(const QString& uuid, const Page* page)
 
     QString ocrPath = m_bundlePath + "/pages/" + uuid + ".ocr.json";
 
-    if (page->ocrTextBlocks.isEmpty() && page->suppressedStrokeIds.isEmpty()) {
+    if (page->ocrTextBlocks.isEmpty() && page->suppressedStrokeIds.isEmpty()
+        && page->dismissedOcrBlockKeys.isEmpty()) {
         QFile::remove(ocrPath);
         return true;
     }
@@ -5026,6 +5613,13 @@ bool Document::savePageOcr(const QString& uuid, const Page* page)
         for (const auto& id : page->suppressedStrokeIds)
             suppressed.append(id);
         root["suppressedStrokeIds"] = suppressed;
+    }
+
+    if (!page->dismissedOcrBlockKeys.isEmpty()) {
+        QJsonArray dismissed;
+        for (const auto& key : page->dismissedOcrBlockKeys)
+            dismissed.append(key);
+        root["dismissedBlockKeys"] = dismissed;
     }
 
     QFile file(ocrPath);
@@ -5057,11 +5651,14 @@ bool Document::loadPageOcr(Page* page, const QString& uuid) const
 
     page->ocrTextBlocks.clear();
     page->suppressedStrokeIds.clear();
+    page->dismissedOcrBlockKeys.clear();
 
     for (const auto& val : root["blocks"].toArray())
         page->ocrTextBlocks.append(OcrTextBlock::fromJson(val.toObject()));
     for (const auto& val : root["suppressedStrokeIds"].toArray())
         page->suppressedStrokeIds.insert(val.toString());
+    for (const auto& val : root["dismissedBlockKeys"].toArray())
+        page->dismissedOcrBlockKeys.insert(val.toString());
 
     page->ocrDirty = false;
     return true;
@@ -5080,7 +5677,8 @@ bool Document::saveTileOcr(TileCoord coord)
     QString ocrPath = m_bundlePath + "/tiles/" +
         QString("%1,%2.ocr.json").arg(coord.first).arg(coord.second);
 
-    if (tile->ocrTextBlocks.isEmpty() && tile->suppressedStrokeIds.isEmpty()) {
+    if (tile->ocrTextBlocks.isEmpty() && tile->suppressedStrokeIds.isEmpty()
+        && tile->dismissedOcrBlockKeys.isEmpty()) {
         QFile::remove(ocrPath);
         return true;
     }
@@ -5102,6 +5700,13 @@ bool Document::saveTileOcr(TileCoord coord)
         for (const auto& id : tile->suppressedStrokeIds)
             suppressed.append(id);
         root["suppressedStrokeIds"] = suppressed;
+    }
+
+    if (!tile->dismissedOcrBlockKeys.isEmpty()) {
+        QJsonArray dismissed;
+        for (const auto& key : tile->dismissedOcrBlockKeys)
+            dismissed.append(key);
+        root["dismissedBlockKeys"] = dismissed;
     }
 
     QFile file(ocrPath);
@@ -5135,11 +5740,14 @@ bool Document::loadTileOcr(Page* tile, TileCoord coord) const
 
     tile->ocrTextBlocks.clear();
     tile->suppressedStrokeIds.clear();
+    tile->dismissedOcrBlockKeys.clear();
 
     for (const auto& val : root["blocks"].toArray())
         tile->ocrTextBlocks.append(OcrTextBlock::fromJson(val.toObject()));
     for (const auto& val : root["suppressedStrokeIds"].toArray())
         tile->suppressedStrokeIds.insert(val.toString());
+    for (const auto& val : root["dismissedBlockKeys"].toArray())
+        tile->dismissedOcrBlockKeys.insert(val.toString());
 
     tile->ocrDirty = false;
     return true;
@@ -5186,6 +5794,12 @@ void Document::materializeOcrTextObjects(Page* page) const
 
     for (const auto& block : page->ocrTextBlocks) {
         if (block.dirty || block.text.isEmpty())
+            continue;
+
+        // A sidecar written before a block was dismissed can still hold it;
+        // its strokes are suppressed, so it must not become an overlay again.
+        if (isOcrBlockDismissed(block, page->suppressedStrokeIds,
+                                page->dismissedOcrBlockKeys))
             continue;
 
         // Skip blocks whose strokes are claimed by locked objects

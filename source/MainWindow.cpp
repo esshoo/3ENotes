@@ -10,35 +10,32 @@
 #include "ui/sidebars/OutlinePanel.h" // Phase E.2: PDF outline panel
 #include "ui/sidebars/LeftSidebarContainer.h" // Phase S3: Left sidebar container
 #include "ui/sidebars/PagePanel.h" // Page Panel: Task 5.1
-#include "ui/DebugOverlay.h"        // Debug overlay (toggle with D key)
+#include "ui/DebugOverlay.h"        // Debug overlay (toggle with F12)
 #include "ui/StyleLoader.h"         // QSS stylesheet loader
 // Phase D: Subtoolbar includes
 #include "ui/subtoolbars/PenSubToolbar.h"
 #include "ui/subtoolbars/MarkerSubToolbar.h"
 #include "ui/subtoolbars/HighlighterSubToolbar.h"
-#include "ui/subtoolbars/ObjectSelectSubToolbar.h"
 #include "ui/subtoolbars/EraserSubToolbar.h"
 #include "ui/actionbars/ActionBarContainer.h"
 #include "ui/actionbars/LassoActionBar.h"
 #include "ui/actionbars/ObjectSelectActionBar.h"
 #include "ui/actionbars/TextSelectionActionBar.h"
-#include "ui/actionbars/ClipboardActionBar.h"
 #include "ui/actionbars/PagePanelActionBar.h"
 #include "objects/LinkObject.h"  // For LinkSlot slot state access
 #include "core/MarkdownNote.h"   // Phase M.3: For loading markdown notes
 #include "core/NotebookLibrary.h" // Phase P.4.6: For saving thumbnails
-#include "pdf/PdfRelinkDialog.h" // Phase R.4: For PDF relink dialog
+#include "ui/dialogs/PdfSourcesDialog.h"
+#include "ui/dialogs/PageRangeSelectDialog.h"
 #include "sharing/NotebookExporter.h" // Phase 1: Export notebooks as .snbx
 #include "ui/widgets/PdfSearchBar.h"  // PDF text search bar
 #include "pdf/PdfSearchEngine.h"      // PDF text search engine
 #include "ocr/OcrWorker.h"            // OCR background worker
 #include "objects/OcrTextObject.h"     // OCR text objects (Phase 1D)
 #include "ui/subtoolbars/OcrSubToolbar.h"  // OCR subtoolbar
-#include "ui/panels/FloatingTextEditor.h"  // Phase 2B: Floating text editor
-#include "objects/TextBoxObject.h"         // Phase 2B: TextBoxObject for editor
+#include "objects/TextBoxObject.h"
 #include <QMetaObject>                 // OCR queued invocations
-#include "ui/dialogs/BatchPdfExportDialog.h"   // Phase 3: Unified PDF export dialog
-#include "ui/dialogs/BatchSnbxExportDialog.h"  // Phase 3: Unified SNBX export dialog
+#include "ui/dialogs/BatchExportDialog.h"
 #include "pdf/MuPdfExporter.h"                 // Phase 8: PDF export engine
 #include <QClipboard>  // For clipboard signal connection
 #include <algorithm>   // Phase M.4: For std::sort in searchMarkdownNotes
@@ -55,6 +52,7 @@
 #include <QTextBrowser>
 #include <QTextEdit>
 #include <QPlainTextEdit>
+#include <QTextCursor>
 #include <QPointer>
 #include "core/ToolType.h" // Include the header file where ToolType is defined
 #include "ui/SplitViewManager.h"
@@ -64,6 +62,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QImage>
+#include <QAbstractSpinBox>
 #include <QSpinBox>
 #include <QInputDialog>
 #include <QStandardPaths>
@@ -272,6 +271,10 @@ MainWindow::MainWindow(QWidget *parent)
                      state == Qt::ApplicationInactive ? "Inactive" : "Hidden");
 #endif
         if (state == Qt::ApplicationSuspended || state == Qt::ApplicationInactive) {
+            // Fold in-progress inline text into the model first, otherwise its
+            // page is not dirty and autosave persists the pre-edit text.
+            commitAllInlineTextEdits();
+
             // Sync positions for all documents before auto-save
             // This ensures lastAccessedPage/edgeless position is saved
             syncAllDocumentPositions();
@@ -315,6 +318,22 @@ MainWindow::MainWindow(QWidget *parent)
     }
     // Phase SV: SplitViewManager owns tab bars, viewport stacks, and TabManagers
     m_splitViewManager = new SplitViewManager(this);
+    connect(m_splitViewManager, &SplitViewManager::jumpToPageRequested,
+            this, &MainWindow::showJumpToPageDialog);
+    // The manager has already made the originating pane active, so this lands on
+    // the document whose scroll handle the button was sitting next to.
+    connect(m_splitViewManager, &SplitViewManager::searchRequested,
+            this, &MainWindow::showPdfSearchBar);
+    // The search bar anchors to the active pane's top-right corner, so anything
+    // that moves that corner has to move the bar with it.
+    connect(m_splitViewManager, &SplitViewManager::activePaneChanged,
+            this, [this](SplitViewManager::Pane) { updatePdfSearchBarPosition(); });
+    connect(m_splitViewManager, &SplitViewManager::splitStateChanged,
+            this, [this](bool) { updatePdfSearchBarPosition(); });
+    if (QSplitter* splitter = m_splitViewManager->viewportSplitter()) {
+        connect(splitter, &QSplitter::splitterMoved,
+                this, [this](int, int) { updatePdfSearchBarPosition(); });
+    }
 
     // Phase 3.1.1: Initialize DocumentManager
     m_documentManager = new DocumentManager(this);
@@ -396,6 +415,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_debugOverlay) {
             m_debugOverlay->setViewport(vp);
         }
+        applyPerfHudToViewport(vp);
         
         // REMOVED E.1: straightLineToggleButton moved to Toolbar - no longer need to sync button state
         
@@ -655,7 +675,14 @@ MainWindow::MainWindow(QWidget *parent)
                 // sources into bundled mini-PDFs so the .snb becomes self-contained.
                 // Never on the Discard branch (avoids persisting discarded imports).
                 if (doc->needsMaterialization() && !doc->bundlePath().isEmpty()) {
-                    doc->saveBundle(doc->bundlePath(), /*finalize=*/true);
+                    if (m_searchEngine) m_searchEngine->cancelAndWait();
+                    if (!doc->saveBundle(doc->bundlePath(), /*finalize=*/true)) {
+                        QMessageBox::critical(
+                            this, tr("Save Error"),
+                            tr("PDF sources could not be finalized. Repair the "
+                               "unavailable sources before closing."));
+                        return;
+                    }
                 }
                 
                 tm->setTabTitle(index, doc->displayName());
@@ -672,7 +699,14 @@ MainWindow::MainWindow(QWidget *parent)
             // plain save-then-close leaves the .snb self-contained. Requires a real
             // (non-temp) save location.
             if (!isUsingTemp && doc->needsMaterialization() && !doc->bundlePath().isEmpty()) {
-                doc->saveBundle(doc->bundlePath(), /*finalize=*/true);
+                if (m_searchEngine) m_searchEngine->cancelAndWait();
+                if (!doc->saveBundle(doc->bundlePath(), /*finalize=*/true)) {
+                    QMessageBox::critical(
+                        this, tr("Save Error"),
+                        tr("PDF sources could not be finalized. Repair the "
+                           "unavailable sources before closing."));
+                    return;
+                }
             }
         }
         
@@ -961,7 +995,10 @@ void MainWindow::setupUi() {
             }
         }
 
-        if (found) vp->update();
+        if (found) {
+            vp->update();
+            vp->refreshLinkObjectBar();
+        }
         refreshNotesOutline();
     });
     
@@ -998,18 +1035,11 @@ void MainWindow::setupUi() {
     overflowMenu = new QMenu(this);
     overflowMenu->setObjectName("overflowMenu");
 
-    // Phase R.4: Relink PDF action (enabled only when document has PDF reference)
-    m_relinkPdfAction = overflowMenu->addAction(tr("Relink PDF..."));
-    m_relinkPdfAction->setEnabled(false);  // Initially disabled
-    connect(m_relinkPdfAction, &QAction::triggered, this, [this]() {
-        showPdfRelinkDialog(currentViewport());
+    m_pdfSourcesAction = overflowMenu->addAction(tr("PDF Sources..."));
+    m_pdfSourcesAction->setVisible(false);
+    connect(m_pdfSourcesAction, &QAction::triggered, this, [this]() {
+        showPdfSourcesDialog(currentViewport());
     });
-    
-    // PDF Export action (Ctrl+P)
-    m_exportPdfAction = overflowMenu->addAction(tr("Export to PDF..."));
-    m_exportPdfAction->setShortcut(ShortcutManager::instance()->keySequenceForAction("file.export_pdf"));
-    connect(m_exportPdfAction, &QAction::triggered, this, &MainWindow::showPdfExportDialog);
-
     
     overflowMenu->addSeparator();
 
@@ -1037,14 +1067,6 @@ void MainWindow::setupUi() {
     connect(importPagesDebugAction, &QAction::triggered, this, &MainWindow::importPagesFromOtherDocDebug);
 #endif
 
-#ifndef Q_OS_MACOS
-    // MAC.4 / MAC.5: hidden on macOS — the View menu's 'Go to Page...' (added
-    // in MAC.5) is the canonical mouse path; Cmd+G keeps working via
-    // navigation.go_to_page (now dispatched through wireQActionDispatchers()).
-    QAction *jumpToPageAction = overflowMenu->addAction(tr("Jump to Page..."));
-    connect(jumpToPageAction, &QAction::triggered, this, &MainWindow::showJumpToPageDialog);
-#endif
-    
     QAction *openControlPanelAction = overflowMenu->addAction(tr("Settings"));
     connect(openControlPanelAction, &QAction::triggered, this, [this]() {
         // Phase CP.1: Open the cleaned-up Control Panel dialog
@@ -1070,7 +1092,8 @@ void MainWindow::setupUi() {
     // Debug Overlay (development tool)
     // ========================================
     // Create the debug overlay as a child of canvasContainer so it floats above the viewport.
-    // Toggle with 'D' key (defined in shortcuts below). Hidden by default in production.
+    // Toggle with F12 ("view.debug_overlay"); F10 ("view.perf_hud") turns on the
+    // paint statistics and shows this overlay. Hidden by default in production.
     m_debugOverlay = new DebugOverlay(canvasContainer);
     m_debugOverlay->move(10, 10);  // Position at top-left
 #ifdef SPEEDYNOTE_DEBUG
@@ -1153,97 +1176,8 @@ void MainWindow::setupUi() {
     connect(m_navigationBar, &NavigationBar::fullscreenToggled, this, [this]() {
         toggleFullscreen();
     });
-    connect(m_navigationBar, &NavigationBar::shareClicked, this, [this]() {
-        // Phase 3: Export notebook as .snbx package using unified dialog
-        DocumentViewport* vp = currentViewport();
-        Document* doc = vp ? vp->document() : nullptr;
-        if (!doc) {
-            QMessageBox::warning(this, tr("Export Failed"), 
-                tr("No document is currently open."));
-            return;
-        }
-        
-        // Ensure document is saved before exporting
-        QString bundlePath = doc->bundlePath();
-        if (bundlePath.isEmpty()) {
-            QMessageBox::warning(this, tr("Export Failed"),
-                tr("Please save the document before exporting."));
-            return;
-        }
-        
-        // Show unified SNBX export dialog with current notebook
-        BatchSnbxExportDialog dialog(QStringList{bundlePath}, this);
-        if (dialog.exec() != QDialog::Accepted) {
-            return;
-        }
-        
-        // Single-file export: use direct export for immediate feedback
-        // (ExportQueueManager is for batch exports from Launcher)
-        QString outputDir = dialog.outputDirectory();
-        QString outputPath = outputDir + "/" + doc->name + ".snbx";
-        
-        // Auto-rename if file exists (with safety limit to prevent infinite loop)
-        if (QFile::exists(outputPath)) {
-            int counter = 1;
-            QString baseName = doc->name;
-            const int maxAttempts = 1000;  // Safety limit
-            while (QFile::exists(outputPath) && counter <= maxAttempts) {
-                outputPath = outputDir + "/" + baseName + QString(" (%1).snbx").arg(counter++);
-            }
-            if (counter > maxAttempts) {
-                QMessageBox::warning(this, tr("Export Failed"),
-                    tr("Could not find a unique filename. Please choose a different location."));
-                return;
-            }
-        }
-        
-        NotebookExporter::ExportOptions options;
-        options.includePdf = dialog.includePdf();
-        options.destPath = outputPath;
-        
-        QApplication::setOverrideCursor(Qt::WaitCursor);
-        // Plan B2: materialize imported PDF sources into bundled mini-PDFs before the
-        // recursive zip so the .snbx is self-contained (updates document.json + pdfs/).
-        if (doc->needsMaterialization()) {
-            doc->saveBundle(bundlePath, /*finalize=*/true);
-        }
-        auto result = NotebookExporter::exportPackage(doc, options);
-        QApplication::restoreOverrideCursor();
-        
-        if (result.success) {
-#ifdef Q_OS_ANDROID
-            // Android: Share the exported file via share sheet
-            QJniObject activity = QNativeInterface::QAndroidApplication::context();
-            QJniObject::callStaticMethod<void>(
-                "org/speedynote/app/ShareHelper",
-                "shareFile",
-                "(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;)V",
-                activity.object<jobject>(),
-                QJniObject::fromString(outputPath).object<jstring>(),
-                QJniObject::fromString("application/octet-stream").object<jstring>()
-            );
-#elif defined(Q_OS_IOS)
-            IOSShareHelper::shareFile(outputPath, "application/octet-stream", tr("Share Notebook Package"));
-#else
-            // Desktop: Show success message
-            QString sizeStr;
-            if (result.fileSize < 1024) {
-                sizeStr = tr("%1 bytes").arg(result.fileSize);
-            } else if (result.fileSize < 1024 * 1024) {
-                sizeStr = tr("%1 KB").arg(result.fileSize / 1024);
-            } else {
-                double sizeMB = static_cast<double>(result.fileSize) / (1024.0 * 1024.0);
-                sizeStr = tr("%1 MB").arg(sizeMB, 0, 'f', 1);
-            }
-            QMessageBox::information(this, tr("Export Complete"),
-                tr("Notebook exported successfully.\n\nFile: %1\nSize: %2")
-                    .arg(QFileInfo(outputPath).fileName())
-                    .arg(sizeStr));
-#endif
-        } else {
-            QMessageBox::warning(this, tr("Export Failed"), result.errorMessage);
-        }
-    });
+    connect(m_navigationBar, &NavigationBar::shareClicked,
+            this, &MainWindow::showExportDialog);
     connect(m_navigationBar, &NavigationBar::rightSidebarToggled, this, [this](bool checked) {
         // Toggle markdown notes sidebar
         if (markdownNotesSidebar) {
@@ -1293,6 +1227,12 @@ void MainWindow::setupUi() {
             vp->setCurrentTool(tool);
         }
     });
+    connect(m_toolbar, &Toolbar::objectInsertModeSelected, this,
+            [this](DocumentViewport::ObjectInsertMode mode) {
+        if (DocumentViewport* vp = currentViewport()) {
+            vp->setObjectInsertMode(mode);
+        }
+    });
     connect(m_toolbar, &Toolbar::straightLineToggled, this, [this](bool enabled) {
         // Straight line mode toggle
         if (DocumentViewport* vp = currentViewport()) {
@@ -1300,20 +1240,13 @@ void MainWindow::setupUi() {
         }
         // qDebug() << "Toolbar: Straight line mode" << (enabled ? "enabled" : "disabled");
     });
-    connect(m_toolbar, &Toolbar::objectInsertClicked, this, [this]() {
-        // Stub - will show object insert menu in future
-        // qDebug() << "Toolbar: Object insert clicked (stub)";
-    });
-    // Note: m_textButton now emits toolSelected(ToolType::Highlighter) directly
     connect(m_toolbar, &Toolbar::undoClicked, this, [this]() {
         if (DocumentViewport* vp = currentViewport()) {
-            closeFloatingTextEditor();
             vp->undo();
         }
     });
     connect(m_toolbar, &Toolbar::redoClicked, this, [this]() {
         if (DocumentViewport* vp = currentViewport()) {
-            closeFloatingTextEditor();
             vp->redo();
         }
     });
@@ -1450,6 +1383,7 @@ void MainWindow::setupUi() {
         if (m_debugOverlay) {
             m_debugOverlay->setViewport(currentViewport());
         }
+        applyPerfHudToViewport(currentViewport());
 
         // MAC.1: Establish initial document scope for the first tab. The
         // activeViewportChanged signal may have fired before ShortcutManager
@@ -1496,6 +1430,24 @@ void MainWindow::setupUi() {
 // Canonical event flow:
 //   keystroke -> Qt shortcut map (active window) -> QAction::triggered ->
 //   dispatcher slot (here) -> activeMainWindow() -> handler lambda.
+// The format bar's editable controls wrap their own QLineEdit rather than being
+// one, so undo/redo has to reach through the spin box or combo to find it.
+// Returning nullptr means the focused control has no text to undo, and the
+// caller should fall through to document undo.
+static QLineEdit* focusedEditableLineEdit()
+{
+    QWidget* focused = QApplication::focusWidget();
+    if (!focused)
+        return nullptr;
+    if (auto* edit = qobject_cast<QLineEdit*>(focused))
+        return edit;
+    if (auto* spin = qobject_cast<QAbstractSpinBox*>(focused))
+        return spin->findChild<QLineEdit*>();
+    if (auto* combo = qobject_cast<QComboBox*>(focused))
+        return combo->lineEdit();
+    return nullptr;
+}
+
 void MainWindow::wireQActionDispatchers()
 {
     static bool s_wired = false;
@@ -1534,7 +1486,7 @@ void MainWindow::wireQActionDispatchers()
     wire("file.export",       [](MainWindow* w){
         if (w->m_navigationBar) emit w->m_navigationBar->shareClicked();
     });
-    wire("file.export_pdf",   [](MainWindow* w){ w->showPdfExportDialog(); });
+    wire("file.export_pdf",   [](MainWindow* w){ w->showExportDialog(); });
     wire("file.close_tab",    [](MainWindow* w){
         if (auto* tm = w->tabManager(); tm && tm->tabCount() > 0) {
             int idx = tm->currentIndex();
@@ -1567,13 +1519,37 @@ void MainWindow::wireQActionDispatchers()
     // the underlying feature lands.
     wire("edit.undo", [](MainWindow* w){
         if (auto* vp = w->currentViewport()) {
-            w->closeFloatingTextEditor();
+            if ((vp->textBoxFormatBarHasFocus() || vp->linkObjectBarHasFocus())) {
+                if (QLineEdit* edit = focusedEditableLineEdit()) {
+                    edit->undo();
+                    return;
+                }
+            }
+            if (vp->inlineTextEditorHasFocus()) {
+                if (auto* edit = qobject_cast<QPlainTextEdit*>(
+                        QApplication::focusWidget())) {
+                    edit->undo();
+                    return;
+                }
+            }
             vp->undo();
         }
     });
     wire("edit.redo", [](MainWindow* w){
         if (auto* vp = w->currentViewport()) {
-            w->closeFloatingTextEditor();
+            if ((vp->textBoxFormatBarHasFocus() || vp->linkObjectBarHasFocus())) {
+                if (QLineEdit* edit = focusedEditableLineEdit()) {
+                    edit->redo();
+                    return;
+                }
+            }
+            if (vp->inlineTextEditorHasFocus()) {
+                if (auto* edit = qobject_cast<QPlainTextEdit*>(
+                        QApplication::focusWidget())) {
+                    edit->redo();
+                    return;
+                }
+            }
             vp->redo();
         }
     });
@@ -1582,11 +1558,38 @@ void MainWindow::wireQActionDispatchers()
     // NOT added to the macOS Edit menu (the menu shows the primary edit.redo only).
     wire("edit.redo_alt", [](MainWindow* w){
         if (auto* vp = w->currentViewport()) {
-            w->closeFloatingTextEditor();
+            if ((vp->textBoxFormatBarHasFocus() || vp->linkObjectBarHasFocus())) {
+                if (QLineEdit* edit = focusedEditableLineEdit()) {
+                    edit->redo();
+                    return;
+                }
+            }
+            if (vp->inlineTextEditorHasFocus()) {
+                if (auto* edit = qobject_cast<QPlainTextEdit*>(
+                        QApplication::focusWidget())) {
+                    edit->redo();
+                    return;
+                }
+            }
             vp->redo();
         }
     });
     wire("edit.copy", [](MainWindow* w){
+        if (auto* vp = w->currentViewport();
+            vp && (vp->textBoxFormatBarHasFocus() || vp->linkObjectBarHasFocus())) {
+            if (auto* edit = qobject_cast<QLineEdit*>(
+                    QApplication::focusWidget()))
+                edit->copy();
+            return;
+        }
+        if (auto* vp = w->currentViewport();
+            vp && vp->inlineTextEditorHasFocus()) {
+            if (auto* edit = qobject_cast<QPlainTextEdit*>(
+                    QApplication::focusWidget())) {
+                edit->copy();
+                return;
+            }
+        }
         // Preserve the QTextBrowser focus fallback that pre-MAC.4 had inline:
         // if the markdown notes browser has selected text, Cmd+C copies the
         // browser selection rather than canvas objects. Other text widgets
@@ -1601,10 +1604,38 @@ void MainWindow::wireQActionDispatchers()
         if (auto* vp = w->currentViewport()) vp->handleCopyAction();
     });
     wire("edit.cut", [](MainWindow* w){
-        if (auto* vp = w->currentViewport()) vp->handleCutAction();
+        if (auto* vp = w->currentViewport()) {
+            if ((vp->textBoxFormatBarHasFocus() || vp->linkObjectBarHasFocus())) {
+                if (auto* edit = qobject_cast<QLineEdit*>(
+                        QApplication::focusWidget()))
+                    edit->cut();
+                return;
+            }
+            if (vp->inlineTextEditorHasFocus()) {
+                if (auto* edit = qobject_cast<QPlainTextEdit*>(
+                        QApplication::focusWidget())) {
+                    edit->cut();
+                    return;
+                }
+            }
+            vp->handleCutAction();
+        }
     });
     wire("edit.paste", [](MainWindow* w){
         if (auto* vp = w->currentViewport()) {
+            if ((vp->textBoxFormatBarHasFocus() || vp->linkObjectBarHasFocus())) {
+                if (auto* edit = qobject_cast<QLineEdit*>(
+                        QApplication::focusWidget()))
+                    edit->paste();
+                return;
+            }
+            if (vp->inlineTextEditorHasFocus()) {
+                if (auto* edit = qobject_cast<QPlainTextEdit*>(
+                        QApplication::focusWidget())) {
+                    edit->paste();
+                    return;
+                }
+            }
             vp->handlePasteAction();
             // Pre-MAC.4 behaviour: clear any pen-tool override that targeted a
             // different viewport, so a paste into the active viewport doesn't
@@ -1614,7 +1645,27 @@ void MainWindow::wireQActionDispatchers()
         }
     });
     wire("edit.delete", [](MainWindow* w){
-        if (auto* vp = w->currentViewport()) vp->handleDeleteAction();
+        if (auto* vp = w->currentViewport()) {
+            if ((vp->textBoxFormatBarHasFocus() || vp->linkObjectBarHasFocus())) {
+                if (auto* edit = qobject_cast<QLineEdit*>(
+                        QApplication::focusWidget()))
+                    edit->del();
+                return;
+            }
+            if (vp->inlineTextEditorHasFocus()) {
+                if (auto* edit = qobject_cast<QPlainTextEdit*>(
+                        QApplication::focusWidget())) {
+                    QTextCursor cursor = edit->textCursor();
+                    if (cursor.hasSelection())
+                        cursor.removeSelectedText();
+                    else
+                        cursor.deleteChar();
+                    edit->setTextCursor(cursor);
+                    return;
+                }
+            }
+            vp->handleDeleteAction();
+        }
     });
 
     // ----- app.find* (MAC.4) -----
@@ -1774,6 +1825,7 @@ void MainWindow::wireQActionDispatchers()
     // registry id). The macOS *menu item* is the only thing gated on
     // SPEEDYNOTE_DEBUG, in MacMenuBar::populateViewMenu (per QA Q4.3.a).
     wire("view.debug_overlay", [](MainWindow* w){ w->toggleDebugOverlay(); });
+    wire("view.perf_hud",      [](MainWindow* w){ w->togglePerfHud(); });
 
     // ----- OCR (MAC.6) -----
     // Each handler delegates to OcrSubToolbar's keyboard-shortcut entry points
@@ -1832,8 +1884,18 @@ void MainWindow::wireQActionDispatchers()
     // it (modifier-bearing actions don't need this guard).
     auto isTextFocused = []() {
         QWidget* f = QApplication::focusWidget();
-        return qobject_cast<QLineEdit*>(f) || qobject_cast<QTextEdit*>(f)
-            || qobject_cast<QPlainTextEdit*>(f);
+        if (qobject_cast<QLineEdit*>(f) || qobject_cast<QTextEdit*>(f)
+            || qobject_cast<QPlainTextEdit*>(f)) {
+            return true;
+        }
+        for (QWidget* widget = f; widget;
+             widget = widget->parentWidget()) {
+            if (widget->objectName()
+                == QLatin1String("textBoxFormatBar")) {
+                return true;
+            }
+        }
+        return false;
     };
     auto wireToolKey = [&wire, isTextFocused](const QString& id, ToolType tool) {
         wire(id, [tool, isTextFocused](MainWindow* w) {
@@ -1915,16 +1977,19 @@ void MainWindow::wireQActionDispatchers()
     // ----- Highlighter Style (MAC.7) -----
     // Style shortcuts drive the dropdown's QAction::trigger() path so the
     // existing onAutoHighlightStyleTriggered() slot handles persistence,
-    // check-state, icon refresh, and autoHighlightStyleChanged emission.
+    // check-state, icon refresh, turning highlight-on-release on, and the
+    // autoHighlightStyleChanged emission.
     // These auto-switch to the Highlighter tool first (via ensureTool) so the
     // style/source change takes effect immediately even when another tool is
     // active; the subtoolbar call remains the single source that pushes state
     // to the viewport.
     using HS = HighlighterSubToolbar::HighlightStyle;
+    // Legacy id (see ShortcutManager): this is the select-text-only mode, which
+    // is now the toggle rather than a style.
     wire("highlighter.style_none", [ensureTool](MainWindow* w){
         if (auto* vp = w->currentViewport()) ensureTool(w, vp, ToolType::Highlighter);
         if (auto* st = w->m_toolbar ? w->m_toolbar->highlighterSubToolbar() : nullptr)
-            st->selectAutoHighlightStyleFromShortcut(HS::None);
+            st->setHighlightOnReleaseFromShortcut(false);
     });
     wire("highlighter.style_cover", [ensureTool](MainWindow* w){
         if (auto* vp = w->currentViewport()) ensureTool(w, vp, ToolType::Highlighter);
@@ -1948,10 +2013,9 @@ void MainWindow::wireQActionDispatchers()
     });
 
     // ----- Insert / Object Mode (MAC.7) -----
-    // object.mode_image uses the focus-check guard (single-letter "I"); the
-    // others are modifier-bearing and don't need it. All five auto-switch to
-    // the ObjectSelect tool (via ensureTool) before arming their mode, so they
-    // work regardless of the currently active tool.
+    // All five auto-switch to ObjectSelect before arming their mode. Text-focus
+    // guards keep both single-key and modifier shortcuts from interrupting an
+    // active object-description or text editor.
     wire("object.mode_image", [isTextFocused, ensureTool](MainWindow* w){
         if (isTextFocused()) return;
         if (auto* vp = w->currentViewport()) {
@@ -1959,25 +2023,29 @@ void MainWindow::wireQActionDispatchers()
             vp->setObjectInsertMode(DocumentViewport::ObjectInsertMode::Image);
         }
     });
-    wire("object.mode_text", [ensureTool](MainWindow* w){
+    wire("object.mode_text", [isTextFocused, ensureTool](MainWindow* w){
+        if (isTextFocused()) return;
         if (auto* vp = w->currentViewport()) {
             ensureTool(w, vp, ToolType::ObjectSelect);
             vp->setObjectInsertMode(DocumentViewport::ObjectInsertMode::Text);
         }
     });
-    wire("object.mode_link", [ensureTool](MainWindow* w){
+    wire("object.mode_link", [isTextFocused, ensureTool](MainWindow* w){
+        if (isTextFocused()) return;
         if (auto* vp = w->currentViewport()) {
             ensureTool(w, vp, ToolType::ObjectSelect);
             vp->setObjectInsertMode(DocumentViewport::ObjectInsertMode::Link);
         }
     });
-    wire("object.mode_create", [ensureTool](MainWindow* w){
+    wire("object.mode_create", [isTextFocused, ensureTool](MainWindow* w){
+        if (isTextFocused()) return;
         if (auto* vp = w->currentViewport()) {
             ensureTool(w, vp, ToolType::ObjectSelect);
             vp->setObjectActionMode(DocumentViewport::ObjectActionMode::Create);
         }
     });
-    wire("object.mode_select", [ensureTool](MainWindow* w){
+    wire("object.mode_select", [isTextFocused, ensureTool](MainWindow* w){
+        if (isTextFocused()) return;
         if (auto* vp = w->currentViewport()) {
             ensureTool(w, vp, ToolType::ObjectSelect);
             vp->setObjectActionMode(DocumentViewport::ObjectActionMode::Select);
@@ -2107,6 +2175,7 @@ void MainWindow::setupManagedShortcuts()
     bindAction("view.focus_right_pane");
     bindAction("view.fullscreen");
     bindAction("view.debug_overlay");
+    bindAction("view.perf_hud");
     // MAC.6: ocr.* + tab navigation bindings
     bindAction("ocr.scan_page");
     bindAction("ocr.scan_all");
@@ -2164,8 +2233,8 @@ void MainWindow::setupManagedShortcuts()
     // registry because:
     //  - it doesn't appear in any menu (modal-style dismissal, not a command);
     //  - its handler walks a per-window priority list (modal -> search bar ->
-    //    floating editor -> viewport -> launcher) that doesn't fit the
-    //    activeMainWindow() dispatch model;
+    //    viewport -> launcher) that doesn't fit the activeMainWindow()
+    //    dispatch model;
     //  - it uses Qt::WindowShortcut (the dispatcher pattern uses
     //    Qt::ApplicationShortcut), so each window must own its own QShortcut
     //    so Escape only dismisses things in the focused window.
@@ -2180,10 +2249,6 @@ void MainWindow::setupManagedShortcuts()
             if (QApplication::activeModalWidget()) return;
             if (m_pdfSearchBar && m_pdfSearchBar->isVisible()) {
                 hidePdfSearchBar();
-                return;
-            }
-            if (m_floatingTextEditor && m_floatingTextEditor->isVisible()) {
-                m_floatingTextEditor->closeEditor();
                 return;
             }
             if (DocumentViewport* vp = currentViewport()) {
@@ -2334,6 +2399,11 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
         disconnect(m_autoHighlightConn);
         m_autoHighlightConn = {};
     }
+    // Disconnect select-vs-highlight sync connection
+    if (m_highlightOnReleaseConn) {
+        disconnect(m_highlightOnReleaseConn);
+        m_highlightOnReleaseConn = {};
+    }
     // Disconnect highlighter-mode (PDF/OCR) sync connection
     if (m_highlighterModeConn) {
         disconnect(m_highlighterModeConn);
@@ -2433,23 +2503,36 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
         disconnect(m_linkObjectListConn);
         m_linkObjectListConn = {};
     }
-    // Phase R.4: Disconnect PDF relink connection
-    if (m_pdfRelinkConn) {
-        disconnect(m_pdfRelinkConn);
-        m_pdfRelinkConn = {};
+    if (m_linkAppearanceConn) {
+        disconnect(m_linkAppearanceConn);
+        m_linkAppearanceConn = {};
+    }
+    if (m_pdfSourcesConn) {
+        disconnect(m_pdfSourcesConn);
+        m_pdfSourcesConn = {};
+    }
+    if (m_pdfBannerReserveConn) {
+        disconnect(m_pdfBannerReserveConn);
+        m_pdfBannerReserveConn = {};
     }
     // OCR: Disconnect strokesChanged connection
     if (m_strokesChangedConn) {
         disconnect(m_strokesChangedConn);
         m_strokesChangedConn = {};
     }
-    if (m_textEditorConn) {
-        disconnect(m_textEditorConn);
-        m_textEditorConn = {};
+    if (m_ocrConvertConn) {
+        disconnect(m_ocrConvertConn);
+        m_ocrConvertConn = {};
+    }
+    if (m_textBoxLayoutConn) {
+        disconnect(m_textBoxLayoutConn);
+        m_textBoxLayoutConn = {};
     }
 
-    // Close floating text editor when switching viewports (target may belong to old viewport)
-    closeFloatingTextEditor();
+    // End an inline session before another pane/tab becomes active. This
+    // prevents two viewport-owned editors from mutating the same object.
+    if (m_connectedViewport && m_connectedViewport != viewport)
+        m_connectedViewport->commitInlineTextEdit();
 
     // Remove event filter from previous viewport (QPointer auto-nulls if deleted)
     if (m_connectedViewport) {
@@ -2519,11 +2602,13 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
         }
     });
 
-    // Also sync the current auto-highlight style to the subtoolbar
-    if (m_toolbar->highlighterSubToolbar()) {
-        m_toolbar->highlighterSubToolbar()->setAutoHighlightStyle(
-            static_cast<HighlighterSubToolbar::HighlightStyle>(viewport->autoHighlightStyle()));
-    }
+    // Connect select-vs-highlight sync (viewport -> subtoolbar)
+    m_highlightOnReleaseConn = connect(viewport, &DocumentViewport::highlightOnReleaseChanged,
+                                       this, [this](bool enabled) {
+        if (m_toolbar && m_toolbar->highlighterSubToolbar()) {
+            m_toolbar->highlighterSubToolbar()->setHighlightOnRelease(enabled);
+        }
+    });
 
     // Connect highlighter-mode (PDF/OCR) sync (viewport -> subtoolbar)
     m_highlighterModeConn = connect(viewport, &DocumentViewport::highlighterModeChanged,
@@ -2536,48 +2621,46 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
         }
     });
 
-    // Also sync the current highlighter mode to the subtoolbar
-    if (m_toolbar->highlighterSubToolbar()) {
-        auto src = (viewport->highlighterMode() == DocumentViewport::HighlighterMode::Ocr)
-                       ? HighlighterSubToolbar::SelectionSource::Ocr
-                       : HighlighterSubToolbar::SelectionSource::Pdf;
-        m_toolbar->highlighterSubToolbar()->setSelectionSourceState(src);
-    }
+    // Seed the viewport from the subtoolbar rather than the other way round.
+    // These three are global tool settings backed by QSettings, like the
+    // highlighter colour: pushing viewport -> subtoolbar here is what used to
+    // overwrite the persisted values with a fresh viewport's defaults. Both
+    // this and applyAllSubToolbarValuesToViewport() now push the same way, so
+    // it no longer matters which of the two signal handlers runs first.
+    applyHighlighterSettingsToViewport(viewport);
 
-    // Phase D: Connect object mode state sync (viewport → subtoolbar)
-    // When Ctrl+< / Ctrl+> / Ctrl+6 / Ctrl+7 changes the mode, update the subtoolbar
+    // Keep the three object toolbar buttons and action-bar mode toggle in sync
+    // with per-viewport state (including changes made through shortcuts).
     m_insertModeConn = connect(viewport, &DocumentViewport::objectInsertModeChanged,
                                this, [this](DocumentViewport::ObjectInsertMode mode) {
-        if (m_toolbar->objectSelectSubToolbar()) {
-            m_toolbar->objectSelectSubToolbar()->setInsertModeState(mode);
-        }
+        if (m_toolbar) m_toolbar->setObjectInsertMode(mode);
+        if (isActiveWindow()) syncObjectModeCheckActions();
     });
     
     m_actionModeConn = connect(viewport, &DocumentViewport::objectActionModeChanged,
                                this, [this](DocumentViewport::ObjectActionMode mode) {
-        if (m_toolbar->objectSelectSubToolbar()) {
-            m_toolbar->objectSelectSubToolbar()->setActionModeState(mode);
-        }
+        if (m_objectSelectActionBar)
+            m_objectSelectActionBar->setActionModeState(mode);
+        if (isActiveWindow()) syncObjectModeCheckActions();
     });
     
-    // Also sync the current object modes to the subtoolbar
-    if (m_toolbar->objectSelectSubToolbar()) {
-        m_toolbar->objectSelectSubToolbar()->setInsertModeState(viewport->objectInsertMode());
-        m_toolbar->objectSelectSubToolbar()->setActionModeState(viewport->objectActionMode());
+    if (m_toolbar) {
+        m_toolbar->setObjectInsertMode(viewport->objectInsertMode());
+        m_toolbar->setCurrentTool(viewport->currentTool());
     }
+    if (m_objectSelectActionBar)
+        m_objectSelectActionBar->setActionModeState(viewport->objectActionMode());
+    if (isActiveWindow())
+        syncObjectModeCheckActions();
     
-    // Phase D: Connect object selection changed to update LinkSlot buttons
     m_selectionChangedConn = connect(viewport, &DocumentViewport::objectSelectionChanged,
-                                     this, [this, viewport]() {
-        updateLinkSlotButtons(viewport);
+                                     this, [this]() {
         // MAC.7: re-evaluate object Z-order + affinity menu enable state.
         // MAC.7 review fix: gate on isActiveWindow() so background-window
         // selection changes don't pollute the active window's QAction states.
         if (isActiveWindow()) updateObjectActionsEnabled();
     });
     
-    // Also sync the current selection state to the subtoolbar
-    updateLinkSlotButtons(viewport);
     // MAC.7: initial sync for the new viewport's selection / tool state.
     // MAC.7 review fix: same isActiveWindow gate as the signal handlers above.
     if (isActiveWindow()) updateObjectActionsEnabled();
@@ -2630,13 +2713,6 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
             bool hasSelection = !viewport->selectedObjects().isEmpty();
             m_actionBarContainer->onObjectSelectionChanged(hasSelection);
         }
-        // Phase 2B: Close floating editor if target was deselected/deleted
-        if (m_floatingTextEditor && m_floatingTextEditor->isVisible()) {
-            auto* tgt = m_floatingTextEditor->target();
-            if (tgt && !viewport->selectedObjects().contains(tgt)) {
-                m_floatingTextEditor->closeEditor();
-            }
-        }
     });
     
     // Text selection changed (shows/hides TextSelectionActionBar)
@@ -2663,9 +2739,24 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
         else clearToolOverride(true);
     });
 
-    // Phase 2B: Floating text editor
-    m_textEditorConn = connect(viewport, &DocumentViewport::openTextEditorRequested,
-                               this, &MainWindow::openFloatingTextEditor);
+    m_ocrConvertConn = connect(viewport, &DocumentViewport::convertOcrTextRequested,
+                               this, &MainWindow::convertOcrTextToTextBox);
+    m_textBoxLayoutConn = connect(
+        viewport, &DocumentViewport::textBoxLayoutCommitted,
+        this, [this, viewport]() {
+            if (m_searchEngine) {
+                m_searchEngine->cancelAndWait();
+                m_searchEngine->clearCache();
+            }
+            if (m_searchScanDebounce) m_searchScanDebounce->stop();
+            if (m_searchMarkerRefresh) m_searchMarkerRefresh->stop();
+            m_searchResultsByPage.clear();
+            m_searchTotalMatches = 0;
+            if (m_searchState) m_searchState->resetMatch();
+            if (viewport) viewport->clearSearchMatches();
+            if (m_splitViewManager)
+                m_splitViewManager->clearScrollBarSearchMarkers(viewport);
+        });
 
     // Sync initial action bar state from viewport
     // CR-AB-2 FIX: Sync ALL context states to prevent stale state from previous tab
@@ -2811,6 +2902,10 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
         } else {
             refreshOutlineAvailability(doc);
         }
+        updatePdfSourceUi(viewport);
+        if (currentViewport() != viewport) {
+            updatePdfSourceUi(currentViewport());
+        }
 
         // Mark the owning tab modified.
         if (m_splitViewManager) {
@@ -2899,6 +2994,21 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
             }
         });
 
+        // Only one LinkObject's description/color changed, so patch that row in
+        // place rather than rebuilding the tree, which would collapse expanded
+        // subtrees and drop focus.
+        m_linkAppearanceConn = connect(viewport, &DocumentViewport::linkObjectAppearanceChanged,
+                this, [this](const QString& linkObjectId, const QString& description,
+                             const QColor& color) {
+            if (markdownNotesSidebar && markdownNotesSidebar->isVisible()) {
+                markdownNotesSidebar->updateLinkObject(linkObjectId, description, color);
+            }
+            // SB2: the marker's colour and tooltip come from the LinkObject.
+            if (m_splitViewManager) {
+                m_splitViewManager->updateScrollBarDocumentMap(currentViewport());
+            }
+        });
+
         // OCR: Restart debounce timer when strokes change
         m_strokesChangedConn = connect(viewport, &DocumentViewport::strokesChanged, this, [this]() {
             if (m_autoOcrEnabled && m_ocrDebounceTimer)
@@ -2931,6 +3041,7 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
         // changeEvent re-seeds when focus returns.
         if (isActiveWindow()) {
             syncOcrCheckActions();
+            syncObjectModeCheckActions();
         }
 
         // OCR: Sync language for the new document
@@ -2941,94 +3052,13 @@ void MainWindow::connectViewportScrollSignals(DocumentViewport* viewport) {
         }
     }
     
-    // =========================================================================
-    // Phase R.4: PDF Relink - Connect signal and check for missing PDF
-    // =========================================================================
-    
-    m_pdfRelinkConn = connect(viewport, &DocumentViewport::requestPdfRelink,
+    m_pdfSourcesConn = connect(viewport, &DocumentViewport::requestPdfSources,
             this, [this, viewport]() {
-        showPdfRelinkDialog(viewport);
+        showPdfSourcesDialog(viewport);
     });
-    
-    // Check if any PDF source is missing and show banner
-    Document* doc = viewport->document();
-    bool primaryMissing = doc && doc->hasPdfReference() && !doc->isPdfLoaded();
-    if (doc && (primaryMissing || doc->needsPdfRelink())) {
-        // Prefer the primary's filename; otherwise the first source flagged for relink.
-        QString missingName;
-        if (primaryMissing) {
-            missingName = QFileInfo(doc->pdfPath()).fileName();
-        } else {
-            for (const PdfSource& s : doc->pdfSources()) {
-                if (s.needsRelink) {
-                    missingName = QFileInfo(s.path).fileName();
-                    break;
-                }
-            }
-        }
-        viewport->showMissingPdfBanner(missingName);
-    } else if (doc) {
-        // All sources present or no PDF reference - ensure banner is hidden
-        viewport->hideMissingPdfBanner();
-    }
-    
-    // Update Link/Relink PDF menu action
-    if (m_relinkPdfAction) {
-        m_relinkPdfAction->setEnabled(doc != nullptr);
-        if (doc && doc->hasPdfReference()) {
-            m_relinkPdfAction->setText(tr("Relink PDF..."));
-        } else {
-            m_relinkPdfAction->setText(tr("Link PDF..."));
-        }
-    }
-}
-
-void MainWindow::updateLinkSlotButtons(DocumentViewport* viewport)
-{
-    // Phase D: Update ObjectSelectSubToolbar slot buttons based on selected LinkObject
-    if (!m_toolbar->objectSelectSubToolbar() || !viewport) {
-        return;
-    }
-    
-    const auto& selectedObjects = viewport->selectedObjects();
-    
-    // Check if exactly one LinkObject is selected
-    if (selectedObjects.size() == 1) {
-        LinkObject* link = dynamic_cast<LinkObject*>(selectedObjects.first());
-        if (link) {
-            // Convert LinkSlot::Type to LinkSlotState for each slot
-            LinkSlotState states[3];
-            for (int i = 0; i < LinkObject::SLOT_COUNT; ++i) {
-                switch (link->linkSlots[i].type) {
-                    case LinkSlot::Type::Empty:
-                        states[i] = LinkSlotState::Empty;
-                        break;
-                    case LinkSlot::Type::Position:
-                        states[i] = LinkSlotState::Position;
-                        break;
-                    case LinkSlot::Type::Url:
-                        states[i] = LinkSlotState::Url;
-                        break;
-                    case LinkSlot::Type::Markdown:
-                        states[i] = LinkSlotState::Markdown;
-                        break;
-                }
-            }
-            m_toolbar->objectSelectSubToolbar()->updateSlotStates(states);
-            
-            // Show LinkObject color button
-            m_toolbar->objectSelectSubToolbar()->setLinkObjectColor(link->iconColor, true);
-            
-            // Show LinkObject description editor
-            m_toolbar->objectSelectSubToolbar()->setLinkObjectDescription(link->description, true);
-            return;
-        }
-    }
-    
-    // No LinkObject selected (or multiple objects selected) - clear slots and hide controls
-    m_toolbar->objectSelectSubToolbar()->clearSlotStates();
-    m_toolbar->objectSelectSubToolbar()->setLinkObjectColor(Qt::transparent, false);
-    m_toolbar->objectSelectSubToolbar()->setLinkObjectDescription(QString(), false);
+    m_pdfBannerReserveConn = connect(viewport, &DocumentViewport::topBannerReserveChanged,
+            this, &MainWindow::updatePdfSearchBarPosition);
+    updatePdfSourceUi(viewport);
 }
 
 void MainWindow::applySubToolbarValuesToViewport(ToolType tool)
@@ -3059,6 +3089,32 @@ void MainWindow::applySubToolbarValuesToViewport(ToolType tool)
     }
 }
 
+void MainWindow::applyHighlighterSettingsToViewport(DocumentViewport* viewport)
+{
+    auto* highlighterST = m_toolbar ? m_toolbar->highlighterSubToolbar() : nullptr;
+    if (!viewport || !highlighterST) {
+        return;
+    }
+
+    // Colour, style, select-vs-highlight and PDF/OCR source are global tool
+    // settings backed by QSettings, so the subtoolbar is the source and the
+    // viewport is the sink. Everything except the colour used to be pushed the
+    // other way, which meant the persisted values were loaded into the
+    // subtoolbar and then immediately overwritten by a fresh viewport's
+    // hardcoded defaults: the Highlighter came up in select-only PDF mode after
+    // every restart no matter what the user had chosen.
+    viewport->setHighlighterColor(highlighterST->currentColor());
+    viewport->setAutoHighlightStyle(
+        static_cast<DocumentViewport::HighlightStyle>(
+            highlighterST->currentAutoHighlightStyle()));
+    viewport->setHighlightOnRelease(highlighterST->highlightOnRelease());
+    viewport->setHighlighterMode(
+        highlighterST->currentSelectionSource()
+                == HighlighterSubToolbar::SelectionSource::Ocr
+            ? DocumentViewport::HighlighterMode::Ocr
+            : DocumentViewport::HighlighterMode::Pdf);
+}
+
 void MainWindow::applyAllSubToolbarValuesToViewport(DocumentViewport* viewport)
 {
     // Phase D: Apply ALL subtoolbar preset values DIRECTLY to a specific viewport
@@ -3082,12 +3138,10 @@ void MainWindow::applyAllSubToolbarValuesToViewport(DocumentViewport* viewport)
         viewport->setMarkerThickness(m_toolbar->markerSubToolbar()->currentThickness());
     }
     
-    // Apply highlighter color (uses separate m_highlighterColor in viewport)
+    // Apply highlighter settings (uses separate m_highlighterColor in viewport)
     // Note: Highlighter and Marker share the same color PRESETS (QSettings),
     // but the Highlighter tool uses a separate color variable in DocumentViewport
-    if (m_toolbar->highlighterSubToolbar()) {
-        viewport->setHighlighterColor(m_toolbar->highlighterSubToolbar()->currentColor());
-    }
+    applyHighlighterSettingsToViewport(viewport);
     
     // Apply eraser size and mode
     if (m_toolbar->eraserSubToolbar()) {
@@ -3197,92 +3251,100 @@ void MainWindow::updateLayerPanelForViewport(DocumentViewport* viewport) {
     }
 }
 
-// ============================================================================
-// Phase R.4: Unified PDF Relink Handler
-// ============================================================================
-
-void MainWindow::showPdfRelinkDialog(DocumentViewport* viewport)
+void MainWindow::updatePdfSourceUi(DocumentViewport* viewport)
 {
-    if (!viewport) return;
-    
+    Document* doc = viewport ? viewport->document() : nullptr;
+    if (!doc) {
+        if (m_pdfSourcesAction) m_pdfSourcesAction->setVisible(false);
+        return;
+    }
+
+    const QVector<PdfSourceHealth> health = doc->pdfSourceHealthSnapshot();
+    int repairCount = 0;
+    int affectedPages = 0;
+    QString singleName;
+    QStringList signatureParts;
+    for (const PdfSourceHealth& source : health) {
+        if (!source.requiresRepair()) continue;
+        ++repairCount;
+        affectedPages += source.unavailablePages;
+        singleName = source.title;
+        signatureParts.append(
+            QStringLiteral("%1:%2:%3")
+                .arg(source.sourceId)
+                .arg(static_cast<int>(source.status))
+                .arg(source.unavailablePages));
+    }
+
+    if (m_pdfSourcesAction) {
+        m_pdfSourcesAction->setVisible(!health.isEmpty());
+        m_pdfSourcesAction->setEnabled(!health.isEmpty());
+        m_pdfSourcesAction->setText(repairCount > 0
+            ? tr("Repair PDF Sources... (%1)").arg(repairCount)
+            : tr("PDF Sources..."));
+    }
+
+    if (repairCount > 0) {
+        viewport->showPdfSourceWarning(
+            repairCount, affectedPages,
+            repairCount == 1 ? singleName : QString(),
+            signatureParts.join(QLatin1Char('|')));
+    } else {
+        viewport->hidePdfSourceWarning();
+    }
+}
+
+void MainWindow::showPdfSourcesDialog(DocumentViewport* viewport)
+{
+    if (!viewport || !viewport->document()) return;
     Document* doc = viewport->document();
-    if (!doc) return;
-    
-    // Collect the ids of every source that still needs relinking, primary first.
-    // (Snapshot the ids up front because relinking mutates the source list.)
-    QStringList sourceIds;
-    const std::vector<PdfSource>& sources = doc->pdfSources();
-    for (size_t i = 0; i < sources.size(); ++i) {
-        const bool isPrimary = (i == 0);
-        // The primary can be "missing" either via its relink flag or by having a
-        // reference that failed to load (legacy detection).
-        bool missing = sources[i].needsRelink;
-        if (isPrimary && !missing) {
-            missing = doc->hasPdfReference() && !doc->isPdfLoaded();
+    const QPointer<DocumentViewport> viewportGuard(viewport);
+    PdfSourcesDialog dialog(doc, this);
+    connect(viewport, &QObject::destroyed, &dialog, &QDialog::reject);
+    connect(&dialog, &PdfSourcesDialog::sourcesAboutToChange, this, [this, viewportGuard]() {
+        if (m_searchEngine) {
+            m_searchEngine->cancelAndWait();
+            m_searchEngine->clearCache();
         }
-        if (missing) {
-            sourceIds.append(sources[i].id.isEmpty() ? QString() : sources[i].id);
+        if (m_searchScanDebounce) m_searchScanDebounce->stop();
+        if (m_searchMarkerRefresh) m_searchMarkerRefresh->stop();
+        m_searchResultsByPage.clear();
+        m_searchTotalMatches = 0;
+        if (m_searchState) m_searchState->resetMatch();
+        if (viewportGuard) viewportGuard->clearSearchMatches();
+        if (m_splitViewManager && viewportGuard) {
+            m_splitViewManager->clearScrollBarSearchMarkers(viewportGuard);
         }
-    }
-    // Fallback: no flagged source but legacy primary detection triggered the request.
-    if (sourceIds.isEmpty() && doc->hasPdfReference() && !doc->isPdfLoaded()) {
-        sourceIds.append(QString());  // primary
-    }
-
-    bool anyResolved = false;
-    for (const QString& sourceId : sourceIds) {
-        const PdfSource* s = doc->pdfSourceById(sourceId);
-        QString path = s ? s->path : doc->pdfPath();
-        QString hash = s ? s->hash : doc->pdfHash();
-        qint64 size = s ? s->size : doc->pdfSize();
-
-        PdfRelinkDialog dialog(path, hash, size, /*pdfIsLoaded*/ false, this);
-        if (dialog.exec() != QDialog::Accepted) {
-            // Cancel: stop iterating, leave remaining banners in place.
-            break;
-        }
-
-        PdfRelinkDialog::Result result = dialog.getResult();
-        if (result == PdfRelinkDialog::RelinkPdf) {
-            QString newPath = dialog.getNewPdfPath();
-            if (!newPath.isEmpty() && doc->relinkSource(sourceId, newPath)) {
-                anyResolved = true;
-            }
-        } else if (result == PdfRelinkDialog::ContinueWithoutPdf) {
-            doc->dismissSourceRelink(sourceId);
-            anyResolved = true;
-        }
-    }
-
-    if (anyResolved) {
-        if (!doc->needsPdfRelink()) {
-            viewport->hideMissingPdfBanner();
-        }
-        viewport->notifyPdfChanged();
+    });
+    connect(&dialog, &PdfSourcesDialog::sourcesChanged, this, [this, viewportGuard, doc]() {
+        if (!viewportGuard || viewportGuard->document() != doc) return;
+        viewportGuard->notifyPdfChanged();
         updateOutlinePanelForDocument(doc);
-        if (m_pagePanel) {
-            m_pagePanel->invalidateAllThumbnails();
+        if (m_pagePanel) m_pagePanel->invalidateAllThumbnails();
+        updatePdfSourceUi(viewportGuard);
+        if (currentViewport() == viewportGuard && m_pdfSearchBar
+            && m_pdfSearchBar->isVisible()
+            && m_pdfSearchBar->searchText().trimmed().size() >= 2
+            && m_searchScanDebounce) {
+            m_searchScanDebounce->start();
         }
-        if (m_relinkPdfAction) {
-            if (doc->hasPdfReference()) {
-                m_relinkPdfAction->setText(tr("Relink PDF..."));
-            } else {
-                m_relinkPdfAction->setText(tr("Link PDF..."));
-            }
-        }
+    });
+    dialog.exec();
+    if (viewportGuard && viewportGuard->document() == doc) {
+        updatePdfSourceUi(viewportGuard);
     }
 }
 
 // ============================================================================
-// Phase 8: PDF Export Dialog
+// Combined PDF / notebook-package export dialog
 // ============================================================================
 
-void MainWindow::showPdfExportDialog()
+void MainWindow::showExportDialog()
 {
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
-    QString dialogTitle = tr("Share as PDF");
+    const QString dialogTitle = tr("Share Notebook");
 #else
-    QString dialogTitle = tr("Export to PDF");
+    const QString dialogTitle = tr("Export Notebook");
 #endif
     
     DocumentViewport* viewport = currentViewport();
@@ -3307,26 +3369,12 @@ void MainWindow::showPdfExportDialog()
         return;
     }
     
-    // Check if document is paged (PDF export only makes sense for paged documents)
-    // Note: BatchPdfExportDialog also detects edgeless, but we check here for better UX
-    if (doc->isEdgeless()) {
-        QMessageBox::warning(this, dialogTitle,
-                             tr("PDF export is only available for paged documents.\n"
-                                "Edgeless canvas export is not yet supported."));
-        return;
-    }
-    
     // Check for unsaved changes - require saving first
     if (doc->modified) {
-#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
-        QString savePrompt = tr("The document has unsaved changes.\n"
-                                "Please save the document before sharing as PDF.\n\n"
-                                "Would you like to save now?");
-#else
-        QString savePrompt = tr("The document has unsaved changes.\n"
-                                "Please save the document before exporting to PDF.\n\n"
-                                "Would you like to save now?");
-#endif
+        const QString savePrompt = tr(
+            "The document has unsaved changes.\n"
+            "Please save the document before exporting.\n\n"
+            "Would you like to save now?");
         QMessageBox::StandardButton result = QMessageBox::question(
             this, tr("Save Document First"),
             savePrompt,
@@ -3343,14 +3391,72 @@ void MainWindow::showPdfExportDialog()
         }
     }
     
-    // Show the unified PDF export dialog with current notebook
-    BatchPdfExportDialog dialog(QStringList{bundlePath}, this);
+    BatchExportDialog dialog(QStringList{bundlePath}, this);
     if (dialog.exec() == QDialog::Accepted) {
+        if (dialog.selectedFormat() == BatchExportDialog::Snbx) {
+            const QString outputDir = dialog.outputDirectory();
+            QString outputPath = outputDir + "/" + doc->name + ".snbx";
+            int counter = 1;
+            while (QFile::exists(outputPath) && counter <= 1000) {
+                outputPath = outputDir + "/" + doc->name
+                    + QString(" (%1).snbx").arg(counter++);
+            }
+            if (counter > 1000) {
+                QMessageBox::warning(
+                    this, dialogTitle,
+                    tr("Could not find a unique filename. Please choose a different location."));
+                return;
+            }
+
+            NotebookExporter::ExportOptions options;
+            options.includePdf = dialog.includePdf();
+            options.destPath = outputPath;
+
+            QApplication::setOverrideCursor(Qt::WaitCursor);
+            if (m_searchEngine) m_searchEngine->cancelAndWait();
+            if (doc->needsMaterialization()
+                && !doc->saveBundle(bundlePath, /*finalize=*/true)) {
+                QApplication::restoreOverrideCursor();
+                QMessageBox::warning(
+                    this, tr("Export Failed"),
+                    tr("PDF sources could not be finalized. Repair the unavailable "
+                       "sources and try again."));
+                return;
+            }
+            const auto result = NotebookExporter::exportPackage(doc, options);
+            QApplication::restoreOverrideCursor();
+
+            if (!result.success) {
+                QMessageBox::warning(this, tr("Export Failed"), result.errorMessage);
+                return;
+            }
+#ifdef Q_OS_ANDROID
+            QJniObject activity = QNativeInterface::QAndroidApplication::context();
+            QJniObject::callStaticMethod<void>(
+                "org/speedynote/app/ShareHelper",
+                "shareFile",
+                "(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;)V",
+                activity.object<jobject>(),
+                QJniObject::fromString(outputPath).object<jstring>(),
+                QJniObject::fromString("application/octet-stream").object<jstring>());
+#elif defined(Q_OS_IOS)
+            IOSShareHelper::shareFile(
+                outputPath, "application/octet-stream", tr("Share Notebook Package"));
+#else
+            const double sizeMb =
+                static_cast<double>(result.fileSize) / (1024.0 * 1024.0);
+            QMessageBox::information(
+                this, tr("Export Complete"),
+                tr("Notebook exported successfully.\n\nFile: %1\nSize: %2 MB")
+                    .arg(QFileInfo(outputPath).fileName())
+                    .arg(sizeMb, 0, 'f', 1));
+#endif
+            return;
+        }
+
         // Get valid bundles (dialog filters out edgeless)
-        QStringList validBundles = dialog.validBundles();
+        QStringList validBundles = dialog.validPdfBundles();
         if (validBundles.isEmpty()) {
-            // This shouldn't happen since we checked isEdgeless above,
-            // but handle it gracefully
             return;
         }
         
@@ -3749,6 +3855,8 @@ void MainWindow::saveDocument()
         #endif
         return;
     }
+    if (DocumentViewport* activeViewport = currentViewport())
+        activeViewport->commitInlineTextEdit();
 
     DocumentViewport* viewport = tabManager()->currentViewport();
     if (!viewport) {
@@ -3850,6 +3958,8 @@ void MainWindow::saveDocumentAs()
     if (!m_documentManager || !tabManager()) {
         return;
     }
+    if (DocumentViewport* activeViewport = currentViewport())
+        activeViewport->commitInlineTextEdit();
     DocumentViewport* vp = currentViewport();
     if (!vp) return;
     Document* doc = vp->document();
@@ -4427,6 +4537,103 @@ void MainWindow::handlePageTransferDrop(const QString& srcToken,
     refreshDestinationAfterImport(destVp, clampedIndex);
 }
 
+void MainWindow::addPagesFromPdf(const QString& filePath,
+                                 DocumentViewport* targetViewport)
+{
+    DocumentViewport* destination = targetViewport ? targetViewport : currentViewport();
+    if (!destination || !destination->document()
+        || destination->document()->isEdgeless()) {
+        return;
+    }
+    const QPointer<DocumentViewport> destinationGuard(destination);
+    Document* const destinationDocument = destination->document();
+
+    QString pdfPath = filePath;
+    if (pdfPath.isEmpty()) {
+#ifdef Q_OS_ANDROID
+        pdfPath = PdfPickerAndroid::pickPdfFile();
+#elif defined(Q_OS_IOS)
+        const QPointer<MainWindow> windowGuard(this);
+        const QPointer<DocumentViewport> destinationGuard(destination);
+        PdfPickerIOS::pickPdfFile([windowGuard, destinationGuard](const QString& picked) {
+            if (windowGuard && destinationGuard && !picked.isEmpty()) {
+                windowGuard->addPagesFromPdf(picked, destinationGuard);
+            }
+        });
+        return;
+#else
+        QSettings settings(QStringLiteral("SpeedyNote"), QStringLiteral("App"));
+        QString startDir = settings.value(QStringLiteral("FileDialogs/lastOpenDirectory")).toString();
+        if (startDir.isEmpty() || !QDir(startDir).exists()) startDir = QDir::homePath();
+        pdfPath = QFileDialog::getOpenFileName(
+            this, tr("Add Pages from PDF"), startDir,
+            tr("PDF Files (*.pdf);;All Files (*)"));
+        if (!pdfPath.isEmpty()) {
+            settings.setValue(QStringLiteral("FileDialogs/lastOpenDirectory"),
+                              QFileInfo(pdfPath).absolutePath());
+        }
+#endif
+    }
+    if (pdfPath.isEmpty()) return;
+    if (!destinationGuard || destinationGuard->document() != destinationDocument) return;
+
+    std::unique_ptr<Document> source =
+        Document::createForPdf(QFileInfo(pdfPath).completeBaseName(), pdfPath);
+    if (!source || !source->isPdfLoaded() || source->pdfPageCount() <= 0) {
+        QMessageBox::critical(
+            this, tr("PDF Error"),
+            tr("The selected PDF could not be opened:\n%1").arg(pdfPath));
+        return;
+    }
+
+    PageRangeSelectDialog rangeDialog(
+        source->pageCount(), this, tr("Add Pages from PDF"),
+        QFileInfo(pdfPath).fileName(), QStringLiteral("all"));
+    if (rangeDialog.exec() != QDialog::Accepted) return;
+    if (!destinationGuard || destinationGuard->document() != destinationDocument) return;
+    destination = destinationGuard.data();
+
+    QStringList sourceUuids;
+    for (int index : rangeDialog.selectedIndices()) {
+        const QString uuid = source->pageUuidAt(index);
+        if (!uuid.isEmpty()) sourceUuids.append(uuid);
+    }
+    if (sourceUuids.isEmpty()) return;
+
+    const int insertIndex = qBound(
+        0, destination->currentPageIndex() + 1,
+        destinationDocument->pageCount());
+    if (m_searchEngine) {
+        m_searchEngine->cancelAndWait();
+        m_searchEngine->clearCache();
+    }
+    if (!destination->importPagesWithUndo(source.get(), sourceUuids, insertIndex)) {
+        QMessageBox::warning(
+            this, tr("PDF Import"),
+            tr("The selected PDF pages could not be added to this document."));
+        if (currentViewport() == destination && m_pdfSearchBar
+            && m_pdfSearchBar->isVisible()
+            && m_pdfSearchBar->searchText().trimmed().size() >= 2
+            && m_searchScanDebounce) {
+            m_searchScanDebounce->start();
+        }
+        return;
+    }
+
+    refreshDestinationAfterImport(destination, insertIndex);
+    destination->scrollToPage(insertIndex);
+    updatePdfSourceUi(destination);
+    if (currentViewport() != destination) {
+        updatePdfSourceUi(currentViewport());
+    }
+    if (currentViewport() == destination && m_pdfSearchBar
+        && m_pdfSearchBar->isVisible()
+        && m_pdfSearchBar->searchText().trimmed().size() >= 2
+        && m_searchScanDebounce) {
+        m_searchScanDebounce->start();
+    }
+}
+
 void MainWindow::openPdfDocument(const QString &filePath)
 {
     // Phase doc-1.4: Open PDF file and create PDF-backed document
@@ -4454,9 +4661,10 @@ void MainWindow::openPdfDocument(const QString &filePath)
         // Async: UIDocumentPickerViewController is a remote VC whose result
         // is delivered via XPC — cannot be received in a nested QEventLoop.
         // Re-call openPdfDocument(path) once the user has picked a file.
-        PdfPickerIOS::pickPdfFile([this](const QString& picked) {
-            if (!picked.isEmpty()) {
-                openPdfDocument(picked);
+        const QPointer<MainWindow> windowGuard(this);
+        PdfPickerIOS::pickPdfFile([windowGuard](const QString& picked) {
+            if (windowGuard && !picked.isEmpty()) {
+                windowGuard->openPdfDocument(picked);
             }
         });
         return;
@@ -4755,6 +4963,7 @@ void MainWindow::changeEvent(QEvent *event) {
         // on) to window B (auto-OCR off) would leave the menu checkmark
         // showing A's state until B's user toggled something.
         syncOcrCheckActions();
+        syncObjectModeCheckActions();
     }
 
     // Keep the nav bar's fullscreen toggle in sync with the actual window
@@ -5245,11 +5454,6 @@ void MainWindow::updateTheme() {
         setOcrTextVisibility(true);
     }
 
-    // Phase 2B: Sync floating text editor theme
-    if (m_floatingTextEditor && m_floatingTextEditor->isVisible()) {
-        m_floatingTextEditor->setDarkMode(darkMode);
-    }
-
     // Sync thumbnail renderer dark mode state (respect the current document's
     // PDF inversion override).
     if (m_pagePanel) {
@@ -5488,7 +5692,6 @@ void MainWindow::connectSubToolbarSignals()
     auto* penST = m_toolbar->penSubToolbar();
     auto* markerST = m_toolbar->markerSubToolbar();
     auto* highlighterST = m_toolbar->highlighterSubToolbar();
-    auto* objectST = m_toolbar->objectSelectSubToolbar();
     auto* eraserST = m_toolbar->eraserSubToolbar();
 
     // Pen
@@ -5522,6 +5725,10 @@ void MainWindow::connectSubToolbarSignals()
         if (DocumentViewport* vp = currentViewport())
             vp->setAutoHighlightStyle(static_cast<DocumentViewport::HighlightStyle>(style));
     });
+    connect(highlighterST, &HighlighterSubToolbar::highlightOnReleaseChanged, this,
+            [this](bool enabled) {
+        if (DocumentViewport* vp = currentViewport()) vp->setHighlightOnRelease(enabled);
+    });
     connect(highlighterST, &HighlighterSubToolbar::selectionSourceChanged, this,
             [this](HighlighterSubToolbar::SelectionSource src) {
         if (DocumentViewport* vp = currentViewport()) {
@@ -5532,21 +5739,8 @@ void MainWindow::connectSubToolbarSignals()
         }
     });
 
-    // ObjectSelect
-    connect(objectST, &ObjectSelectSubToolbar::insertModeChanged, this,
-            [this](DocumentViewport::ObjectInsertMode mode) {
-        if (DocumentViewport* vp = currentViewport()) vp->setObjectInsertMode(mode);
-    });
-    connect(objectST, &ObjectSelectSubToolbar::actionModeChanged, this,
-            [this](DocumentViewport::ObjectActionMode mode) {
-        if (DocumentViewport* vp = currentViewport()) vp->setObjectActionMode(mode);
-    });
-    connect(objectST, &ObjectSelectSubToolbar::slotActivated, this, [this](int index) {
-        if (DocumentViewport* vp = currentViewport()) vp->activateLinkSlot(index);
-    });
-    connect(objectST, &ObjectSelectSubToolbar::slotCleared, this, [this](int index) {
-        if (DocumentViewport* vp = currentViewport()) vp->clearLinkSlot(index);
-    });
+    // LinkObject controls live in a viewport-owned LinkObjectBar, which the
+    // viewport wires to its own handlers. Nothing to connect here.
 
     // Eraser
     connect(eraserST, &EraserSubToolbar::eraserSizeChanged, this, [this](qreal size) {
@@ -5555,67 +5749,6 @@ void MainWindow::connectSubToolbarSignals()
     connect(eraserST, &EraserSubToolbar::eraserModeChanged, this, [this](int mode) {
         if (DocumentViewport* vp = currentViewport())
             vp->setEraserMode(static_cast<DocumentViewport::EraserMode>(mode));
-    });
-
-    // LinkObject color
-    connect(objectST, &ObjectSelectSubToolbar::linkObjectColorChanged,
-            this, [this](const QColor& color) {
-        DocumentViewport* vp = currentViewport();
-        if (!vp) return;
-        const auto& selectedObjects = vp->selectedObjects();
-        if (selectedObjects.size() != 1) return;
-        LinkObject* link = dynamic_cast<LinkObject*>(selectedObjects.first());
-        if (!link) return;
-        link->iconColor = color;
-        if (Document* doc = vp->document()) {
-            Page* page = doc->page(vp->currentPageIndex());
-            if (page) {
-                int pageIndex = doc->pageIndexByUuid(page->uuid);
-                if (pageIndex >= 0) {
-                    doc->markPageDirty(pageIndex);
-                    // SB2: keep the marker cache in sync so the tick color
-                    // updates even after this page is later evicted.
-                    doc->refreshLinkOutlineFor(pageIndex);
-                }
-            }
-        }
-        vp->update();
-        if (markdownNotesSidebar && markdownNotesSidebar->isVisible()) {
-            // Phase M.8: update just this LinkObject in place (no preview reload,
-            // no collapse of expanded subtrees, no focus loss).
-            markdownNotesSidebar->updateLinkObject(link->id, link->description, color);
-        }
-        // SB2: recompute the scroll-bar document map (tick color changed).
-        if (m_splitViewManager) m_splitViewManager->updateScrollBarDocumentMap(vp);
-    });
-
-    // LinkObject description
-    connect(objectST, &ObjectSelectSubToolbar::linkObjectDescriptionChanged,
-            this, [this](const QString& description) {
-        DocumentViewport* vp = currentViewport();
-        if (!vp) return;
-        const auto& selectedObjects = vp->selectedObjects();
-        if (selectedObjects.size() != 1) return;
-        LinkObject* link = dynamic_cast<LinkObject*>(selectedObjects.first());
-        if (!link) return;
-        link->description = description;
-        if (Document* doc = vp->document()) {
-            Page* page = doc->page(vp->currentPageIndex());
-            if (page) {
-                int pageIndex = doc->pageIndexByUuid(page->uuid);
-                if (pageIndex >= 0) {
-                    doc->markPageDirty(pageIndex);
-                    // SB2: keep the marker cache in sync (tooltip text changed).
-                    doc->refreshLinkOutlineFor(pageIndex);
-                }
-            }
-        }
-        vp->update();
-        if (markdownNotesSidebar && markdownNotesSidebar->isVisible()) {
-            markdownNotesSidebar->updateLinkObject(link->id, description, link->iconColor);
-        }
-        // SB2: recompute the scroll-bar document map (marker tooltip changed).
-        if (m_splitViewManager) m_splitViewManager->updateScrollBarDocumentMap(vp);
     });
 
     // Tab changes: per-tab state management via Toolbar (keyed by unique tab IDs).
@@ -5631,7 +5764,11 @@ void MainWindow::connectSubToolbarSignals()
 
             if (vp) {
                 ToolType currentTool = vp->currentTool();
+                m_toolbar->setObjectInsertMode(vp->objectInsertMode());
+                if (m_objectSelectActionBar)
+                    m_objectSelectActionBar->setActionModeState(vp->objectActionMode());
                 m_toolbar->setCurrentTool(currentTool);
+                syncObjectModeCheckActions();
                 applyAllSubToolbarValuesToViewport(vp);
             }
             m_previousTabId = newTabId;
@@ -5642,6 +5779,11 @@ void MainWindow::connectSubToolbarSignals()
     // Apply initial preset values to first viewport
     QTimer::singleShot(0, this, [this]() {
         if (DocumentViewport* vp = currentViewport()) {
+            m_toolbar->setObjectInsertMode(vp->objectInsertMode());
+            m_toolbar->setCurrentTool(vp->currentTool());
+            if (m_objectSelectActionBar)
+                m_objectSelectActionBar->setActionModeState(vp->objectActionMode());
+            syncObjectModeCheckActions();
             applyAllSubToolbarValuesToViewport(vp);
         }
     });
@@ -5756,17 +5898,11 @@ void MainWindow::setupActionBars()
     m_lassoActionBar = new LassoActionBar();
     m_objectSelectActionBar = new ObjectSelectActionBar();
     m_textSelectionActionBar = new TextSelectionActionBar();
-    m_clipboardActionBar = new ClipboardActionBar();
     
     // Register action bars with container
     m_actionBarContainer->setActionBar("lasso", m_lassoActionBar);
     m_actionBarContainer->setActionBar("objectSelect", m_objectSelectActionBar);
     m_actionBarContainer->setActionBar("textSelection", m_textSelectionActionBar);
-    m_actionBarContainer->setActionBar("clipboard", m_clipboardActionBar);
-    
-    // Connect tool changes from Toolbar to ActionBarContainer
-    connect(m_toolbar, &Toolbar::toolSelected, 
-            m_actionBarContainer, &ActionBarContainer::onToolChanged);
     
     // Connect clipboard changes from system clipboard
     connect(QApplication::clipboard(), &QClipboard::dataChanged,
@@ -5825,6 +5961,12 @@ void MainWindow::setupActionBars()
     });
     
     // Connect ObjectSelectActionBar signals to viewport
+    connect(m_objectSelectActionBar, &ObjectSelectActionBar::actionModeChanged,
+            this, [this](DocumentViewport::ObjectActionMode mode) {
+        if (DocumentViewport* vp = currentViewport()) {
+            vp->setObjectActionMode(mode);
+        }
+    });
     connect(m_objectSelectActionBar, &ObjectSelectActionBar::copyRequested, this, [this]() {
         if (DocumentViewport* vp = currentViewport()) {
             vp->copySelectedObjects();
@@ -5885,20 +6027,25 @@ void MainWindow::setupActionBars()
         m_objectSelectActionBar->updateOcrLockSelection(true, newState);
         vp->update();
     });
+    connect(m_objectSelectActionBar,
+            &ObjectSelectActionBar::ocrConvertToTextBoxRequested, this, [this]() {
+        DocumentViewport* vp = currentViewport();
+        if (!vp) return;
+        const auto& sel = vp->selectedObjects();
+        if (sel.size() != 1) return;
+        convertOcrTextToTextBox(sel.first());
+    });
+
+    if (DocumentViewport* vp = currentViewport()) {
+        m_objectSelectActionBar->setActionModeState(vp->objectActionMode());
+        m_actionBarContainer->onToolChanged(vp->currentTool());
+        syncObjectModeCheckActions();
+    }
 
     // Connect TextSelectionActionBar signals to viewport
     connect(m_textSelectionActionBar, &TextSelectionActionBar::copyRequested, this, [this]() {
         if (DocumentViewport* vp = currentViewport()) {
             vp->copyTextSelection();
-        }
-    });
-    
-    // Connect ClipboardActionBar signals to viewport
-    connect(m_clipboardActionBar, &ClipboardActionBar::pasteRequested, this, [this]() {
-        if (DocumentViewport* vp = currentViewport()) {
-            vp->pasteForObjectSelect();
-            if (m_toolOverrideViewport && m_toolOverrideViewport != vp)
-                clearToolOverride(true);
         }
     });
     
@@ -5986,6 +6133,7 @@ void MainWindow::setupPdfSearch()
             return;
         }
         m_searchEngine->setDocument(doc);
+        m_searchEngine->setLegacyLayoutZoom(vp->zoomLevel());
         m_searchResultsByPage.clear();
         m_searchTotalMatches = 0;
         // SBS3: clear stale ticks; the new scan refills them as it streams.
@@ -6029,23 +6177,43 @@ void MainWindow::updatePdfSearchBarPosition()
     if (!m_pdfSearchBar || !m_canvasContainer) {
         return;
     }
-    
-    // Position at the bottom of the canvas container
-    QRect viewportRect = m_canvasContainer->rect();
-    
-    // Calculate search bar geometry: full width, at bottom
-    int barHeight = m_pdfSearchBar->height();
-    int y = viewportRect.height() - barHeight;
-    
-    m_pdfSearchBar->setGeometry(0, y, viewportRect.width(), barHeight);
-    
+
+    // Floating card in the top-right corner, the way editors place Find. The
+    // bottom edge is avoided because on tablets it is where the on-screen
+    // keyboard comes up.
+    const int margin = 8;
+
+    // The corner that matters is the active pane's, not the window's: search
+    // acts on the active viewport, and when split those two corners differ. The
+    // bar is a child of the canvas container, so the pane rect comes back in
+    // that container's coordinates.
+    QRect paneRect = m_canvasContainer->rect();
+    if (m_splitViewManager) {
+        QWidget* pane = m_splitViewManager->activePaneContainer();
+        if (pane && pane->isVisible() && m_canvasContainer->isAncestorOf(pane)) {
+            paneRect = QRect(pane->mapTo(m_canvasContainer, QPoint(0, 0)),
+                             pane->size());
+        }
+    }
+
+    const int width = qMin(PdfSearchBar::PREFERRED_WIDTH,
+                           qMax(0, paneRect.width() - margin * 2));
+
+    // A top-docked cross-axis scroll bar and the missing-PDF banner both claim
+    // the pane's top strip, and they overlap each other, so clearing the taller
+    // of the two clears both. Without this the banner's Dismiss button ends up
+    // buried.
+    const int scrollBarReserve = m_splitViewManager
+        ? m_splitViewManager->viewportTopReserve() : 0;
+    DocumentViewport* vp = currentViewport();
+    const int bannerReserve = vp ? vp->topBannerReserve() : 0;
+
+    m_pdfSearchBar->setGeometry(paneRect.right() + 1 - width - margin,
+                                paneRect.top() + qMax(scrollBarReserve, bannerReserve) + margin,
+                                width, m_pdfSearchBar->height());
+
     // Ensure it's raised above viewport content
     m_pdfSearchBar->raise();
-
-    // SB4: keep a bottom-docked cross-axis scroll bar clear of the search bar.
-    if (m_splitViewManager && m_pdfSearchBar->isVisible()) {
-        m_splitViewManager->setViewportBottomInset(barHeight);
-    }
 }
 
 void MainWindow::showPdfSearchBar()
@@ -6068,11 +6236,6 @@ void MainWindow::showPdfSearchBar()
     
     // Sync dark mode
     m_pdfSearchBar->setDarkMode(isDarkMode());
-
-    // SB4: reserve bottom space so a bottom-docked cross-axis bar clears it.
-    if (m_splitViewManager) {
-        m_splitViewManager->setViewportBottomInset(m_pdfSearchBar->height());
-    }
 }
 
 void MainWindow::hidePdfSearchBar()
@@ -6104,12 +6267,6 @@ void MainWindow::hidePdfSearchBar()
     
     m_pdfSearchBar->hide();
     m_pdfSearchBar->clearStatus();
-
-    // SB4: release the reserved bottom space so a bottom-docked cross-axis bar
-    // drops back to the edge.
-    if (m_splitViewManager) {
-        m_splitViewManager->setViewportBottomInset(0);
-    }
     
     // Clear search highlights from viewport
     if (DocumentViewport *vp = currentViewport()) {
@@ -6155,6 +6312,8 @@ void MainWindow::setScrollBarHorizontalOnBottom(bool onBottom)
     if (!m_splitViewManager) return;
     m_splitViewManager->setScrollBarHorizontalEdge(onBottom ? ViewportScrollBar::DockEdge::Bottom
                                                             : ViewportScrollBar::DockEdge::Top);
+    // The top strip the search bar has to clear grows or vanishes with the edge.
+    updatePdfSearchBarPosition();
 }
 
 bool MainWindow::scrollBarsPinned() const
@@ -6182,6 +6341,7 @@ void MainWindow::onSearchNext(const QString& text, bool caseSensitive, bool whol
     
     // Set the document on the engine
     m_searchEngine->setDocument(doc);
+    m_searchEngine->setLegacyLayoutZoom(vp->zoomLevel());
     
     // Clear status before searching
     m_pdfSearchBar->clearStatus();
@@ -6226,6 +6386,7 @@ void MainWindow::onSearchPrev(const QString& text, bool caseSensitive, bool whol
     
     // Set the document on the engine
     m_searchEngine->setDocument(doc);
+    m_searchEngine->setLegacyLayoutZoom(vp->zoomLevel());
     
     // Clear status before searching
     m_pdfSearchBar->clearStatus();
@@ -6793,10 +6954,22 @@ void MainWindow::onOcrResultsReady(const QString& pageId, const QVector<OcrTextB
     }
     if (!page || !doc) return;
 
-    page->ocrTextBlocks = blocks;
+    // A scan that started before the user deleted or converted a block still
+    // reports that block, because the worker filtered its stroke list before
+    // the suppression was recorded. Drop those results so they cannot come
+    // back through the sidecar, search, or the object overlay.
+    QVector<OcrTextBlock> acceptedBlocks;
+    acceptedBlocks.reserve(blocks.size());
+    for (const auto& block : blocks) {
+        if (!isOcrBlockDismissed(block, page->suppressedStrokeIds,
+                                 page->dismissedOcrBlockKeys))
+            acceptedBlocks.append(block);
+    }
+
+    page->ocrTextBlocks = acceptedBlocks;
     page->ocrDirty = false;
 
-    syncOcrTextObjects(page, blocks);
+    syncOcrTextObjects(doc, page, acceptedBlocks);
 
     // Invalidate the Highlighter's OCR-block cache on any viewport currently
     // showing this document, so a new drag will see the refreshed OCR data.
@@ -6821,7 +6994,7 @@ void MainWindow::onOcrResultsReady(const QString& pageId, const QVector<OcrTextB
         doc->savePageOcr(localId, page);
 
     int wordCount = 0;
-    for (const auto& b : blocks)
+    for (const auto& b : acceptedBlocks)
         if (!b.text.isEmpty()) ++wordCount;
 
     m_toolbar->ocrSubToolbar()->setStatusText(
@@ -6888,20 +7061,28 @@ QVector<VectorStroke> MainWindow::collectPageStrokes(const Page* page) const
     return allStrokes;
 }
 
-void MainWindow::syncOcrTextObjects(Page* page, const QVector<OcrTextBlock>& blocks)
+void MainWindow::forgetObjectsInViewports(Document* owner,
+                                          const QVector<QString>& objectIds)
+{
+    if (!owner || objectIds.isEmpty() || !m_splitViewManager)
+        return;
+
+    m_splitViewManager->forEachTabManager([&](TabManager* tm, SplitViewManager::Pane) {
+        if (!tm) return;
+        const int n = tm->tabCount();
+        for (int i = 0; i < n; ++i) {
+            DocumentViewport* vp = tm->viewportAt(i);
+            if (!vp || vp->document() != owner) continue;
+            for (const auto& objectId : objectIds)
+                vp->forgetObject(objectId);
+        }
+    });
+}
+
+void MainWindow::syncOcrTextObjects(Document* owner, Page* page,
+                                    const QVector<OcrTextBlock>& blocks)
 {
     if (!page) return;
-
-    // Close floating editor if its target is an unlocked OCR text on this page
-    if (m_floatingTextEditor && m_floatingTextEditor->isVisible()) {
-        if (auto* tgt = m_floatingTextEditor->target()) {
-            if (tgt->type() == QLatin1String("ocr_text") && page->objectById(tgt->id)) {
-                auto* ocrTgt = static_cast<OcrTextObject*>(tgt);
-                if (!ocrTgt->ocrLocked)
-                    m_floatingTextEditor->closeEditor();
-            }
-        }
-    }
 
     // Collect locked stroke IDs to suppress, and remove only unlocked OCR objects
     QSet<QString> suppressedStrokeIds;
@@ -6917,6 +7098,10 @@ void MainWindow::syncOcrTextObjects(Page* page, const QVector<OcrTextBlock>& blo
             }
         }
     }
+    // Selection and hover point straight at these objects, and a scan can land
+    // while the user has one selected (the convert dialog even runs a nested
+    // event loop), so clear those references before the memory goes away.
+    forgetObjectsInViewports(owner, toRemove);
     for (const auto& oid : toRemove)
         page->removeObject(oid);
 
@@ -6977,7 +7162,7 @@ void MainWindow::setOcrTextVisibility(bool visible)
     bool dark = isDarkMode();
     doc->setOcrTextVisible(visible);
     doc->setOcrDarkMode(dark);
-    QColor bg = dark ? QColor(40, 40, 40, 180) : QColor(255, 255, 255, 180);
+    QColor bg = TextBoxObject::defaultBackgroundColor(dark);
 
     bool snapEnabled = doc->ocrSnapToBackground;
     bool cjkGlobal = false;
@@ -7145,6 +7330,29 @@ void MainWindow::syncOcrCheckActions()
         a->setChecked(ocrST->isShowTextEnabled());
     if (auto* a = sm->action(QStringLiteral("ocr.snap_grid")))
         a->setChecked(ocrST->isSnapToGridEnabled());
+}
+
+void MainWindow::syncObjectModeCheckActions()
+{
+#ifdef Q_OS_MACOS
+    DocumentViewport* viewport = currentViewport();
+    auto* sm = ShortcutManager::instance();
+    if (!viewport || !sm) return;
+
+    const auto insertMode = viewport->objectInsertMode();
+    if (auto* a = sm->action(QStringLiteral("object.mode_image")))
+        a->setChecked(insertMode == DocumentViewport::ObjectInsertMode::Image);
+    if (auto* a = sm->action(QStringLiteral("object.mode_link")))
+        a->setChecked(insertMode == DocumentViewport::ObjectInsertMode::Link);
+    if (auto* a = sm->action(QStringLiteral("object.mode_text")))
+        a->setChecked(insertMode == DocumentViewport::ObjectInsertMode::Text);
+
+    const auto actionMode = viewport->objectActionMode();
+    if (auto* a = sm->action(QStringLiteral("object.mode_create")))
+        a->setChecked(actionMode == DocumentViewport::ObjectActionMode::Create);
+    if (auto* a = sm->action(QStringLiteral("object.mode_select")))
+        a->setChecked(actionMode == DocumentViewport::ObjectActionMode::Select);
+#endif
 }
 
 // Refresh both the OS window title (per-platform format with Qt's native
@@ -7351,127 +7559,42 @@ void MainWindow::applyDocumentOcrLanguage(Document* doc, const QString& lang)
 }
 
 // =========================================================================
-// Phase 2B: Floating Text Editor
+// OCR text conversion
 // =========================================================================
 
-void MainWindow::openFloatingTextEditor(InsertedObject* obj)
+void MainWindow::convertOcrTextToTextBox(InsertedObject* obj)
 {
-    auto* textBox = dynamic_cast<TextBoxObject*>(obj);
-    if (!textBox) return;
+    auto* ocrObj = dynamic_cast<OcrTextObject*>(obj);
+    if (!ocrObj)
+        return;
 
-    // If target is an unlocked OcrTextObject, ask user to lock before editing
-    auto* ocrObj = dynamic_cast<OcrTextObject*>(textBox);
-    if (ocrObj && !ocrObj->ocrLocked) {
-        auto result = QMessageBox::question(this, tr("Lock OCR Text"),
-            tr("Lock this OCR text? It will no longer be updated by automatic scanning.\n\nProceed to lock and edit?"),
-            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
-        if (result != QMessageBox::Yes) return;
-        ocrObj->ocrLocked = true;
-        if (DocumentViewport* vp = currentViewport())
-            vp->pushOcrLockUndo(QVector<QString>{ocrObj->id}, true);
+    QPointer<DocumentViewport> viewport = currentViewport();
+    if (!viewport)
+        return;
+    const QString objectId = ocrObj->id;
+
+    auto result = QMessageBox::question(this, tr("Convert OCR Text"),
+        tr("Convert this recognized text into an editable text box?\n\n"
+           "The recognized block is removed and its ink is excluded from "
+           "future scans."),
+        QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+    if (result != QMessageBox::Yes || !viewport)
+        return;
+
+    // The dialog ran an event loop, so an OCR rescan may have replaced the
+    // object in the meantime; resolve it again instead of trusting obj.
+    auto* target =
+        dynamic_cast<OcrTextObject*>(viewport->objectById(objectId));
+    if (!target) {
+        // The user said yes and nothing happened, so say why rather than
+        // leaving them to wonder whether the click registered.
+        QMessageBox::information(this, tr("Convert OCR Text"),
+            tr("This recognized text is no longer available. "
+               "A new scan may have replaced it."));
+        return;
     }
 
-    // Close existing session first (pushes undo if changed)
-    if (m_floatingTextEditor && m_floatingTextEditor->isVisible()) {
-        m_floatingTextEditor->closeEditor();
-    }
-
-    // Lazy creation
-    if (!m_floatingTextEditor) {
-        m_floatingTextEditor = new FloatingTextEditor(this);
-        connect(m_floatingTextEditor, &FloatingTextEditor::repaintRequested,
-                this, [this]() {
-            if (DocumentViewport* vp = currentViewport())
-                vp->update();
-        });
-        connect(m_floatingTextEditor, &FloatingTextEditor::editorClosed,
-                this, [this](const QString& objectId,
-                             const QString& oldText, const QString& newText,
-                             int oldAlign, int newAlign,
-                             int oldOpacity, int newOpacity,
-                             const QColor& oldFontColor, const QColor& newFontColor) {
-            DocumentViewport* vp = currentViewport();
-            if (!vp) return;
-            InsertedObject* obj = nullptr;
-            if (Document* doc = vp->document()) {
-                if (doc->isEdgeless()) {
-                    for (const auto& coord : doc->allLoadedTileCoords()) {
-                        Page* tile = doc->getTile(coord.first, coord.second);
-                        if (tile) { obj = tile->objectById(objectId); if (obj) break; }
-                    }
-                } else {
-                    for (int i = 0; i < doc->pageCount(); ++i) {
-                        Page* page = doc->page(i);
-                        if (page) { obj = page->objectById(objectId); if (obj) break; }
-                    }
-                }
-            }
-            if (obj) {
-                vp->pushObjectTextEditUndo(obj, oldText, newText,
-                                           oldAlign, newAlign,
-                                           oldOpacity, newOpacity,
-                                           oldFontColor, newFontColor);
-            }
-        });
-    }
-
-    m_floatingTextEditor->setDarkMode(isDarkMode());
-    m_floatingTextEditor->setTarget(textBox);
-
-    // Position near the text box
-    if (DocumentViewport* vp = currentViewport()) {
-        QPointF docPos = textBox->position;
-
-        if (Document* doc = vp->document()) {
-            if (doc->isEdgeless()) {
-                for (const auto& coord : doc->allLoadedTileCoords()) {
-                    Page* tile = doc->getTile(coord.first, coord.second);
-                    if (tile && tile->objectById(textBox->id)) {
-                        docPos = QPointF(coord.first * Document::EDGELESS_TILE_SIZE,
-                                         coord.second * Document::EDGELESS_TILE_SIZE)
-                                 + textBox->position;
-                        break;
-                    }
-                }
-            } else {
-                for (int i = 0; i < doc->pageCount(); ++i) {
-                    Page* page = doc->page(i);
-                    if (page && page->objectById(textBox->id)) {
-                        docPos = vp->pageToDocument(i, textBox->position);
-                        break;
-                    }
-                }
-            }
-        }
-
-        QPointF vpPt = vp->documentToViewport(docPos);
-        QPoint globalPt = vp->mapToGlobal(vpPt.toPoint());
-        QPoint localPt = mapFromGlobal(globalPt);
-
-        int editorW = m_floatingTextEditor->width();
-        int editorH = m_floatingTextEditor->height();
-
-        // Place to the right of the object, or fall back to below
-        int x = localPt.x() + static_cast<int>(textBox->size.width() * vp->zoomLevel()) + 10;
-        int y = localPt.y();
-
-        if (x + editorW > width())
-            x = qMax(0, localPt.x() - editorW - 10);
-        if (y + editorH > height())
-            y = qMax(0, height() - editorH);
-
-        m_floatingTextEditor->move(x, y);
-    }
-
-    m_floatingTextEditor->show();
-    m_floatingTextEditor->raise();
-}
-
-void MainWindow::closeFloatingTextEditor()
-{
-    if (m_floatingTextEditor && m_floatingTextEditor->isVisible()) {
-        m_floatingTextEditor->closeEditor();
-    }
+    viewport->convertOcrTextToTextBox(target, true);
 }
 
 // =========================================================================
@@ -7521,6 +7644,8 @@ void MainWindow::setupPagePanelActionBar()
             vp->scrollToPage(page);
         }
     });
+    connect(m_pagePanelActionBar, &PagePanelActionBar::jumpToPageRequested,
+            this, &MainWindow::showJumpToPageDialog);
     
     // Layout toggle: Switch between 1-column and auto 1/2 column mode
     connect(m_pagePanelActionBar, &PagePanelActionBar::layoutToggleClicked, this, [this]() {
@@ -7560,6 +7685,9 @@ void MainWindow::setupPagePanelActionBar()
             vp->scrollToPage(targetPage);
         }
     });
+
+    connect(m_pagePanelActionBar, &PagePanelActionBar::addPdfPagesClicked,
+            this, [this]() { addPagesFromPdf(); });
     
     // Delete Page (first click): Store index, wait for confirmation
     // BUG-PG-002 FIX: Defer deletion until 5-second timer expires
@@ -7998,6 +8126,20 @@ void MainWindow::syncAllDocumentPositions()
             if (syncDocumentPosition(doc, vp)) {
                 doc->markModified();
             }
+        }
+    });
+}
+
+void MainWindow::commitAllInlineTextEdits()
+{
+    if (!m_splitViewManager)
+        return;
+
+    m_splitViewManager->forEachTabManager([&](TabManager* tm, SplitViewManager::Pane) {
+        if (!tm) return;
+        for (int i = 0; i < tm->tabCount(); ++i) {
+            if (DocumentViewport* vp = tm->viewportAt(i))
+                vp->commitInlineTextEdit();
         }
     });
 }
@@ -8546,6 +8688,29 @@ void MainWindow::toggleDebugOverlay() {
     // Connect to current viewport if shown
     if (m_debugOverlay->isOverlayVisible()) {
         m_debugOverlay->setViewport(currentViewport());
+    }
+}
+
+void MainWindow::togglePerfHud() {
+    m_perfHudEnabled = !m_perfHudEnabled;
+    applyPerfHudToViewport(currentViewport());
+    
+    // There is no point collecting statistics the user cannot see.
+    if (m_perfHudEnabled && m_debugOverlay && !m_debugOverlay->isOverlayVisible()) {
+        m_debugOverlay->setViewport(currentViewport());
+        m_debugOverlay->show();
+    }
+}
+
+void MainWindow::applyPerfHudToViewport(DocumentViewport* viewport) {
+    if (!viewport) return;
+    
+    // Instrumentation lives on the viewport, so switching tabs or panes has to
+    // carry the setting across or the HUD would silently go blank.
+    if (m_perfHudEnabled) {
+        viewport->startBenchmark();
+    } else {
+        viewport->stopBenchmark();
     }
 }
 
@@ -9114,6 +9279,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     // markModified every edgeless doc and force a prompt for harmless pans.
     // The mobile suspend hook still uses it, where that behavior is needed.)
     if (m_splitViewManager && m_documentManager) {
+        if (m_searchEngine) m_searchEngine->cancelAndWait();
         auto checkPane = [&](TabManager* tm, TabBar* bar) -> bool {
             if (!tm) return true;
             for (int i = 0; i < tm->tabCount(); ++i) {
@@ -9169,7 +9335,13 @@ void MainWindow::closeEvent(QCloseEvent *event) {
                         // Plan B2: materialize imported PDF sources into bundled
                         // mini-PDFs on quit (Save branch only) so the .snb is portable.
                         if (doc->needsMaterialization() && !doc->bundlePath().isEmpty()) {
-                            doc->saveBundle(doc->bundlePath(), /*finalize=*/true);
+                            if (!doc->saveBundle(doc->bundlePath(), /*finalize=*/true)) {
+                                QMessageBox::critical(
+                                    this, tr("Save Error"),
+                                    tr("PDF sources could not be finalized. Repair the "
+                                       "unavailable sources before quitting."));
+                                return false;
+                            }
                         }
                     }
                 } else {
@@ -9177,7 +9349,13 @@ void MainWindow::closeEvent(QCloseEvent *event) {
                     // Ctrl+S then quit without editing). Still finalize imported PDF
                     // sources into bundled mini-PDFs, provided a real save location.
                     if (!isUsingTemp && doc->needsMaterialization() && !doc->bundlePath().isEmpty()) {
-                        doc->saveBundle(doc->bundlePath(), /*finalize=*/true);
+                        if (!doc->saveBundle(doc->bundlePath(), /*finalize=*/true)) {
+                            QMessageBox::critical(
+                                this, tr("Save Error"),
+                                tr("PDF sources could not be finalized. Repair the "
+                                   "unavailable sources before quitting."));
+                            return false;
+                        }
                     }
                 }
             }

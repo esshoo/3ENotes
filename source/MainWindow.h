@@ -64,8 +64,6 @@ class OcrWorker;
 class OcrSubToolbar;
 struct OcrSnapParams;
 
-// Phase 2B: Floating Text Editor
-class FloatingTextEditor;
 #include "ocr/OcrTextBlock.h"
 
 // Action Bar includes
@@ -73,7 +71,6 @@ class ActionBarContainer;
 class LassoActionBar;
 class ObjectSelectActionBar;
 class TextSelectionActionBar;
-class ClipboardActionBar;
 class PagePanelActionBar;
 
 // Phase 3.1.8: TouchGestureMode - extracted from InkCanvas.h for palm rejection
@@ -392,11 +389,16 @@ private slots:
     void refreshOutlineAvailability(Document* doc);  // Plan A2: re-grey outline entries after structure change
     void updatePagePanelForViewport(DocumentViewport* viewport);  // Page Panel: Task 5.1: Update PagePanel
     void notifyPageStructureChanged(Document* doc, int currentPage = -1);  // Helper: Update PagePanel after page add/remove
-    void showPdfRelinkDialog(DocumentViewport* viewport);  // Phase R.4: Unified PDF relink handler
-    void showPdfExportDialog();  // Phase 8: PDF Export dialog
-    void updateLinkSlotButtons(DocumentViewport* viewport);  // Phase D: Update subtoolbar slot buttons
+    void showPdfSourcesDialog(DocumentViewport* viewport);
+    void updatePdfSourceUi(DocumentViewport* viewport);
+    void showExportDialog();
     void applySubToolbarValuesToViewport(ToolType tool);  // Phase D: Apply subtoolbar presets to viewport (via signals)
     void applyAllSubToolbarValuesToViewport(DocumentViewport* viewport);  // Phase D: Apply ALL tool presets directly
+    /// Push the Highlighter's four global settings into a viewport. Called from
+    /// both the tab-switch path and connectViewportScrollSignals(), which run
+    /// from different signal handlers in no guaranteed order, so they have to
+    /// push the same way.
+    void applyHighlighterSettingsToViewport(DocumentViewport* viewport);
     
     // Phase doc-1: Document operations
     void saveDocument();          // doc-1.1: Save document to JSON file (Ctrl+S)
@@ -420,11 +422,12 @@ private slots:
     // Shared post-import refresh of a (possibly non-active) destination viewport.
     void refreshDestinationAfterImport(DocumentViewport* destVp, int destIndex);
     void openPdfDocument(const QString &filePath = QString());       // doc-1.4: Open PDF file (Ctrl+Shift+O)
+    void addPagesFromPdf(const QString& filePath = QString(),
+                         DocumentViewport* targetViewport = nullptr);
     bool isDarkMode();
 
     // MAC.6: promoted from private: to private slots: so MacMenuBar can
-    // dispatch to them via QMetaObject::invokeMethod (matches the MAC.3
-    // showPdfRelinkDialog pattern). lockAllOcrText() is a new slot factored
+    // dispatch to them via QMetaObject::invokeMethod. lockAllOcrText() is a slot factored
     // out of the inline lambda previously living in setupUi()'s overflow
     // menu; the overflow now calls it directly so the macOS OCR menu and
     // the overflow menu share one implementation.
@@ -446,6 +449,10 @@ private slots:
     // app-global, so switching focus between two MainWindows whose toolbars
     // disagree must re-seed the menu checkmarks from the now-active window).
     void syncOcrCheckActions();
+
+    // Keep the macOS Object Mode menu checkmarks aligned with the active
+    // viewport's per-tab insert and action modes.
+    void syncObjectModeCheckActions();
 
     /**
      * @brief Refresh the OS window title and NavigationBar filename label.
@@ -505,6 +512,15 @@ private:
      * Used before auto-save (Android) and before closeEvent checks.
      */
     void syncAllDocumentPositions();
+
+    /**
+     * @brief Commit any open inline text edit across every tab.
+     *
+     * In-progress inline text lives only in the object model until the session
+     * commits, and an uncommitted page is never dirty, so autosave would write
+     * the document without it. Explicit Save already commits first.
+     */
+    void commitAllInlineTextEdits();
 
     /**
      * @brief Sync position and silently auto-save if the only change is the position.
@@ -613,8 +629,7 @@ private:
     QList<NoteDisplayData> searchMarkdownNotes(const QString& query, int fromPage, int toPage);
 
     QMenu *overflowMenu;
-    QAction* m_relinkPdfAction = nullptr;  // Phase R.4: Relink PDF menu action
-    QAction* m_exportPdfAction = nullptr;  // Phase 8: Export to PDF menu action
+    QAction* m_pdfSourcesAction = nullptr;
 
     // QListWidget *tabList;          // Horizontal tab bar
     // QStackedWidget *canvasStack;   // Holds multiple InkCanvas instances
@@ -639,7 +654,6 @@ private:
     LassoActionBar *m_lassoActionBar = nullptr;
     ObjectSelectActionBar *m_objectSelectActionBar = nullptr;
     TextSelectionActionBar *m_textSelectionActionBar = nullptr;
-    ClipboardActionBar *m_clipboardActionBar = nullptr;
     PagePanelActionBar *m_pagePanelActionBar = nullptr;
     
     // PDF Search
@@ -663,9 +677,6 @@ private:
     QStringList m_ocrDownloadedLanguages;
     std::set<std::pair<int,int>> m_ocrTempLoadedTiles;
     Document* m_ocrTempLoadedDoc = nullptr;
-    
-    // Phase 2B: Floating Text Editor
-    FloatingTextEditor* m_floatingTextEditor = nullptr;
     
     // Page Panel: Task 5.3: Pending delete state for undo support
     int m_pendingDeletePageIndex = -1;
@@ -693,6 +704,11 @@ private:
     // Debug Overlay (development tool - easily disabled for production)
     class DebugOverlay* m_debugOverlay = nullptr;  // Floating debug info panel
     void toggleDebugOverlay();                      // Toggle debug overlay visibility
+    
+    // Paint performance HUD (available in release builds; see ViewportPerfMonitor)
+    bool m_perfHudEnabled = false;                  // Whether instrumentation is on
+    void togglePerfHud();                           // Toggle paint instrumentation
+    void applyPerfHudToViewport(DocumentViewport* viewport);  // Carry state across tabs
     
     // Two-column layout toggle (Ctrl+2)
     void toggleAutoLayout();                        // Toggle auto 1/2 column layout mode
@@ -744,6 +760,9 @@ private:
     // Phase D: Auto-highlight sync connection (subtoolbar ↔ viewport)
     QMetaObject::Connection m_autoHighlightConn;
 
+    // Select-vs-highlight sync connection (viewport -> subtoolbar)
+    QMetaObject::Connection m_highlightOnReleaseConn;
+
     // Highlighter selection-source sync connection (viewport -> subtoolbar)
     QMetaObject::Connection m_highlighterModeConn;
 
@@ -792,9 +811,12 @@ private:
     QMetaObject::Connection m_markdownNoteOpenConn;   // Phase M.5: For requestOpenMarkdownNote
     QMetaObject::Connection m_userWarningConn;        // For viewport userWarning → QMessageBox
     QMetaObject::Connection m_linkObjectListConn;     // M.7.3: For linkObjectListMayHaveChanged
-    QMetaObject::Connection m_pdfRelinkConn;          // Phase R.4: For requestPdfRelink signal
+    QMetaObject::Connection m_linkAppearanceConn;     // For linkObjectAppearanceChanged
+    QMetaObject::Connection m_pdfSourcesConn;
+    QMetaObject::Connection m_pdfBannerReserveConn;  // Banner height → search bar Y
     QMetaObject::Connection m_strokesChangedConn;      // OCR: For strokesChanged → debounce
-    QMetaObject::Connection m_textEditorConn;          // Phase 2B: For openTextEditorRequested
+    QMetaObject::Connection m_ocrConvertConn;          // For convertOcrTextRequested
+    QMetaObject::Connection m_textBoxLayoutConn;       // Text-box commit → search invalidation
     
     // Pan tool hold (H key spring-loaded activation)
     bool m_panHoldActive = false;
@@ -848,16 +870,25 @@ private:
     void onOcrBatchFinished(int pagesScanned, int pagesWithText);
     void onOcrError(const QString& pageId, const QString& message);
     QVector<VectorStroke> collectPageStrokes(const Page* page) const;
-    void syncOcrTextObjects(Page* page, const QVector<OcrTextBlock>& blocks);
+    void syncOcrTextObjects(Document* owner, Page* page,
+                            const QVector<OcrTextBlock>& blocks);
+    /**
+     * @brief Drop viewport references to objects about to be destroyed.
+     *
+     * Selection and hover hold raw pointers, so any code that frees objects
+     * directly on a Page must notify every viewport showing @p owner first.
+     */
+    void forgetObjectsInViewports(Document* owner,
+                                  const QVector<QString>& objectIds);
     void setOcrTextVisibility(bool visible);
     void setOcrConfidenceVisibility(bool enabled);
     // MAC.6: showOcrLanguageDialog() promoted to private slots: above.
     QString resolveOcrLanguage(Document* doc) const;
     OcrSnapParams buildOcrSnapParams(Document* doc, Page* page) const;
     
-    // Phase 2B: Floating Text Editor
-    void openFloatingTextEditor(InsertedObject* obj);
-    void closeFloatingTextEditor();
+    /// Confirms with the user, then asks the viewport to replace a recognized
+    /// OCR block with an editable text box.
+    void convertOcrTextToTextBox(InsertedObject* obj);
     
     // Responsive toolbar management - REMOVED MW4.3: All layout functions and variables removed
     
@@ -872,8 +903,8 @@ private:
     // by ShortcutManager, dispatched via wireQActionDispatchers). m_escapeShortcut
     // is the lone exception — it's a per-window QShortcut because Escape
     // dismissal walks a per-window priority list (modal -> search bar ->
-    // floating editor -> viewport -> launcher) that doesn't fit the
-    // activeMainWindow() dispatch model and needs Qt::WindowShortcut scope.
+    // viewport -> launcher) that doesn't fit the activeMainWindow() dispatch
+    // model and needs Qt::WindowShortcut scope.
     // setupManagedShortcuts() also installs an unnamed Cmd+K alternate for
     // Settings on macOS (parent-owned by `this`, no separate handle needed).
     QShortcut* m_escapeShortcut = nullptr;

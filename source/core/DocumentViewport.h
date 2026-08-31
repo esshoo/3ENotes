@@ -28,12 +28,22 @@ enum class TouchGestureMode {
 #include "Document.h"
 #include "Page.h"
 #include "ToolType.h"
+#include "ViewportPerfMonitor.h"
+#include "../objects/HighlightRegion.h"
+#include "../objects/TextBoxObject.h"
 #include "../strokes/VectorStroke.h"
 #include "../pdf/PdfProvider.h"
 #include "../pdf/PdfSearchEngine.h"
 #include <QStack>
 #include <QMap>
 #include <QSet>
+
+class QContextMenuEvent;
+class ImageObject;
+class InlineTextBoxEditor;
+class LinkObjectBar;
+class OcrTextObject;
+class TextBoxFormatBar;
 
 // ============================================================================
 // UndoAction - Unified undo action for both paged and edgeless modes
@@ -46,7 +56,9 @@ enum class TouchGestureMode {
  * a stroke may span multiple tiles, producing multiple segments.  The undo/redo
  * loop iterates segments identically regardless of mode.
  *
- * Memory bound: MAX_UNDO actions × ~20KB avg = ~2MB max
+ * Memory bound: MAX_UNDO actions. Most actions are compact; an unpersisted
+ * clipboard image can temporarily retain a shared full-resolution snapshot
+ * so undo/redo remains lossless if its background asset write fails.
  */
 struct UndoAction {
     enum Type {
@@ -64,7 +76,9 @@ struct UndoAction {
         ObjectAffinityChange,
         ObjectResize,
         ObjectTextEdit,
+        ObjectRegionChange,     ///< A LinkObject's highlight region was re-ranged by Adjust
         OcrLockChange,
+        OcrConvertToTextBox,    ///< One OCR block replaced by an editable text box
 
         // ===== Page-structure types (Plan A2) =====
         PageDelete,             ///< One or more whole pages removed; undo restores them
@@ -72,6 +86,29 @@ struct UndoAction {
         // ===== Page-structure types (Plan B) =====
         PageInsert              ///< One or more whole pages inserted (import); undo removes them
     };
+
+    /**
+     * @brief Whether undoing/redoing @p type can change text-box text or layout.
+     *
+     * Search caches match rectangles produced by the text-box layout engine, so
+     * they must be dropped whenever this returns true. Erring towards true only
+     * costs a cache rebuild; erring the other way leaves stale hits on screen.
+     */
+    static bool affectsTextLayout(Type type) {
+        switch (type) {
+        case ObjectInsert:
+        case ObjectDelete:
+        case ObjectMove:
+        case ObjectResize:
+        case ObjectTextEdit:
+        case OcrConvertToTextBox:
+        case PageDelete:
+        case PageInsert:
+            return true;
+        default:
+            return false;
+        }
+    }
 
     Type type = AddStroke;
     int layerIndex = 0;
@@ -123,6 +160,9 @@ struct UndoAction {
     int objectPageIndex = -1;                      ///< Container page (paged mode)
     Document::TileCoord objectTileCoord = {0, 0};  ///< Container tile (edgeless mode)
     QJsonObject objectData;
+    QImage objectImageSnapshot;                       ///< Shared full-resolution recovery pixels
+    QByteArray objectImageEncodedData;                ///< Original file bytes, when available
+    QByteArray objectImageFormat;                     ///< Safe original format/extension
     QString objectId;
     QPointF objectOldPosition;
     QPointF objectNewPosition;
@@ -138,20 +178,39 @@ struct UndoAction {
     qreal objectNewRotation = 0.0;
     bool objectOldAspectLock = true;
     bool objectNewAspectLock = true;
+    /// ObjectResize only carries a text-box state when the object is one;
+    /// ObjectTextEdit always does.
+    bool objectHasTextBoxState = false;
+    TextBoxState objectOldTextBoxState;
+    TextBoxState objectNewTextBoxState;
 
-    // ObjectTextEdit fields
-    QString objectOldText;
-    QString objectNewText;
-    int objectOldTextAlignment = 0;
-    int objectNewTextAlignment = 0;
-    int objectOldBgAlpha = 180;
-    int objectNewBgAlpha = 180;
-    QColor objectOldFontColor = QColor(60, 60, 60);
-    QColor objectNewFontColor = QColor(60, 60, 60);
+    /// ObjectRegionChange: the annotation's highlight geometry before/after an
+    /// Adjust session. position/size are carried in objectOld/NewPosition and
+    /// objectOld/NewSize, since re-ranging moves the region's bounding box.
+    HighlightRegion objectOldRegion;
+    HighlightRegion objectNewRegion;
+    /// Also carried because recolouring the mark re-derives the badge tint from
+    /// it, so the two have to travel together. Equal on both sides for an
+    /// Adjust session, which only moves geometry.
+    QColor objectOldIconColor;
+    QColor objectNewIconColor;
 
     // OcrLockChange fields
     QVector<QString> ocrLockObjectIds;
     bool ocrLockNewState = false;
+
+    // ===== OcrConvertToTextBox fields =====
+    // objectData holds the produced text box, objectId its (fresh) id, and the
+    // container fields locate both objects. Everything below restores the OCR
+    // side of the conversion, including the derived-cache state that lives in
+    // the .ocr.json sidecar rather than in page JSON.
+    QJsonObject ocrSourceObjectData;                 ///< OcrTextObject::toJson snapshot
+    QJsonObject ocrSourceBlock;                      ///< Removed OcrTextBlock, when one existed
+    bool ocrSourceBlockValid = false;
+    int ocrSourceBlockIndex = -1;                    ///< Position the block occupied
+    QVector<QString> ocrSuppressedStrokeIdsAdded;    ///< Only the newly suppressed ids
+    /// Fingerprint recorded for a block with no source strokes; empty otherwise.
+    QString ocrDismissedBlockKeyAdded;
 };
 
 #include <QWidget>
@@ -165,8 +224,6 @@ struct UndoAction {
 #include <QTimer>
 #include <QMutex>
 #include <QFutureWatcher>
-#include <deque>
-
 // Forward declarations
 class QPaintEvent;
 class QResizeEvent;
@@ -180,6 +237,7 @@ class QDropEvent;
 class TouchGestureHandler;
 class MissingPdfBanner;
 class LinkObject;
+struct LinkSlot;
 
 /**
  * @brief Layout mode for page arrangement.
@@ -244,6 +302,7 @@ struct PointerEvent {
     // Hardware state
     bool isEraser = false;    ///< True if using eraser end OR eraser button
     int stylusButtons = 0;    ///< Barrel button bitmask
+    Qt::MouseButton button = Qt::NoButton;  ///< Button that caused press/release
     Qt::MouseButtons buttons = Qt::NoButton;  ///< Mouse/stylus buttons
     Qt::KeyboardModifiers modifiers = Qt::NoModifier;  ///< Keyboard modifiers (Ctrl, Shift, etc.)
     
@@ -385,16 +444,23 @@ public:
     
     // ===== Missing PDF Banner (Phase R.3) =====
     
-    /**
-     * @brief Show the missing PDF banner at the top of the viewport.
-     * @param pdfName Filename of the missing PDF to display.
-     */
-    void showMissingPdfBanner(const QString& pdfName);
+    void showPdfSourceWarning(int sourceCount, int affectedPages,
+                              const QString& singleSourceName,
+                              const QString& warningSignature);
     
     /**
      * @brief Hide the missing PDF banner.
      */
-    void hideMissingPdfBanner();
+    void hidePdfSourceWarning();
+
+    /**
+     * @brief Height of the strip the missing-PDF banner occupies at the top of
+     *        the viewport, or 0 when it is not showing.
+     *
+     * Lets overlays anchored to the top of the viewport (the search bar) keep
+     * clear of the banner so its buttons stay reachable.
+     */
+    int topBannerReserve() const;
     
     // ===== Theme / Dark Mode =====
     
@@ -429,6 +495,18 @@ public:
 
     static void setWheelScrollSpeed(qreal speed) { s_wheelScrollSpeed = qBound(5.0, speed, 200.0); }
     static qreal wheelScrollSpeed() { return s_wheelScrollSpeed; }
+
+    // ===== Off-Page Pan =====
+
+    /**
+     * @brief Enable/disable panning by dragging the empty space around pages.
+     *
+     * Global preference (no per-document override), so it lives as a static and
+     * takes effect in every tab and split pane at once. Paged documents only:
+     * an edgeless canvas has no space that is outside a page.
+     */
+    static void setPanOutsidePagesEnabled(bool enabled) { s_panOutsidePagesEnabled = enabled; }
+    static bool panOutsidePagesEnabled() { return s_panOutsidePagesEnabled; }
 
     // ===== View State Getters =====
     
@@ -622,12 +700,10 @@ public:
     };
 
     /**
-     * @brief Set the auto-highlight style.
-     * @param style New style; HighlightStyle::None disables auto-highlight.
+     * @brief Set the style a committed highlight is given.
      *
-     * When set to anything other than None, releasing the pointer after a
-     * text selection automatically creates highlight strokes of the chosen
-     * style. Called from HighlighterSubToolbar.
+     * What a highlight looks like, not whether one is made: that is
+     * setHighlightOnRelease(). Called from HighlighterSubToolbar.
      */
     void setAutoHighlightStyle(HighlightStyle style);
 
@@ -635,6 +711,22 @@ public:
      * @brief Get the current auto-highlight style.
      */
     HighlightStyle autoHighlightStyle() const { return m_autoHighlightStyle; }
+
+    /**
+     * @brief Whether releasing a text selection turns it into a highlight.
+     *
+     * False is "select text only": the selection is finalized and left up so
+     * it can be copied, and no annotation is created. This used to be
+     * HighlightStyle::None, a tool mode disguised as an appearance option.
+     */
+    bool highlightOnRelease() const { return m_highlightOnRelease; }
+
+    /**
+     * @brief Set whether a released selection becomes a highlight.
+     *
+     * Emits highlightOnReleaseChanged() only if the value actually changed.
+     */
+    void setHighlightOnRelease(bool enabled);
 
     // ===== Highlighter Selection Source (PDF vs OCR) =====
 
@@ -750,14 +842,34 @@ public:
                             int newPageIndex = -1);
     void pushObjectResizeUndo(InsertedObject* obj, const QPointF& oldPos,
                               const QSizeF& oldSize, qreal oldRotation = 0.0,
-                              bool oldAspectLock = true);
+                              bool oldAspectLock = true,
+                              const TextBoxState* oldTextBoxState = nullptr);
     void pushObjectAffinityUndo(InsertedObject* obj, int oldAffinity);
-    void pushObjectTextEditUndo(InsertedObject* obj,
-                                const QString& oldText, const QString& newText,
-                                int oldAlignment, int newAlignment,
-                                int oldOpacity, int newOpacity,
-                                const QColor& oldFontColor = QColor(60, 60, 60),
-                                const QColor& newFontColor = QColor(60, 60, 60));
+    void pushObjectTextEditUndo(
+        TextBoxObject* obj, const TextBoxState& oldState,
+        const TextBoxState& newState, int pageIndex,
+        Document::TileCoord oldTile = {0, 0},
+        Document::TileCoord newTile = {0, 0});
+
+    /**
+     * @brief Record one Adjust session's net change to an annotation's region.
+     *
+     * The new state is read off @p obj, so call this after the last gesture has
+     * been written in. Position and size travel with the region because
+     * re-ranging moves the region's bounding box, which *is* the object's
+     * position (see the stage 2 note in HIGHLIGHT_ANNOTATION_QA.md).
+     *
+     * @p oldIconColor travels for the same reason: recolouring a mark re-derives
+     * the badge tint, so undoing one without the other leaves a green highlight
+     * wearing a yellow badge. Pass the object's current tint when only geometry
+     * changed.
+     */
+    void pushObjectRegionChangeUndo(
+        LinkObject* obj, const HighlightRegion& oldRegion,
+        const QPointF& oldPosition, const QSizeF& oldSize,
+        const QColor& oldIconColor, int pageIndex,
+        Document::TileCoord oldTile = {0, 0},
+        Document::TileCoord newTile = {0, 0});
 
     void pushOcrLockUndo(const QVector<QString>& objectIds, bool newState);
 
@@ -779,6 +891,25 @@ public:
     Page* findPageContainingObject(InsertedObject* obj, Document::TileCoord* outTileCoord = nullptr);
 
     /**
+     * @brief Look up an object by id across the loaded pages/tiles.
+     * @return The object, or nullptr when it no longer exists.
+     *
+     * Callers that let an event loop run (a modal dialog, for instance) must
+     * re-resolve their target this way instead of holding a raw pointer.
+     */
+    InsertedObject* objectById(const QString& objectId) const;
+
+    /**
+     * @brief Drop every viewport-side reference to an object about to be freed.
+     *
+     * Code outside the viewport (the OCR rescan, for instance) destroys objects
+     * directly on the Page. Selection and hover hold raw pointers into them, so
+     * that owner must call this first for each id it is about to remove.
+     * Safe to call for ids this viewport never referenced.
+     */
+    void forgetObject(const QString& objectId);
+
+    /**
      * @brief Mark the page/tile that contains @p link as dirty AND refresh
      *        its persistent link-outline cache entry.
      *
@@ -794,6 +925,20 @@ public:
      * documentModified() / linkObjectListMayHaveChanged().
      */
     void markLinkContainerDirtyAndRefreshOutline(LinkObject* link);
+
+    /**
+     * @brief The same dirty-mark and outline refresh, for a known container.
+     *
+     * The overload above locates the container with findPageContainingObject(),
+     * which in paged mode answers "the current page" without checking. Position
+     * link pairing writes to an object on whichever page the link was started
+     * from, so it has to name the container or it would mark the wrong page
+     * dirty and lose the edit.
+     *
+     * @param pageIndex Notebook page index; ignored in edgeless mode.
+     * @param tileCoord Owning tile; ignored in paged mode.
+     */
+    void markLinkContainerDirty(int pageIndex, Document::TileCoord tileCoord);
 
     /**
      * @brief Get the maximum valid affinity value.
@@ -818,31 +963,63 @@ public:
      */
     int edgelessActiveLayerIndex() const { return m_edgelessActiveLayerIndex; }
     
-    // ===== Benchmark (Task 2.6) =====
+    // ===== Performance Instrumentation =====
     
     /**
-     * @brief Start measuring paint refresh rate.
-     * 
-     * Call this to begin tracking how often paintEvent is called.
-     * Use getPaintRate() to retrieve the current rate.
+     * @brief Start collecting per-frame paint statistics.
+     *
+     * Overhead is two clock reads and one ring-buffer write per frame, so this
+     * is safe to enable in release builds without distorting the measurement.
      */
     void startBenchmark();
     
     /**
-     * @brief Stop measuring paint refresh rate.
+     * @brief Stop collecting paint statistics and discard the samples.
      */
     void stopBenchmark();
     
     /**
-     * @brief Get the current paint refresh rate.
-     * @return Paints per second (based on last 1 second of data).
+     * @brief Get the overall repaint rate.
+     * @return Paints per second across all frame kinds, 0 when not measuring.
+     *
+     * Prefer perfStats() for anything diagnostic: this figure mixes cheap
+     * partial stroke updates with expensive full-viewport frames and so is
+     * only useful as a coarse "is anything repainting" indicator.
      */
     int getPaintRate() const;
     
     /**
-     * @brief Check if benchmarking is currently active.
+     * @brief Check if performance instrumentation is currently active.
      */
-    bool isBenchmarking() const { return m_benchmarking; }
+    bool isBenchmarking() const { return m_perf.isEnabled(); }
+    
+    /**
+     * @brief Get rolling paint statistics for one class of frames.
+     */
+    ViewportPerfMonitor::Stats perfStats(ViewportPerfMonitor::Bucket bucket) const
+    {
+        return m_perf.stats(bucket);
+    }
+    
+    /**
+     * @brief Context needed to interpret the paint statistics.
+     */
+    struct PerfContext {
+        QSize viewportLogical;      ///< Widget size in logical pixels
+        QSize viewportPhysical;     ///< Widget size in device pixels
+        qreal devicePixelRatio = 1.0;
+        qreal screenRefreshRate = 0.0;  ///< Panel refresh rate in Hz, 0 if unknown
+        QString strokeCacheTier;    ///< Capped / Focus / Direct for the visible page
+    };
+
+    /**
+     * @brief Collect the display and render-tier context for the perf HUD.
+     *
+     * The stroke cache tier matters because it depends on
+     * zoom * devicePixelRatio, so a high-DPR tablet drops out of the cheap
+     * cached tier at roughly half the zoom level a desktop monitor would.
+     */
+    PerfContext perfContext() const;
     
     /**
      * @brief Check if the hardware eraser (stylus eraser end) is active.
@@ -982,7 +1159,7 @@ public:
      * - If objects are selected: deselect all objects
      * - If no objects selected but clipboard has content: clear object clipboard
      * 
-     * Used by Escape key handler and ObjectSelectSubToolbar cancel button.
+     * Used by the Escape key handler and ObjectSelectActionBar cancel button.
      */
     void cancelObjectSelectAction();
     
@@ -1032,6 +1209,74 @@ public:
      * @return True if at least one object is selected.
      */
     bool hasSelectedObjects() const { return !m_selectedObjects.isEmpty(); }
+
+    bool hasActiveInlineTextEdit() const;
+    bool inlineTextEditorHasFocus() const;
+    bool textBoxFormatBarHasFocus() const;
+    bool linkObjectBarHasFocus() const;
+    void commitInlineTextEdit();
+    void cancelInlineTextEdit();
+
+    // ===== Highlight Adjust mode (stage 3) =====
+
+    /// True while a highlight's text range is being re-ranged.
+    bool isAdjustingHighlight() const { return m_adjustSession.active; }
+
+    /**
+     * @brief Enter Adjust on the selected annotation.
+     *
+     * Adjust belongs to the Highlighter because it is a text-range operation
+     * needing the character caches, so invoking it from ObjectSelect switches
+     * the active tool. The object selection deliberately survives that switch.
+     *
+     * @return false when there is no single selected annotation with a region.
+     */
+    bool beginHighlightAdjust();
+
+    /// Exit Adjust, keeping the new range as one undo entry.
+    void commitHighlightAdjust();
+
+    /// Exit Adjust, restoring the range the session started with.
+    void cancelHighlightAdjust();
+
+    /**
+     * @brief Re-read the selected LinkObject's state into the floating bar.
+     *
+     * For callers that mutate a LinkObject from outside the viewport (the
+     * markdown notes sidebar clearing a slot, for instance).
+     */
+    void refreshLinkObjectBar();
+
+    /**
+     * @brief Apply a new icon color to the selected LinkObject.
+     *
+     * For standalone link icons only. When the annotation carries a highlight
+     * the badge tint is derived from the mark's colour instead, so it is set
+     * through setSelectedLinkRegionColor().
+     */
+    void setSelectedLinkColor(const QColor& color);
+
+    /**
+     * @brief Recolour the selected annotation's highlight.
+     * @param color Opaque as picked; stored at HighlightRegion::DEFAULT_OPACITY.
+     *
+     * Also re-derives the badge tint, so a green mark stops wearing the badge
+     * of the yellow it used to be. Undoable through ObjectRegionChange with the
+     * geometry unchanged, unless an Adjust session is live on this object, in
+     * which case it folds into that session's single entry.
+     */
+    void setSelectedLinkRegionColor(const QColor& color);
+
+    /**
+     * @brief Restyle the selected annotation's highlight.
+     * @param style A HighlightRegion::Style value as an int.
+     */
+    void setSelectedLinkRegionStyle(int style);
+
+    /**
+     * @brief Apply a new description to the selected LinkObject.
+     */
+    void setSelectedLinkDescription(const QString& description);
     
     /**
      * @brief Check if a lasso selection exists.
@@ -1142,7 +1387,7 @@ public:
     
     /**
      * @brief Get the current object insert mode.
-     * @return Current insert mode (Image or Link).
+     * @return Current insert mode (Image, Link, or Text).
      * 
      * Phase C.2.4: Used by UI to reflect current mode state.
      */
@@ -1150,9 +1395,9 @@ public:
     
     /**
      * @brief Set the object insert mode.
-     * @param mode The new insert mode (Image or Link).
+     * @param mode The new insert mode (Image, Link, or Text).
      * 
-     * Phase D: Called from ObjectSelectSubToolbar to change insert mode.
+     * Called by the main toolbar and shortcut dispatch.
      */
     void setObjectInsertMode(ObjectInsertMode mode);
     
@@ -1168,7 +1413,7 @@ public:
      * @brief Set the object action mode.
      * @param mode The new action mode (Select or Create).
      * 
-     * Phase D: Called from ObjectSelectSubToolbar to change action mode.
+     * Called by ObjectSelectActionBar and shortcut dispatch.
      */
     void setObjectActionMode(ObjectActionMode mode);
 
@@ -1324,6 +1569,23 @@ public:
      * creates undo entries, marks pages dirty, and clears selection.
      */
     void deleteSelectedObjects();
+
+    /**
+     * @brief Replace a recognized OCR block with an editable user text box.
+     *
+     * OCR objects are derived from ink and cannot be edited. Conversion hands
+     * the recognized text to a normal current-version TextBoxObject, removes
+     * the OCR object and its sidecar block, and suppresses the source strokes
+     * so a later scan does not recreate a duplicate block. The whole exchange
+     * is one undo action.
+     *
+     * @param ocr The OCR object to convert; may be locked or unlocked.
+     * @param startEditing Start an inline edit session on the new text box.
+     * @return True when the conversion happened. A paged conversion that
+     *         cannot fit its reflowed height on the page is rejected and
+     *         leaves the OCR object untouched.
+     */
+    bool convertOcrTextToTextBox(OcrTextObject* ocr, bool startEditing = true);
     
     /**
      * @brief Copy selected objects to internal clipboard.
@@ -1365,11 +1627,48 @@ public:
      */
     void addLinkToSlot(int slotIndex);
     
+    // ===== Position link pairing =====
+
+    /// True while a position link is half-made, waiting for its other end.
+    bool isPairingPositionLink() const { return m_positionPairing.active; }
+
+    /**
+     * @brief Arm a position link on the selected annotation's empty slot.
+     *
+     * Deliberately not a canvas mode: between arming and finishing, every
+     * gesture is ordinary navigation and selection. That is what makes the
+     * two-step pairing usable where a "tap the destination" mode is not, since
+     * the bar carrying the only cancel affordance scrolls away with its object.
+     */
+    void beginPositionLinkPairing(LinkObject* origin, int slotIndex);
+
+    /// Drop a half-made link. Nothing is written, so nothing is lost.
+    void cancelPositionLinkPairing();
+
+    /**
+     * @brief Finish the armed link, spending a slot at each end.
+     *
+     * Both slots become Position links pointing at each other, so either end
+     * navigates to the other. Rejects linking an object to itself.
+     */
+    void completePositionLinkPairing(LinkObject* target, int targetSlotIndex);
+
+    /**
+     * @brief The armed origin's description, for menu labels.
+     *
+     * Captured when arming so building the menu never has to reload the
+     * origin's page, which is normally evicted by the time the user gets here.
+     */
+    QString pairingOriginDescription() const { return m_positionPairing.originDescription; }
+
+    /// Whether @p link is the armed origin, and if so which slot is armed.
+    bool isPairingOrigin(const LinkObject* link, int* slotIndex = nullptr) const;
+
     /**
      * @brief Clear the content of a LinkObject slot.
      * @param slotIndex The slot index (0-2) to clear.
      * 
-     * Phase D: Called from ObjectSelectSubToolbar after long-press delete
+     * Phase D: Called from LinkObjectBar after long-press delete
      * confirmation. Clears the slot content (Position/URL/Markdown) without
      * deleting the entire LinkObject.
      */
@@ -1409,14 +1708,355 @@ public:
     void createTextBoxAtRect(int pageIndex, const QRectF& rect, const QPointF& viewportPos);
 
     /**
-     * @brief Create a LinkObject for a text highlight.
-     * @param pageIndex Index of the page containing the highlight.
-     * 
-     * Phase C.3.2: Creates a LinkObject positioned at the start of the
-     * first highlight rect, with description set to the selected text
-     * and icon color matching the highlighter color.
+     * @brief Backdrop for a new text box, matched to the paper it lands on.
+     * @param page The page or tile receiving the box; null falls back to the
+     *             document's default paper, then to the current theme.
+     *
+     * Paper color is baked from the theme when a notebook is created and then
+     * stays put, so a light notebook opened at night still has white pages and
+     * a dark one opened by day still has dark pages. Reading the page instead
+     * of the live theme keeps the box from becoming a slab on either.
      */
-    void createLinkObjectForHighlight(int pageIndex);
+    QColor textBackdropForPage(const Page* page) const;
+
+    struct InlineTextEditSession {
+        Document* document = nullptr;
+        QString objectId;
+        int pageIndex = -1;
+        Document::TileCoord tileCoord = {0, 0};
+        TextBoxState startState;
+        TextBoxState lastAcceptedState;
+        bool active = false;
+        bool newBox = false;
+
+        void clear() {
+            document = nullptr;
+            objectId.clear();
+            pageIndex = -1;
+            tileCoord = {0, 0};
+            startState = TextBoxState();
+            lastAcceptedState = TextBoxState();
+            active = false;
+            newBox = false;
+        }
+    };
+
+    /**
+     * @brief Find the page/tile holding @p objectId in the current document.
+     *
+     * Object ids are stable while raw pointers are not, so conversion, undo,
+     * and redo each re-resolve their container instead of caching one.
+     */
+    Page* locateObjectContainer(const QString& objectId, int& pageIndex,
+                                Document::TileCoord& tileCoord) const;
+    void applyOcrConversion(const UndoAction& action);
+    void revertOcrConversion(const UndoAction& action);
+    void persistOcrSidecar(Page* container, int pageIndex,
+                           Document::TileCoord tileCoord);
+
+    void startInlineTextEdit(TextBoxObject* textBox, bool newBox);
+    TextBoxObject* resolveInlineTextBox() const;
+
+    /**
+     * @brief Does @p viewportPos fall on the text box currently being edited?
+     *
+     * The editor widget only covers the text area, so the box's padding and
+     * border still belong to the canvas. Treating that ring as part of the
+     * editor keeps a right-click anywhere on the box from committing the
+     * session before its context menu can open.
+     */
+    bool inlineEditTargetContains(const QPointF& viewportPos) const;
+
+    /**
+     * @brief Clipboard and delete actions for the object under a right-click.
+     *
+     * Text boxes also offer Edit Text, which is the keyboard-free way back
+     * into an inline session.
+     */
+    void showObjectContextMenu(const QPoint& globalPos);
+    QRectF inlineTextEditorRect(TextBoxObject* textBox) const;
+    void updateInlineTextEditorGeometry();
+    void handleInlineTextSourceChanged(const QString& source);
+    void endInlineTextEdit(bool commit, bool targetBeingDeleted = false);
+    void removeUncommittedInlineTextBox();
+    void markInlineTextEditCommitted();
+    static bool textBoxStatesEqual(const TextBoxState& lhs,
+                                   const TextBoxState& rhs);
+
+    /**
+     * @brief One Adjust session: re-ranging a highlight's covered text.
+     *
+     * Coalesces undo the same way InlineTextEditSession does. Every gesture
+     * commits into the object on release so the mark tracks the finger, but no
+     * undo entry is pushed until the session ends; iterative fiddling, which is
+     * how people actually adjust a highlight, therefore costs one entry rather
+     * than one per tweak.
+     */
+    struct AdjustSession {
+        QString objectId;
+        int pageIndex = -1;
+        Document::TileCoord tileCoord = {0, 0};
+        /// Geometry as it was on entry, for the single undo entry and for Esc.
+        HighlightRegion startRegion;
+        QPointF startPosition;
+        QSizeF startSize;
+        /// Badge tint on entry. A recolour made mid-session folds into the
+        /// session's one entry rather than pushing its own, so Esc has to be
+        /// able to put the derived tint back too.
+        QColor startIconColor;
+        bool active = false;
+        /**
+         * @brief Whether a live text range was recovered on entry.
+         *
+         * False leaves only drag-redefine available: there is no known anchor
+         * for tap-moves-the-near-edge to hold on to.
+         */
+        bool endpointsResolved = false;
+
+        void clear() {
+            objectId.clear();
+            pageIndex = -1;
+            tileCoord = {0, 0};
+            startRegion = HighlightRegion();
+            startPosition = QPointF();
+            startSize = QSizeF();
+            startIconColor = QColor();
+            active = false;
+            endpointsResolved = false;
+        }
+    };
+
+    /**
+     * @brief One half-made position link, waiting for its other end.
+     *
+     * In-memory only and never serialized: a link that was never finished is
+     * not a fact about the document. Per-viewport, like AdjustSession, so the
+     * gesture belongs to the view the user started it in.
+     */
+    struct PositionLinkPairing {
+        QString originObjectId;
+        int originSlotIndex = -1;
+        /// Container captured while the origin was still loaded. Finding the
+        /// other end means navigating away, which normally evicts that page, so
+        /// the id alone would not be enough to resolve the origin again.
+        bool originIsEdgeless = false;
+        QString originPageUuid;
+        Document::TileCoord originTileCoord = {0, 0};
+        /// Snapshotted so the menu label costs no page load.
+        QString originDescription;
+        bool active = false;
+
+        void clear() {
+            originObjectId.clear();
+            originSlotIndex = -1;
+            originIsEdgeless = false;
+            originPageUuid.clear();
+            originTileCoord = {0, 0};
+            originDescription.clear();
+            active = false;
+        }
+    };
+
+    /**
+     * @brief Reload the armed origin, lazily loading its container.
+     * @param pageIndex Receives the origin's page index (paged mode).
+     * @param tileCoord Receives the origin's tile (edgeless mode).
+     * @return nullptr when the origin or its container has gone away.
+     */
+    LinkObject* resolvePairingOrigin(int* pageIndex = nullptr,
+                                     Document::TileCoord* tileCoord = nullptr);
+
+    /**
+     * @brief Point @p slot at @p target, which lives in the given container.
+     *
+     * Writes all three representations the design calls for: the object id,
+     * which survives the target being dragged, the coordinate that navigation
+     * actually runs off, and the far slot index that makes the pairing
+     * releasable from either end. The coordinate is the object's centre,
+     * matching MainWindow::navigateToLinkObject rather than
+     * cloneWithBackLink's top-left, so a highlight lands centred on its mark.
+     *
+     * @param targetSlotIndex The partner slot on @p target, or -1 for a one-way
+     *        link to an object that holds no return path.
+     */
+    void setPositionTarget(LinkSlot& slot, const LinkObject* target,
+                           int targetSlotIndex,
+                           const QString& pageUuid,
+                           Document::TileCoord tileCoord) const;
+
+    /**
+     * @brief Resolve a position slot's partner, if it genuinely points back.
+     *
+     * Both halves of a pairing name each other by object *and* slot, and this
+     * only succeeds when that agreement holds in both directions. Anything
+     * less is treated as a one-way link and left alone, so a slot the user has
+     * since re-pointed by hand is never collateral damage.
+     *
+     * @param partnerSlotIndex Receives the partner's slot index.
+     * @param partnerPageIndex Receives the partner's page index (paged mode).
+     * @param partnerTile Receives the partner's tile (edgeless mode).
+     * @return nullptr when the slot has no verified partner.
+     */
+    LinkObject* resolvePositionLinkPartner(const LinkObject* source, int slotIndex,
+                                           int* partnerSlotIndex,
+                                           int* partnerPageIndex,
+                                           Document::TileCoord* partnerTile);
+
+    /**
+     * @brief Jump to a position slot's destination.
+     *
+     * Navigation runs off the stored coordinate, which always resolves and
+     * which in paged mode is what pulls the destination page into memory. When
+     * the slot also names a target object, it is then looked up on the
+     * container we landed on, so a target that has been dragged is re-aimed
+     * and the stale coordinate repaired. A target that moved to a different
+     * container is deliberately not chased: that would need an id-to-location
+     * index edgeless mode does not have, so such a link degrades to landing
+     * where its target used to be.
+     */
+    void followPositionLink(LinkObject* source, int slotIndex);
+
+    /// Document units of drift before a position slot's coordinate is rewritten.
+    static constexpr qreal POSITION_LINK_DRIFT_SLOP = 1.0;
+
+    /// Resolve the session's target, or nullptr if it went away.
+    LinkObject* resolveAdjustTarget() const;
+
+    /**
+     * @brief End the session without committing or reverting.
+     *
+     * For when the target or the document is going away: an undo entry would be
+     * stray noise ahead of the delete, and reverting would fight the delete's
+     * own snapshot of what was on screen.
+     */
+    void discardHighlightAdjust();
+
+    /// Viewport pixels of travel before an Adjust gesture counts as a drag.
+    static constexpr qreal ADJUST_TAP_SLOP = 6.0;
+
+    enum class TextBoxFormatChange {
+        FontSize,
+        FontFamily,
+        Alignment,
+        FontColor,
+        BackgroundColor,
+        BackgroundOpacity,
+        Border
+    };
+
+    struct TextBoxFormatTransaction {
+        Document* document = nullptr;
+        QString objectId;
+        int pageIndex = -1;
+        Document::TileCoord tileCoord = {0, 0};
+        TextBoxState startState;
+        TextBoxState lastAcceptedState;
+        QRectF dirtyViewport;
+        bool active = false;
+        bool attachedToInlineEdit = false;
+
+        void clear() {
+            document = nullptr;
+            objectId.clear();
+            pageIndex = -1;
+            tileCoord = {0, 0};
+            startState = TextBoxState();
+            lastAcceptedState = TextBoxState();
+            dirtyViewport = QRectF();
+            active = false;
+            attachedToInlineEdit = false;
+        }
+    };
+
+    TextBoxObject* selectedTextBoxForFormatting() const;
+    TextBoxObject* resolveTextBoxFormatTarget() const;
+    bool locateTextBoxObject(TextBoxObject* textBox, int& pageIndex,
+                             Document::TileCoord& tileCoord) const;
+    void ensureTextBoxFormatBar();
+    void syncTextBoxFormatBar();
+    /**
+     * @brief Whether a viewport point belongs to a text overlay widget.
+     *
+     * Stylus events are delivered to the deepest child and propagate back up
+     * when that child does not handle them. Consuming those here would make
+     * the canvas react to overlay interactions and would suppress the
+     * synthesized mouse events the overlay widgets rely on.
+     */
+    bool pointerOverTextOverlay(const QPointF& viewportPos) const;
+    void updateTextBoxFormatBarGeometry();
+
+    /**
+     * @brief Position a floating control bar next to an anchor rect.
+     * @param bar The bar to move (a child widget of this viewport).
+     * @param anchorRect The anchor, in viewport coordinates.
+     *
+     * Tries above, below, right and left in that order, takes the first
+     * placement that fits, and otherwise picks the least-overflowing candidate
+     * and clamps it inside the viewport. Shared by the text box format bar and
+     * the LinkObject bar.
+     */
+    void placeFloatingBar(QWidget* bar, const QRectF& anchorRect);
+
+    LinkObject* selectedLinkForBar() const;
+    void ensureLinkObjectBar();
+    void syncLinkObjectBar();
+    void updateLinkObjectBarGeometry();
+    void closeLinkObjectBarPopups(bool acceptPreview);
+
+    /// The selected annotation when it carries an editable highlight.
+    LinkObject* selectedHighlightForAppearance() const;
+
+    /// Shared tail of a region recolour or restyle: re-derive the badge tint,
+    /// refresh the caches, and record one undo entry unless an Adjust session
+    /// is live to absorb it.
+    void finishRegionAppearanceChange(LinkObject* link,
+                                      const HighlightRegion& oldRegion,
+                                      const QColor& oldIconColor);
+
+    void beginTextBoxFormatInteraction();
+    void applyTextBoxFormatPreview(TextBoxFormatChange change,
+                                   const QVariant& value);
+    void finishTextBoxFormatInteraction(bool accept);
+    void closeTextBoxFormatPopups(bool acceptPreview);
+    void markTextBoxFormatCommitted(int pageIndex,
+                                    Document::TileCoord tileCoord);
+    static void preserveTextBoxTopAnchor(const TextBoxState& previous,
+                                         TextBoxState& candidate);
+
+    QRectF proposedTextBoxCreationRect(const QPointF& startPoint,
+                                       const QPointF& currentPoint,
+                                       int pageIndex) const;
+    QRectF proposedTextBoxCreationRectInViewport() const;
+    bool textBoxGeometryProposalAllowed(const TextBoxState& oldState,
+                                        const TextBoxState& proposedState,
+                                        int pageIndex) const;
+    void showObjectGeometryFeedback(const QString& message,
+                                    const QRectF& anchorViewportRect);
+
+    /**
+     * @brief Create the annotation that owns a text highlight.
+     * @param pageIndex   Index of the page the selection came from.
+     * @param regionRects Per-line rects, in page coordinates for paged mode or
+     *                    document coordinates for edgeless mode.
+     * @return The created annotation, or nullptr on failure.
+     *
+     * The annotation's `position`/`size` become the region's bounding box, so
+     * Document::maxObjectExtent() covers a highlight that spans several
+     * edgeless tiles, and the icon becomes a badge beside the mark. The
+     * description is auto-derived from the selected text and therefore leaves
+     * `descriptionUserEdited` false.
+     */
+    LinkObject* createLinkObjectForHighlight(int pageIndex,
+                                             const QVector<QRectF>& regionRects);
+
+    /**
+     * @brief Build the source range describing the current text selection.
+     *
+     * Stored alongside the region rects as the *edit* affordance for Adjust
+     * mode. The rects remain the rendering truth, so this range is allowed to
+     * be absent or stale.
+     */
+    HighlightRegion::SourceRange buildHighlightSourceRange(int pageIndex) const;
     
     /**
      * @brief Get the list of pages currently visible in the viewport.
@@ -1900,6 +2540,12 @@ signals:
     void pageModified(int pageIndex);
 
     /**
+     * Emitted after committed text-box geometry changes so search caches and
+     * visible match rectangles cannot outlive their layout.
+     */
+    void textBoxLayoutCommitted();
+
+    /**
      * @brief Emitted when the list of LinkObjects may have changed.
      * 
      * This is more targeted than documentModified() and should be used by
@@ -1912,7 +2558,28 @@ signals:
      * - Tiles are loaded/evicted in edgeless mode
      */
     void linkObjectListMayHaveChanged();
-    
+
+    /**
+     * @brief Emitted when the slot contents of the selected LinkObject change.
+     *
+     * Narrower than linkObjectListMayHaveChanged(): the set of LinkObjects is
+     * unchanged, only the 3 slots of one object. Drives the LinkObject bar's
+     * slot buttons.
+     */
+    void linkSlotsChanged();
+
+    /**
+     * @brief Emitted when one LinkObject's description or icon color changes.
+     *
+     * Narrower still: nothing about the set of LinkObjects or their slots has
+     * changed, only how this one presents itself. Lets the notes sidebar patch
+     * the single row in place instead of rebuilding the tree, which would
+     * collapse expanded subtrees and drop focus.
+     */
+    void linkObjectAppearanceChanged(const QString& linkObjectId,
+                                     const QString& description,
+                                     const QColor& color);
+
     /**
      * @brief Emitted when the current tool changes.
      * @param tool New tool type.
@@ -2055,6 +2722,14 @@ signals:
     void autoHighlightStyleChanged(HighlightStyle style);
 
     /**
+     * @brief Emitted when the select-vs-highlight mode changes.
+     *
+     * Routed by MainWindow to the Highlighter subtoolbar so the toggle reflects
+     * the active viewport, the same way the style dropdown does.
+     */
+    void highlightOnReleaseChanged(bool enabled);
+
+    /**
      * @brief Emitted when the highlighter selection source (PDF vs OCR) changes.
      *
      * MainWindow routes this back to HighlighterSubToolbar so the per-viewport
@@ -2084,14 +2759,21 @@ signals:
      */
     void strokesChanged();
 
-    /**
-     * @brief Emitted when user clicks "Locate PDF" on the missing PDF banner.
-     * 
-     * Phase R.3: MainWindow connects this to show PdfRelinkDialog.
-     */
-    void requestPdfRelink();
+    void requestPdfSources();
 
-    void openTextEditorRequested(InsertedObject* obj);
+    /**
+     * @brief The missing-PDF banner appeared or went away, so topBannerReserve()
+     *        has changed and top-anchored overlays need repositioning.
+     */
+    void topBannerReserveChanged();
+
+    /**
+     * @brief A recognized OCR block was double-clicked to be made editable.
+     *
+     * The viewport does not own dialogs, so MainWindow confirms the exchange
+     * before calling convertOcrTextToTextBox().
+     */
+    void convertOcrTextRequested(InsertedObject* obj);
     
 protected:
     // ===== Qt Event Overrides =====
@@ -2101,6 +2783,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
@@ -2139,6 +2822,8 @@ private:
     
     // ===== Missing PDF Banner (Phase R.3) =====
     MissingPdfBanner* m_missingPdfBanner = nullptr;
+    QString m_pdfWarningSignature;
+    QString m_dismissedPdfWarningSignature;
     
     // ===== Theme / Dark Mode =====
     bool m_isDarkMode = true;  ///< Cached dark mode state (default: dark)
@@ -2164,6 +2849,23 @@ private:
     // ===== Pan Tool State =====
     bool m_isPanToolDragging = false;
     QPointF m_panToolLastPos;
+
+    // ===== Off-Page Pan State =====
+    // A press that lands in the empty space around the pages pans instead of
+    // reaching the current tool. The gesture is only armed on press: it becomes
+    // a real pan once the pointer moves past the slop, and a release before that
+    // is treated as a tap so the old "click empty space to deselect" survives.
+    bool m_offPagePanArmed = false;     ///< Press landed off-page; still undecided
+    bool m_offPagePanDragging = false;  ///< Slop exceeded, pan gesture running
+    QPointF m_offPagePanStart;          ///< Viewport position of the arming press
+    Qt::KeyboardModifiers m_offPagePanModifiers = Qt::NoModifier;  ///< Modifiers at press time
+    bool m_offPageHoverCursor = false;  ///< Open-hand hover cursor is currently shown
+
+    /// Presses within this many viewport pixels of a page still reach the tool,
+    /// so a near-miss at the page edge does not yank the view.
+    static constexpr qreal OFF_PAGE_EDGE_TOLERANCE_PX = 6.0;
+    /// Movement below this many viewport pixels makes the release a tap.
+    static constexpr qreal OFF_PAGE_PAN_TAP_SLOP_PX = 4.0;
     
     // ===== Middle Mouse Pan (independent of tool system) =====
     bool m_isMiddleMousePanning = false;
@@ -2199,6 +2901,9 @@ private:
 
     // ----- Mouse Wheel Scroll Speed -----
     static inline qreal s_wheelScrollSpeed = 40.0;  ///< Document units per wheel click
+
+    // ----- Off-Page Pan -----
+    static inline bool s_panOutsidePagesEnabled = true;  ///< Empty space around pages acts as the Pan tool
     
     // ----- Tool Defaults -----
     // These are initial values; MainWindow will set them from user preferences.
@@ -2434,7 +3139,8 @@ private:
 
     // Highlighter tool settings
     QColor m_highlighterColor = QColor(255, 255, 0, 128);  ///< Yellow, 50% alpha
-    HighlightStyle m_autoHighlightStyle = HighlightStyle::None;  ///< Style of auto-created highlight strokes (None disables auto-highlight)
+    HighlightStyle m_autoHighlightStyle = HighlightStyle::Cover;  ///< What a committed highlight looks like
+    bool m_highlightOnRelease = true;  ///< Whether a released selection becomes a highlight at all
     HighlighterMode m_highlighterMode = HighlighterMode::Pdf;  ///< PDF vs OCR text selection source
     
     // ===== PDF Search Highlighting =====
@@ -2478,14 +3184,55 @@ private:
      * or creates new ones. Default is Select.
      */
     ObjectActionMode m_objectActionMode = ObjectActionMode::Select;
+
+    /**
+     * @brief Effective mode and initiating button for the active mouse gesture.
+     *
+     * The persistent action-bar mode is never changed by the right-button
+     * alternate gesture.
+     */
+    Qt::MouseButton m_objectGestureButton = Qt::NoButton;
+    ObjectActionMode m_objectGestureActionMode = ObjectActionMode::Select;
     
     /**
      * @brief Whether we're currently dragging to create a text box.
      */
     bool m_isCreatingTextBox = false;
     QPointF m_textBoxCreateStartDoc;   // page-local coords of press point
-    QPointF m_textBoxCreateStartVP;    // viewport coords of press point (for rubber band)
     int m_textBoxCreatePageIndex = -1; // page index where creation started
+    QTimer* m_objectGeometryFeedbackTimer = nullptr;
+    QString m_objectGeometryFeedbackText;
+    QRectF m_objectGeometryFeedbackAnchor;
+    InlineTextBoxEditor* m_inlineTextBoxEditor = nullptr;
+    InlineTextEditSession m_inlineEditSession;
+    AdjustSession m_adjustSession;
+    PositionLinkPairing m_positionPairing;
+    /**
+     * @brief Suppresses setCurrentTool()'s leave-ObjectSelect deselect.
+     *
+     * Entering Adjust from ObjectSelect switches to the Highlighter, and that
+     * switch would otherwise clear the very selection the session targets.
+     */
+    bool m_enteringAdjustMode = false;
+    /// Press point of the in-progress Adjust gesture, for tap-vs-drag.
+    QPointF m_adjustGestureStart;
+    /// True until the Adjust gesture moves far enough to count as a drag.
+    bool m_adjustGestureIsTap = false;
+    bool m_revertingInlineText = false;
+    /// Set on a right-press that landed on the box being edited, so the
+    /// context menu that follows opens the editor's menu instead of the
+    /// canvas one. Creating a box can never set it: at press time the click
+    /// was on bare page.
+    bool m_contextMenuTargetsInlineEditor = false;
+    /// Object the pending right-press landed on, or empty when it landed on
+    /// bare page. Pressing bare page creates an object, which must not be
+    /// accompanied by a menu.
+    QString m_contextMenuObjectId;
+    TextBoxFormatBar* m_textBoxFormatBar = nullptr;
+    TextBoxFormatTransaction m_textBoxFormatTransaction;
+    /// Floating controls for the selected LinkObject (color, description, 3
+    /// slots). Created lazily, one per viewport, and anchored to the object.
+    LinkObjectBar* m_linkObjectBar = nullptr;
     
     /**
      * @brief Whether we're currently dragging selected objects.
@@ -2537,14 +3284,19 @@ private:
      */
     static QList<QJsonObject> s_objectClipboard;
     
+    struct ClipboardImageAsset {
+        QPixmap pixmap;
+        QByteArray encodedData;
+        QByteArray format;
+    };
+
     /**
      * @brief Cached image assets for cross-document object paste.
-     * 
-     * Maps imagePath (filename) to the loaded QPixmap. Populated during
-     * copySelectedObjects() so that pasteObjects() can supply the pixmap
-     * when pasting into a different document whose bundle lacks the file.
+     *
+     * Original encoded bytes are retained when reasonably sized so JPEG/WebP
+     * and other source formats do not become PNG merely by crossing documents.
      */
-    static QMap<QString, QPixmap> s_objectClipboardAssets;
+    static QMap<QString, ClipboardImageAsset> s_objectClipboardAssets;
     
     // ===== Object Resize State (Phase O3.1) =====
     
@@ -2612,6 +3364,12 @@ private:
      * page every frame without searching pages.
      */
     int m_resizeObjectPageIndex = -1;
+    bool m_hasResizeTextBoxState = false;
+    bool m_textBoxResizeActivated = false;
+    bool m_textBoxResizeChanged = false;
+    TextBoxState m_resizeOriginalTextBoxState;
+    TextBoxState m_resizeBaseTextBoxState;
+    TextBoxState m_resizeLastAcceptedTextBoxState;
     
     // =========================================================================
     // Phase O4.1: Object Drag/Resize Performance Optimization
@@ -2798,7 +3556,7 @@ private:
     // guard, every leaked stylus press re-enters handlePointerPress_ObjectSelect
     // and opens another file dialog, stacking until the app crashes.
     bool m_objectInsertDialogActive = false;
-    
+
     // ===== Stroke Drawing State (Task 2.2) =====
     VectorStroke m_currentStroke;             ///< Stroke currently being drawn
     bool m_isDrawing = false;                 ///< True while actively drawing a stroke
@@ -2813,6 +3571,26 @@ private:
     int m_lastRenderedPointIndex = 0;         ///< Index of last point rendered to cache
     qreal m_cacheZoom = 1.0;                  ///< Zoom level when cache was built
     QPointF m_cachePan;                       ///< Pan offset when cache was built
+    
+    /// Trailing points whose rendered shape can still change as the stroke grows.
+    /// Catmull-Rom reads a four-point window and the outline tangent at each vertex
+    /// reads its neighbours, so appending a point disturbs the last four segments.
+    /// Everything before that is final and stays in the cache untouched.
+    static constexpr int STROKE_TAIL_VOLATILE_POINTS = 6;
+    
+    /// Points prepended to a tail redraw purely to supply curve context, so the
+    /// redrawn geometry comes out identical to what a full-stroke render produces.
+    static constexpr int STROKE_TAIL_CONTEXT_POINTS = 4;
+    
+    /**
+     * @brief Document units a stroke can reach past the tile that stores it.
+     *
+     * Stroke splitting keeps a segment's points inside its own tile, so only the
+     * rendered thickness and its anti-aliasing overhang cross the boundary. Any
+     * search that maps a document region to candidate tiles has to grow the
+     * region by this much, or it will miss strokes bulging in from a neighbour.
+     */
+    static constexpr int EDGELESS_STROKE_MARGIN = 100;
     
     // ===== Undo/Redo State (unified) =====
     QStack<UndoAction> m_undoStack;   ///< Global undo stack (both paged and edgeless)
@@ -2837,11 +3615,8 @@ private:
      */
     void pushPositionHistory();
     
-    // ===== Benchmark State (Task 2.6) =====
-    bool m_benchmarking = false;                      ///< Whether benchmarking is active
-    QElapsedTimer m_benchmarkTimer;                   ///< Timer for measuring intervals
-    mutable std::deque<qint64> m_paintTimestamps;     ///< Timestamps of recent paints (mutable for const getPaintRate)
-    QTimer m_benchmarkDisplayTimer;                   ///< Timer for periodic display updates
+    // ===== Performance Instrumentation State =====
+    ViewportPerfMonitor m_perf;                       ///< Per-frame paint statistics
     
     // ===== Deferred Viewport Gesture State (Task 2.3 - Zoom/Pan Optimization) =====
     /**
@@ -2896,12 +3671,84 @@ private:
      */
     void onGestureTimeout();
     
+    // ===== macOS Trackpad Axis Lock =====
+    // Windows precision touchpads and libinput lock a scroll gesture to one axis
+    // at the driver level.  macOS does not: it delivers raw two-axis deltas as
+    // QWheelEvent, so scrolling straight by hand is difficult.  This reproduces
+    // the lock in-app, using the scroll phases that Qt only reports on macOS.
+    
+    enum class ScrollAxisLock {
+        Undecided,   ///< Too little travel so far to know what the user meant
+        Vertical,    ///< X suppressed
+        Horizontal,  ///< Y suppressed
+        Free         ///< Both axes pass; the user is steering diagonally
+    };
+    
+    ScrollAxisLock m_scrollLock = ScrollAxisLock::Undecided;
+    QPointF m_scrollLockAccum;         ///< Travel since gesture start, screen px
+    qreal m_scrollLockCross = 0.0;     ///< Signed cross-axis push since lock, screen px
+    
+    // The four numbers below trade "keeps a straight scroll straight" against
+    // "lets a deliberate diagonal through".  They are the only tuning knobs.
+    
+    /// Accumulated travel before committing.  Enough to sample the gesture's real
+    /// direction rather than its opening jitter, but every pixel of it is a
+    /// window where both axes still pass, so it cannot grow far.
+    static constexpr qreal SCROLL_LOCK_DECIDE_PX = 10.0;
+    /// Consistent cross-axis travel needed to release the lock mid-gesture.
+    static constexpr qreal SCROLL_LOCK_BREAKOUT_PX = 36.0;
+    /// A sideways push only counts toward release once it exceeds this fraction
+    /// of the same event's along-axis motion, i.e. steeper than ~31 degrees off
+    /// the locked axis.  Below it the motion reads as drift, and letting it
+    /// accumulate would unlock a straight scroll.  At 1.0 and above no real
+    /// diagonal can ever escape, which is the failure mode to avoid.
+    static constexpr qreal SCROLL_LOCK_CROSS_RATIO = 0.6;
+    /// If the weaker axis is at least this fraction of the stronger when the
+    /// gesture commits, it started diagonal by intent, so never lock it.  Set
+    /// well clear of a casual crooked swipe: this is ~35 degrees off-axis.
+    static constexpr qreal SCROLL_LOCK_DIAGONAL_RATIO = 0.7;
+    
+    /**
+     * @brief Suppress off-axis scrolling for macOS trackpad gestures.
+     * @param event The wheel event being handled.
+     * @param scrollDelta Scroll delta in document units.
+     * @param pixelDelta The event's raw pixel delta, used for the thresholds so
+     *                   that the feel does not change with zoom.
+     * @return scrollDelta with the locked-out axis zeroed, or unchanged if this
+     *         event is not a phase-carrying trackpad scroll.
+     *
+     * No-op on platforms other than macOS.
+     */
+    QPointF applyTrackpadAxisLock(const QWheelEvent* event,
+                                  QPointF scrollDelta,
+                                  QPoint pixelDelta);
+    
     // ===== Private Methods =====
     
     /**
      * @brief Clamp pan offset to valid bounds.
      */
     void clampPanOffset();
+    
+    /**
+     * @brief Snapshot the viewport into a pixmap with no alpha channel.
+     * @return Viewport contents at device pixel ratio, or a null pixmap if the
+     *         widget has no size yet.
+     *
+     * Use this instead of grab() for any snapshot that will be blitted back
+     * repeatedly during an interaction. grab() allocates in the platform's
+     * preferred format, which carries an alpha channel wherever the backing
+     * store does - as it does on Android. An alpha-carrying source sends every
+     * blit of the snapshot through Qt's per-pixel argb32-on-argb32 blend, which
+     * has hand-written SIMD on x86 and on 32-bit ARM but falls back to scalar C
+     * on aarch64. An alpha-free source makes an unscaled SourceOver blit
+     * provably a copy, which Qt does with memcpy per scanline.
+     *
+     * Measured full-viewport blit, alpha source against alpha-free source:
+     * 229 vs 1698 Mpix/s on a Snapdragon 845, and 110 vs 428 on an Exynos 7870.
+     * These snapshots are fully opaque regardless, so the channel is pure cost.
+     */
+    QPixmap grabOpaqueViewport();
     
     /**
      * @brief Update the current page index based on pan position.
@@ -3080,6 +3927,22 @@ private:
      * @brief Convert QTabletEvent to PointerEvent.
      */
     PointerEvent tabletToPointerEvent(QTabletEvent* event, PointerEvent::Type type);
+
+    /**
+     * @brief Resolve the action mode for a pointer press.
+     *
+     * Real-mouse right clicks invert the persistent mode. All other pointer
+     * sources and buttons use the persistent mode.
+     */
+    static ObjectActionMode effectiveObjectActionModeForPointer(
+        ObjectActionMode persistentMode,
+        PointerEvent::Source source,
+        Qt::MouseButton button);
+
+    bool hasActiveObjectPointerGesture() const;
+    void beginObjectPointerGesture(const PointerEvent& pe);
+    void cancelObjectPointerGesture();
+    void resetObjectPointerGesture();
     
     /**
      * @brief Main pointer event handler.
@@ -3180,6 +4043,15 @@ private:
      * Finalizes object drag operation.
      */
     void handlePointerRelease_ObjectSelect(const PointerEvent& pe);
+
+    /**
+     * @brief Normalize, constrain, and center a newly supplied raster image.
+     * @return False when the current page/tile has no valid insertion bounds.
+     */
+    bool prepareFreshImageForInsertion(ImageObject& imageObject);
+    void insertPreparedImage(const QImage& image,
+                             const QByteArray& encodedData = QByteArray(),
+                             const QByteArray& encodedFormat = QByteArray());
     
     /**
      * @brief Clear the current object selection.
@@ -3375,6 +4247,46 @@ private:
     void handlePointerPress_Pan(const PointerEvent& pe);
     void handlePointerMove_Pan(const PointerEvent& pe);
     void handlePointerRelease_Pan(const PointerEvent& pe);
+
+    // ----- Off-Page Pan -----
+
+    /**
+     * @brief True if this press should arm an off-page pan instead of the tool.
+     *
+     * Paged documents only, non-touch sources, left/stylus tip only, and only
+     * when the press misses every page by more than OFF_PAGE_EDGE_TOLERANCE_PX
+     * and the current tool has nothing to grab there.
+     */
+    bool shouldArmOffPagePan(const PointerEvent& pe) const;
+
+    /**
+     * @brief True if the current tool owns this off-page press.
+     *
+     * Some interactive geometry legitimately sits outside pageRect(): lasso
+     * transform handles, object resize/rotate handles, and rotated objects.
+     */
+    bool toolClaimsOffPagePress(const PointerEvent& pe) const;
+
+    /**
+     * @brief True if the point is outside every page plus the edge tolerance.
+     */
+    bool isPointOutsideAllPages(const QPointF& viewportPos) const;
+
+    /**
+     * @brief Apply the deselect an off-page press would have caused.
+     *
+     * Runs when an armed off-page pan is released without moving, keeping the
+     * "tap the empty space to drop the selection" gesture the tools relied on.
+     */
+    void handleOffPagePanTap();
+
+    /**
+     * @brief Abandon an armed or running off-page pan without acting on it.
+     *
+     * For the paths that can steal the release: tool switch, focus loss and the
+     * viewport being hidden.
+     */
+    void cancelOffPagePan();
     
     /**
      * @brief Load text boxes from PDF for the specified page.
@@ -3498,53 +4410,98 @@ private:
     void renderSearchMatchesOverlayEdgeless(QPainter& painter);
     
     /**
-     * @brief Create a marker-style stroke for a highlight rectangle.
+     * @brief Commit the current text selection as a highlight annotation.
      *
-     * For HighlightStyle::Cover, produces a horizontal stroke through the
-     * center of the rectangle with thickness equal to the rectangle height
-     * (original cover-the-text behavior). For HighlightStyle::Underline,
-     * produces a thin horizontal stroke along the bottom of the rectangle.
+     * A highlight is no longer ink. The selection's per-line rects are
+     * converted into the owning container's coordinate space and handed to
+     * createLinkObjectForHighlight(), which stores them as the annotation's
+     * HighlightRegion. Because the mark and its slots are one record, the
+     * whole commit is a single ObjectInsert undo entry, and neither half can be
+     * removed without the other.
      *
-     * HighlightStyle::DottedUnderline is handled separately by
-     * createDottedUnderlineStrokes() since it produces multiple strokes.
+     * Clears the text selection either way.
      *
-     * @param rect  Rectangle in page coordinates (96 DPI).
-     * @param color Highlight color (typically m_highlighterColor).
-     * @param style Either Cover or Underline. (DottedUnderline is routed
-     *              through createDottedUnderlineStrokes() instead.)
-     * @return VectorStroke configured as a horizontal marker.
+     * @return The created annotation, or nullptr when nothing was committed
+     *         (no valid selection, style None, or edgeless PDF selection).
      */
-    VectorStroke createHighlightStroke(const QRectF& rect,
-                                       const QColor& color,
-                                       HighlightStyle style) const;
+    LinkObject* commitHighlightAnnotation();
+
+    // ===== Stage 3: Adjust mode geometry helpers =====
 
     /**
-     * @brief Create the sequence of dot strokes that make up a dotted underline.
+     * @brief Current selection's rects in the space an annotation stores.
      *
-     * Dots are evenly spaced along the bottom edge of @p rect. Dot thickness
-     * scales with @p rect height (~10%), and center-to-center spacing is
-     * 3x the thickness. Each dot is an ordinary single-point `VectorStroke`,
-     * which keeps the renderer, serializer, and exporter unchanged.
-     *
-     * @param rect  Rectangle in page coordinates (96 DPI).
-     * @param color Highlight color.
-     * @return Vector of dot strokes (possibly empty if rect is too narrow).
+     * Page coordinates when paged, document coordinates when edgeless. PDF text
+     * rects arrive at 72 DPI and are scaled; OCR rects already match their
+     * container. Degenerate rects are dropped.
      */
-    QVector<VectorStroke> createDottedUnderlineStrokes(const QRectF& rect,
-                                                       const QColor& color) const;
-    
+    QVector<QRectF> selectionRectsInContainerSpace() const;
+
     /**
-     * @brief Create highlight strokes from current text selection (Phase B.3).
-     * 
-     * Converts each rectangle in m_textSelection.highlightRects to a VectorStroke
-     * and adds it to the current layer on the selection's page.
-     * Each stroke gets its own undo action (can be undone individually).
-     * Clears the text selection after creating strokes.
-     * 
-     * @return List of created stroke IDs.
+     * @brief Locate the container an annotation lives in.
+     * @param pageIndex Receives the notebook page index (0 in edgeless).
+     * @param containerOrigin Receives the tile origin in edgeless, null when
+     *        paged. Region rects are container-local, so this bridges them to
+     *        the document-space OCR cache.
+     * @param tileCoordOut Receives the owning tile coordinate (edgeless).
+     * @return false when the object is not in any loaded container.
      */
-    QVector<QString> createHighlightStrokes();
-    
+    bool resolveRegionContainer(LinkObject* link, int* pageIndex,
+                                QPointF* containerOrigin,
+                                Document::TileCoord* tileCoordOut = nullptr);
+
+    /**
+     * @brief Rebuild the text range a highlight currently covers.
+     *
+     * Probes the region's own rects through the character caches instead of
+     * trusting region.sourceRange, whose box indices address a lazily rebuilt
+     * cache: in edgeless the OCR cache is re-sorted across whichever tiles are
+     * loaded, so a stored index can mean a different block than it did at
+     * commit time. The stored range is only a fallback for when the geometry
+     * cannot be resolved at all.
+     *
+     * Fills only the indices; the caller populates text and rects by assigning
+     * to m_textSelection and calling updateSelectedTextAndRects().
+     *
+     * @return false when neither the geometry nor the stored range resolves,
+     *         in which case Adjust degrades to drag-redefine only.
+     */
+    bool deriveRegionEndpoints(LinkObject* link, TextSelection& out);
+
+    /**
+     * @brief Expand one selection endpoint outward to its word boundary.
+     * @param toStart true to move the index to the start of its word.
+     *
+     * Keeps a coarse stylus feeling precise. CJK glyphs are left alone because
+     * they are not space-separated, so snapping outward would swallow the
+     * sentence.
+     */
+    void snapEndpointToWord(TextSelection::Source source, int boxIndex,
+                            int& charIndex, bool toStart) const;
+
+    /**
+     * @brief Write the current text selection into the annotation's region.
+     *
+     * Called on every Adjust gesture release. Pushes no undo: the session owns
+     * that, so iterative fiddling stays a single entry.
+     * @return false when the selection produced no usable rects.
+     */
+    bool applyAdjustedRangeToRegion();
+
+    /**
+     * @brief Resolve one Adjust gesture into a new range and write it in.
+     *
+     * A tap moves the endpoint nearer the tap and anchors the far one; a drag
+     * redefines the range outright. Both snap to word boundaries.
+     */
+    void finishAdjustGesture(const QPointF& viewportPos);
+
+    /// Which endpoint an Adjust tap should move, in reading order.
+    bool tapIsNearerToSelectionStart(const CharacterPosition& tapPos) const;
+
+    /// Expand both selection endpoints outward to their word boundaries.
+    void snapSelectionToWords();
+
     /**
      * @brief Update cursor based on Highlighter tool availability.
      * Sets IBeamCursor on PDF pages, ForbiddenCursor on non-PDF pages,
@@ -3583,6 +4540,28 @@ private:
     void resetCurrentStrokeCache();
     
     /**
+     * @brief Cache pixels that a tail redraw starting at @p fromIndex may touch.
+     * @param fromIndex First point of the volatile tail.
+     * @param toCache Transform from stroke coordinates to cache (viewport) coordinates.
+     * @return Clipped to the viewport; empty when the tail is entirely off-screen.
+     */
+    QRect currentStrokeTailRect(int fromIndex, const QTransform& toCache) const;
+    
+    /**
+     * @brief Point ranges of the current stroke whose geometry can reach @p cacheRect.
+     * @param cacheRect Region about to be cleared and repainted, in cache coordinates.
+     * @param toCache Transform from stroke coordinates to cache (viewport) coordinates.
+     * @return Inclusive [first, last] index ranges, already padded with curve context
+     *         and merged, ordered by first index.
+     *
+     * Where a stroke crosses itself, clearing the tail region also destroys older
+     * settled geometry passing through it, so redrawing the tail alone leaves a
+     * hole. Every range this returns has to be repainted to restore the region.
+     */
+    QVector<QPair<int, int>> currentStrokeRangesTouching(const QRect& cacheRect,
+                                                         const QTransform& toCache) const;
+    
+    /**
      * @brief Render the in-progress stroke to the viewport.
      * @param painter The QPainter to render to (viewport painter, unmodified transform).
      * 
@@ -3617,6 +4596,20 @@ private:
      * @param painter The QPainter to render to (viewport coordinates).
      */
     void drawEraserCursor(QPainter& painter);
+    
+    /**
+     * @brief Fill the background in the bands around an already-covered rect.
+     * @param painter The QPainter to render to (viewport coordinates).
+     * @param coveredLogical Region a subsequent draw will overwrite, in logical
+     *        viewport coordinates.
+     *
+     * The gesture pan path shifts a viewport-sized cached frame, so everything
+     * except an L-shaped strip is about to be overdrawn. Clearing only that
+     * strip removes a full-surface write per frame. Fills at most four bands
+     * and allocates nothing. Rounds @p coveredLogical inward, so a fractional
+     * edge is filled rather than left as a seam.
+     */
+    void fillBackgroundAround(QPainter& painter, const QRectF& coveredLogical);
 
     /**
      * @brief Finalize the eraser lasso gesture: delete all strokes inside the
@@ -3702,11 +4695,6 @@ private:
      */
     qreal effectivePdfDpi() const;
     
-    /**
-     * @brief Whether to show debug overlay.
-     */
-    bool m_showDebugOverlay = true;
-    
     // ===== Edgeless Mode State (Phase E2/E3) =====
     
     /**
@@ -3733,7 +4721,13 @@ private:
      * @brief Render the edgeless canvas (tiled architecture).
      * @param painter The QPainter to render to.
      */
-    void renderEdgelessMode(QPainter& painter);
+    /**
+     * @brief Render the edgeless (tiled) canvas.
+     * @param painter Viewport painter, untransformed.
+     * @param dirtyRect Damaged region in viewport coordinates; the tile walk is
+     *        confined to the tiles it touches.
+     */
+    void renderEdgelessMode(QPainter& painter, const QRect& dirtyRect);
 
     /**
      * @brief Pick a render tier for one page or tile in the current paint.

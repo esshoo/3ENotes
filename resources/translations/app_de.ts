@@ -45,6 +45,212 @@
     </message>
 </context>
 <context>
+    <name>BatchExportDialog</name>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="34"/>
+        <source>Share Notebook</source>
+        <translation type="unfinished">Notizbuch teilen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="35"/>
+        <source>Share Notebooks</source>
+        <translation>Notizen teilen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="38"/>
+        <source>Export Notebook</source>
+        <translation type="unfinished">Notizbuch exportieren</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="39"/>
+        <source>Export Notebooks</source>
+        <translation>Notizen exportieren</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="84"/>
+        <source>Choose how to share the selected notebook(s).</source>
+        <translation>Wählen Sie aus, wie die ausgewählten Notizen geteilt werden sollen.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="86"/>
+        <source>Choose an export format and configure its options.</source>
+        <translation>Wählen Sie ein Exportformat und konfigurieren Sie die Optionen.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="97"/>
+        <source>PDF</source>
+        <translation type="unfinished">PDF</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="98"/>
+        <source>Notebook Package (.snbx)</source>
+        <translation>Notizpaket (.snbx)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="107"/>
+        <source>Cancel</source>
+        <translation type="unfinished">Abbrechen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="115"/>
+        <source>Share</source>
+        <translation type="unfinished">Teilen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="117"/>
+        <source>Export</source>
+        <translation type="unfinished">Exportieren</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="144"/>
+        <source>Export paged notebooks as PDF documents.</source>
+        <translation>Seitenzahl-basierte Notizen als PDF-Dokumente exportieren.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="156"/>
+        <source>1 edgeless notebook will be skipped because it cannot be exported to PDF.</source>
+        <translation>1 unendliche Notiz wird übersprungen, da sie nicht als PDF exportiert werden kann.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="157"/>
+        <source>%1 edgeless notebooks will be skipped because they cannot be exported to PDF.</source>
+        <translation>%1 unendliche Notizen werden übersprungen, da sie nicht als PDF exportiert werden können.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="165"/>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="288"/>
+        <source>Output Folder</source>
+        <translation type="unfinished">Ausgabeordner</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="168"/>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="291"/>
+        <source>Select output folder...</source>
+        <translation>Ausgabeordner auswählen...</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="173"/>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="296"/>
+        <source>Browse...</source>
+        <translation type="unfinished">Durchsuchen...</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="181"/>
+        <source>Exported PDFs will be sent to the system share sheet.</source>
+        <translation>Exportierte PDFs werden an das System-Freigabemenü gesendet.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="186"/>
+        <source>Pages</source>
+        <translation type="unfinished">Seiten</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="188"/>
+        <source>All pages</source>
+        <translation type="unfinished">Alle Seiten</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="192"/>
+        <source>Page range:</source>
+        <translation type="unfinished">Seitenbereich:</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="195"/>
+        <source>e.g., 1-10, 15, 20-30</source>
+        <translation type="unfinished">z. B. 1-10, 15, 20-30</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="201"/>
+        <source>Page range applies to all notebooks</source>
+        <translation type="unfinished">Seitenbereich gilt für alle Notizbücher</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="212"/>
+        <source>Quality</source>
+        <translation type="unfinished">Qualität</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="215"/>
+        <source>96 DPI (Screen)</source>
+        <translation type="unfinished">96 DPI (Bildschirm)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="216"/>
+        <source>150 DPI (Standard)</source>
+        <translation type="unfinished">150 DPI (Standard)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="217"/>
+        <source>300 DPI (Print)</source>
+        <translation type="unfinished">300 DPI (Druck)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="218"/>
+        <source>Custom:</source>
+        <translation type="unfinished">Benutzerdefiniert:</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="232"/>
+        <source> DPI</source>
+        <translation type="unfinished">DPI</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="241"/>
+        <source>Options</source>
+        <translation type="unfinished">Optionen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="244"/>
+        <source>Annotations only (blank background)</source>
+        <translation type="unfinished">Nur Anmerkungen (leerer Hintergrund)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="246"/>
+        <source>Render PDF background in dark mode</source>
+        <translation type="unfinished">PDF-Hintergrund im Dunkelmodus rendern</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="248"/>
+        <source>Darken light-coloured strokes for printing</source>
+        <translation type="unfinished">Helle Striche für den Druck abdunkeln</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="250"/>
+        <source>Include PDF metadata</source>
+        <translation type="unfinished">PDF-Metadaten einbeziehen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="252"/>
+        <source>Include bookmarks/outline</source>
+        <translation type="unfinished">Lesezeichen/Gliederung einbeziehen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="281"/>
+        <source>Export notebook packages for backup, sharing, or transfer to another device.</source>
+        <translation>Notizpakete für Backups, zum Teilen oder zur Übertragung auf ein anderes Gerät exportieren.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="304"/>
+        <source>Exported packages will be sent to the system share sheet.</source>
+        <translation>Exportierte Pakete werden an das System-Freigabemenü gesendet.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="310"/>
+        <source>Include PDF copy in package</source>
+        <translation type="unfinished">PDF-Kopie in Paket einbeziehen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="312"/>
+        <source>Embed the source PDF content so the package remains portable.</source>
+        <translation>Quell-PDF-Inhalt einbetten, damit das Paket portabel bleibt.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/BatchExportDialog.cpp" line="440"/>
+        <source>Select Output Folder</source>
+        <translation type="unfinished">Ausgabeordner auswählen</translation>
+    </message>
+</context>
+<context>
     <name>BatchImportDialog</name>
     <message>
         <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="33"/>
@@ -171,311 +377,6 @@
         <location filename="../../source/ui/dialogs/BatchImportDialog.cpp" line="367"/>
         <source>%1 files selected</source>
         <translation>%1 Dateien ausgewählt</translation>
-    </message>
-</context>
-<context>
-    <name>BatchPdfExportDialog</name>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="38"/>
-        <source>Share as PDF</source>
-        <translation>Als PDF teilen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="40"/>
-        <source>Export to PDF</source>
-        <translation>Als PDF exportieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="142"/>
-        <source>Output Folder</source>
-        <translation>Ausgabeordner</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="147"/>
-        <source>Select output folder...</source>
-        <translation>Ausgabeordner wählen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="153"/>
-        <source>Browse...</source>
-        <translation>Durchsuchen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="164"/>
-        <source>Exported PDFs will be shared using Android&apos;s share sheet.</source>
-        <translation>Exportierte PDFs werden über das Android-Freigabemenü geteilt.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="171"/>
-        <source>Pages</source>
-        <translation>Seiten</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="176"/>
-        <source>All pages</source>
-        <translation>Alle Seiten</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="183"/>
-        <source>Page range:</source>
-        <translation>Seitenbereich:</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="187"/>
-        <source>e.g., 1-10, 15, 20-30</source>
-        <translation>z. B. 1-10, 15, 20-30</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="197"/>
-        <source>Page range applies to all notebooks</source>
-        <translation>Seitenbereich gilt für alle Notizbücher</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="213"/>
-        <source>Quality</source>
-        <translation>Qualität</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="219"/>
-        <source>96 DPI (Screen)</source>
-        <translation>96 DPI (Bildschirm)</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="220"/>
-        <source>Smallest file size, for on-screen viewing</source>
-        <translation>Kleinste Dateigröße, für die Bildschirmanzeige</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="224"/>
-        <source>150 DPI (Standard)</source>
-        <translation>150 DPI (Standard)</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="225"/>
-        <source>Good balance between quality and file size</source>
-        <translation>Gutes Gleichgewicht zwischen Qualität und Dateigröße</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="230"/>
-        <source>300 DPI (Print)</source>
-        <translation>300 DPI (Druck)</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="231"/>
-        <source>High quality for printing</source>
-        <translation>Hohe Qualität für den Druck</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="238"/>
-        <source>Custom:</source>
-        <translation>Benutzerdefiniert:</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="245"/>
-        <source> DPI</source>
-        <translation>DPI</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="259"/>
-        <source>Options</source>
-        <translation>Optionen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="263"/>
-        <source>Annotations only (blank background)</source>
-        <translation>Nur Anmerkungen (leerer Hintergrund)</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="265"/>
-        <source>Export strokes and images only, without original PDF content or page backgrounds.</source>
-        <translation>Nur Striche und Bilder exportieren, ohne ursprünglichen PDF-Inhalt oder Seitenhintergründe.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="268"/>
-        <source>Render PDF background in dark mode</source>
-        <translation>PDF-Hintergrund im Dunkelmodus rendern</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="270"/>
-        <source>Apply lightness inversion to the PDF background, producing a dark page similar to the on-canvas dark mode appearance.</source>
-        <translation>Helligkeitsinversion auf den PDF-Hintergrund anwenden, um eine dunkle Seite ähnlich der Darstellung im Dunkelmodus auf der Arbeitsfläche zu erzeugen.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="283"/>
-        <source>Darken light-coloured strokes for printing</source>
-        <translation>Helle Striche für den Druck abdunkeln</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="285"/>
-        <source>Convert light-coloured strokes (used for dark mode contrast) to darker equivalents so they remain visible on a white background when printed.</source>
-        <translation>Wandelt helle Striche (die für den Kontrast im Dunkelmodus verwendet werden) in dunklere Entsprechungen um, damit sie beim Druck auf weißem Hintergrund sichtbar bleiben.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="289"/>
-        <source>Include PDF metadata</source>
-        <translation>PDF-Metadaten einbeziehen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="290"/>
-        <source>Preserve title, author, and other metadata from source PDFs.</source>
-        <translation>Titel, Autor und andere Metadaten aus den Quell-PDFs beibehalten.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="294"/>
-        <source>Include bookmarks/outline</source>
-        <translation>Lesezeichen/Gliederung einbeziehen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="295"/>
-        <source>Preserve PDF bookmarks and outline from source PDFs.</source>
-        <translation>PDF-Lesezeichen und Gliederung aus den Quell-PDFs beibehalten.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="309"/>
-        <source>Cancel</source>
-        <translation>Abbrechen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="316"/>
-        <source>Share</source>
-        <translation>Teilen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="318"/>
-        <source>Export</source>
-        <translation>Exportieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="410"/>
-        <source>Share Notebook as PDF</source>
-        <translation>Notizbuch als PDF teilen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="412"/>
-        <source>Share %1 Notebooks as PDF</source>
-        <translation>%1 Notizbücher als PDF teilen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="416"/>
-        <source>Export Notebook to PDF</source>
-        <translation>Notizbuch als PDF exportieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="418"/>
-        <source>Export %1 Notebooks to PDF</source>
-        <translation>%1 Notizbücher als PDF exportieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="434"/>
-        <source>⚠ 1 edgeless notebook will be skipped (edgeless notebooks cannot be exported to PDF).</source>
-        <translation>⚠ 1 rahmenloses Notizbuch wird übersprungen (rahmenlose Notizbücher können nicht als PDF exportiert werden).</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="437"/>
-        <source>⚠ %1 edgeless notebooks will be skipped (edgeless notebooks cannot be exported to PDF).</source>
-        <translation>⚠ %1 rahmenlose Notizbücher werden übersprungen (rahmenlose Notizbücher können nicht als PDF exportiert werden).</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchPdfExportDialog.cpp" line="456"/>
-        <source>Select Output Folder</source>
-        <translation>Ausgabeordner auswählen</translation>
-    </message>
-</context>
-<context>
-    <name>BatchSnbxExportDialog</name>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="30"/>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="232"/>
-        <source>Share Notebook Package</source>
-        <translation>Notizbuchpaket teilen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="32"/>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="240"/>
-        <source>Export Notebook Package</source>
-        <translation>Notizbuchpaket exportieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="111"/>
-        <source>Output Folder</source>
-        <translation>Ausgabeordner</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="116"/>
-        <source>Select output folder...</source>
-        <translation>Ausgabeordner auswählen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="122"/>
-        <source>Browse...</source>
-        <translation>Durchsuchen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="133"/>
-        <source>The exported packages will be shared using Android&apos;s share sheet.</source>
-        <translation>Die exportierten Pakete werden über das Android-Freigabemenü geteilt.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="140"/>
-        <source>Include PDF copy in package</source>
-        <translation>PDF-Kopie in Paket einbeziehen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="142"/>
-        <source>Embed the source PDF file in the package.
-This makes the package larger but allows the recipient to view the original PDF.</source>
-        <translation>Die Quell-PDF-Datei in das Paket einbetten.
-Dies vergrößert das Paket, ermöglicht dem Empfänger jedoch, das Original-PDF anzuzeigen.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="156"/>
-        <source>Cancel</source>
-        <translation>Abbrechen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="178"/>
-        <source>Share</source>
-        <translation>Teilen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="180"/>
-        <source>Export</source>
-        <translation>Exportieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="233"/>
-        <source>Share the notebook as a .snbx package that can be imported on another device.</source>
-        <translation>Notizbuch als .snbx-Paket teilen, das auf einem anderen Gerät importiert werden kann.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="235"/>
-        <source>Share %1 Notebook Packages</source>
-        <translation>%1 Notizbuch-Pakete teilen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="236"/>
-        <source>Share %1 notebooks as .snbx packages that can be imported on another device.</source>
-        <translation>%1 Notizbücher als .snbx-Pakete teilen, die auf einem anderen Gerät importiert werden können.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="241"/>
-        <source>Export the notebook as a .snbx package that can be shared or transferred.</source>
-        <translation>Notizbuch als .snbx-Paket exportieren, das geteilt oder übertragen werden kann.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="243"/>
-        <source>Export %1 Notebook Packages</source>
-        <translation>%1 Notizbuch-Pakete exportieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="244"/>
-        <source>Export %1 notebooks as .snbx packages that can be shared or transferred.</source>
-        <translation>%1 Notizbücher als .snbx-Pakete exportieren, die geteilt oder übertragen werden können.</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/dialogs/BatchSnbxExportDialog.cpp" line="263"/>
-        <source>Select Output Folder</source>
-        <translation>Ausgabeordner auswählen</translation>
     </message>
 </context>
 <context>
@@ -1128,14 +1029,6 @@ HINWEIS: Auf Android werden importierte Notizbücher automatisch zur Bibliothek 
     </message>
 </context>
 <context>
-    <name>ClipboardActionBar</name>
-    <message>
-        <location filename="../../source/ui/actionbars/ClipboardActionBar.cpp" line="15"/>
-        <source>Paste (Ctrl+V)</source>
-        <translation>Einfügen (Strg+V)</translation>
-    </message>
-</context>
-<context>
     <name>ColorPresetButton</name>
     <message>
         <location filename="../../source/ui/widgets/ColorPresetButton.cpp" line="20"/>
@@ -1161,57 +1054,57 @@ HINWEIS: Auf Android werden importierte Notizbücher automatisch zur Bibliothek 
         <translation>Abbrechen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="997"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1003"/>
         <source>Background Style:</source>
         <translation>Hintergrundstil:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1003"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1009"/>
         <source>None</source>
         <translation>Keiner</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1004"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1010"/>
         <source>Grid</source>
         <translation>Gitter</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1005"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1011"/>
         <source>Lines</source>
         <translation>Linien</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1013"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1019"/>
         <source>Background Color:</source>
         <translation>Hintergrundfarbe:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1457"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1480"/>
         <source>Select Background Color</source>
         <translation>Hintergrundfarbe auswählen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1477"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1500"/>
         <source>Use Custom Accent Color</source>
         <translation>Benutzerdefinierte Akzentfarbe verwenden</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1480"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1503"/>
         <source>Accent Color:</source>
         <translation>Akzentfarbe:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1491"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1514"/>
         <source>When enabled, use a custom accent color instead of the system accent color for the toolbar, dial, and tab selection.</source>
         <translation>Wenn aktiviert, wird eine benutzerdefinierte Akzentfarbe anstelle der System-Akzentfarbe für die Symbolleiste, das Einstellrad und die Registerkartenauswahl verwendet.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1594"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1617"/>
         <source>Theme</source>
         <translation>Design</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1598"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1621"/>
         <source>Select Accent Color</source>
         <translation>Akzentfarbe auswählen</translation>
     </message>
@@ -1222,157 +1115,167 @@ HINWEIS: Auf Android werden importierte Notizbücher automatisch zur Bibliothek 
     </message>
     <message>
         <location filename="../../source/ControlPanelDialog.cpp" line="206"/>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1232"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1255"/>
         <source>Shortcuts</source>
         <translation>Tastenkürzel</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1027"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1033"/>
         <source>Grid/Line Color:</source>
         <translation>Gitter-/Linienfarbe:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1043"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1049"/>
         <source>Grid Spacing:</source>
         <translation>Gitterabstand:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1058"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1064"/>
         <source>Line Spacing:</source>
         <translation>Linienabstand:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1072"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1078"/>
         <source>Note: 32px spacing is recommended as it divides evenly into the 1024px tile size used by the edgeless canvas.</source>
         <translation>Hinweis: Ein Abstand von 32px wird empfohlen, da er gleichmäßig in die 1024px-Kachelgröße der unbegrenzten Arbeitsfläche unterteilt werden kann.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1087"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1093"/>
         <source>Page</source>
         <translation>Seite</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1112"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1118"/>
         <source> px</source>
         <translation>px</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1105"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1111"/>
         <source>Panning</source>
         <translation>Schwenken</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1115"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1121"/>
         <source>Mouse wheel scroll speed:</source>
         <translation>Mausrad-Scrollgeschwindigkeit:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1118"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1124"/>
         <source>Distance the viewport moves per mouse wheel click, in document units. Applies to vertical panning (wheel / `+wheel) and horizontal panning (Shift+wheel). Does not affect touchpad scrolling.</source>
         <translation>Distanz, um die sich der Ansichtsbereich pro Mausradklick bewegt, in Dokumenteinheiten. Gilt für vertikales Schwenken (Rad / `+Rad) und horizontales Schwenken (Shift+Rad). Beeinflusst nicht das Scrollen per Touchpad.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1129"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1133"/>
+        <source>Pan the view by dragging the empty space around pages</source>
+        <translation>Ansicht durch Ziehen des leeren Bereichs um die Seiten verschieben</translation>
+    </message>
+    <message>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1139"/>
+        <source>Lets you move the view with a stylus alone, without holding a key or switching to the hand tool. Drawing tools are unaffected because they only work on the pages themselves. A tap in the empty space still clears the current selection, and a drag that starts on a page always continues as drawing. Does not apply to the edgeless canvas.</source>
+        <translation>Ermöglicht das Verschieben der Ansicht allein mit dem Stift, ohne eine Taste zu halten oder zum Hand-Werkzeug zu wechseln. Zeichenwerkzeuge sind nicht betroffen, da sie nur auf den Seiten selbst wirken. Ein Tippen in den leeren Bereich hebt weiterhin die aktuelle Auswahl auf, und ein Zug, der auf einer Seite beginnt, wird immer als Zeichnen fortgesetzt. Gilt nicht für die randlose Leinwand.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1152"/>
         <source>OCR (Handwriting Recognition)</source>
         <translation>OCR (Handschrifterkennung)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1132"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1155"/>
         <source>CJK grid-cell mode (box-by-box character detection)</source>
         <translation>CJK-Gitterzellenmodus (zeichenweise Erkennung)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1137"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1160"/>
         <source>When &quot;Snap OCR to Grid/Lines&quot; is enabled on the OCR toolbar and the background is a grid, this option makes each grid cell detect one CJK character. Adjacent characters are merged into sentences. Leave unchecked for line-based detection (suitable for most languages).</source>
         <translation>Wenn „OCR an Gitter/Linien ausrichten“ in der OCR-Symbolleiste aktiviert ist und der Hintergrund ein Gitter ist, sorgt diese Option dafür, dass jede Gitterzelle ein CJK-Zeichen erkennt. Benachbarte Zeichen werden zu Sätzen zusammengefügt. Deaktiviert lassen für zeilenbasierte Erkennung (geeignet für die meisten Sprachen).</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1149"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1172"/>
         <source>Tools</source>
         <translation>Werkzeuge</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1165"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1188"/>
         <source>Keyboard Shortcuts</source>
         <translation>Tastenkürzel</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1169"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1192"/>
         <source>Double-click a shortcut to edit. Changes are saved automatically.</source>
         <translation>Doppelklicken Sie auf ein Kürzel, um es zu bearbeiten. Änderungen werden automatisch gespeichert.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1176"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1199"/>
         <source>Action</source>
         <translation>Aktion</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1176"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1199"/>
         <source>Shortcut</source>
         <translation>Tastenkombination</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1176"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1199"/>
         <source>Default</source>
         <translation>Standard</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1197"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1220"/>
         <source>Edit</source>
         <translation>Bearbeiten</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1198"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1221"/>
         <source>Edit the selected shortcut</source>
         <translation>Die ausgewählte Tastenkombination bearbeiten</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1202"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1225"/>
         <source>Reset</source>
         <translation>Zurücksetzen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1203"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1226"/>
         <source>Reset the selected shortcut to default</source>
         <translation>Die ausgewählte Tastenkombination auf Standard zurücksetzen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1209"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1232"/>
         <source>Reset All to Defaults</source>
         <translation>Alle auf Standard zurücksetzen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1210"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1233"/>
         <source>Reset all shortcuts to their default values</source>
         <translation>Alle Tastenkombinationen auf ihre Standardwerte zurücksetzen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1221"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1244"/>
         <source>Open Config Folder</source>
         <translation>Konfigurationsordner öffnen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1222"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1245"/>
         <source>Open the folder containing shortcuts.json</source>
         <translation>Den Ordner öffnen, der die shortcuts.json enthält</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1308"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1331"/>
         <source>Conflict with: %1</source>
         <translation>Konflikt mit: %1</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1325"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1348"/>
         <source>Capture Shortcut for: %1</source>
         <translation>Tastenkombination für %1 erfassen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1343"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1366"/>
         <source>Shortcut Conflict</source>
         <translation>Tastenkombinationskonflikt</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1344"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1367"/>
         <source>The shortcut &apos;%1&apos; is already used by:
 %2
 
@@ -1383,38 +1286,38 @@ Do you want to use it anyway?</source>
 Möchten Sie sie trotzdem verwenden?</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1372"/>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1381"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1395"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1404"/>
         <source>No Selection</source>
         <translation>Keine Auswahl</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1373"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1396"/>
         <source>Please select a shortcut to edit.</source>
         <translation>Bitte wählen Sie eine Tastenkombination zum Bearbeiten aus.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1382"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1405"/>
         <source>Please select a shortcut to reset.</source>
         <translation>Bitte wählen Sie eine Tastenkombination zum Zurücksetzen aus.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1392"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1415"/>
         <source>Already Default</source>
         <translation>Bereits Standard</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1393"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1416"/>
         <source>This shortcut is already using the default value.</source>
         <translation>Diese Tastenkombination verwendet bereits den Standardwert.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1408"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1431"/>
         <source>Reset All Shortcuts</source>
         <translation>Alle Tastenkombinationen zurücksetzen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1409"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1432"/>
         <source>Are you sure you want to reset all shortcuts to their default values?
 
 This cannot be undone.</source>
@@ -1423,112 +1326,112 @@ This cannot be undone.</source>
 Dies kann nicht rückgängig gemacht werden.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1423"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1446"/>
         <source>Shortcuts Reset</source>
         <translation>Tastenkombinationen zurückgesetzt</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1424"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1447"/>
         <source>All shortcuts have been reset to their default values.</source>
         <translation>Alle Tastenkombinationen wurden auf ihre Standardwerte zurückgesetzt.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1451"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1474"/>
         <source>%1 × %2 px (at 96 DPI)</source>
         <translation>%1 × %2 px (bei 96 DPI)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1465"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1488"/>
         <source>Select Grid/Line Color</source>
         <translation>Raster-/Linienfarbe auswählen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1504"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1527"/>
         <source>Invert PDF Lightness in Dark Mode</source>
         <translation>PDF-Helligkeit im Dunkelmodus umkehren</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1507"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1530"/>
         <source>When enabled and dark mode is active, PDF page backgrounds are darkened by inverting lightness (HSL). White pages become dark and dark text becomes light, while colours keep their hue. Disable this if you prefer the original PDF colours.</source>
         <translation>Wenn aktiviert und der Dunkelmodus aktiv ist, werden PDF-Seitenhintergründe durch Umkehrung der Helligkeit (HSL) abgedunkelt. Weiße Seiten werden dunkel und dunkler Text wird hell, während die Farben ihren Farbton beibehalten. Deaktivieren Sie dies, wenn Sie die ursprünglichen PDF-Farben bevorzugen.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1518"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1541"/>
         <source>Invert entire page including images</source>
         <translation>Gesamte Seite einschließlich Bilder umkehren</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1521"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1544"/>
         <source>By default, embedded photos and figures are detected and excluded from inversion. Enable this to invert every pixel on the page. Useful for PDFs that consist mainly of black-and-white diagrams or graphs.</source>
         <translation>Standardmäßig werden eingebettete Fotos und Grafiken erkannt und von der Umkehrung ausgeschlossen. Aktivieren Sie dies, um jedes Pixel auf der Seite umzukehren. Nützlich für PDFs, die hauptsächlich aus Schwarz-Weiß-Diagrammen oder Grafiken bestehen.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1539"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1562"/>
         <source>Scroll Bar</source>
         <translation>Bildlaufleiste</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1545"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1568"/>
         <source>Page scroll bar side:</source>
         <translation>Seite der Bildlaufleiste:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1547"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1570"/>
         <source>Left</source>
         <translation>Links</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1548"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1571"/>
         <source>Right</source>
         <translation>Rechts</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1556"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1579"/>
         <source>Horizontal scroll bar side:</source>
         <translation>Seite der horizontalen Bildlaufleiste:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1558"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1581"/>
         <source>Top</source>
         <translation>Oben</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1559"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1582"/>
         <source>Bottom</source>
         <translation>Unten</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1565"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1588"/>
         <source>Keep scroll bars always visible</source>
         <translation>Bildlaufleisten immer anzeigen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1568"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1591"/>
         <source>Choose which edge each scroll bar docks against (right-side placement can help avoid accidental palm input for pen users). When not pinned, bars float in on pen or cursor proximity and fade out after a moment.</source>
         <translation>Wählen Sie den Rand, an dem die Bildlaufleisten angedockt werden sollen (die Platzierung auf der rechten Seite kann bei Stiftbenutzern versehentliche Eingaben durch den Handballen verhindern). Wenn sie nicht fixiert sind, werden die Leisten bei Annäherung des Stifts oder Cursors eingeblendet und blenden nach kurzer Zeit wieder aus.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1713"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1736"/>
         <source>SpeedyNote</source>
         <translation>SpeedyNote</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1721"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1744"/>
         <source>Version %1</source>
         <translation>Version %1</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1746"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1769"/>
         <source>© 2026 SpeedyNote. All rights reserved.</source>
         <translation>© 2026 SpeedyNote. Alle Rechte vorbehalten.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1773"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1796"/>
         <source>Cache Management</source>
         <translation>Cache-Verwaltung</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1782"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1805"/>
         <source>SpeedyNote uses temporary folders to work with notebook files.
 These folders are normally cleaned up when you close a notebook,
 but crashes or force-close can leave orphaned files behind.</source>
@@ -1537,28 +1440,28 @@ Diese Ordner werden normalerweise beim Schließen eines Notizbuchs bereinigt,
 aber Abstürze oder erzwungenes Schließen können verwaiste Dateien hinterlassen.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1798"/>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1839"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1821"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1862"/>
         <source>Current cache size: %1</source>
         <translation>Aktuelle Cache-Größe: %1</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1807"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1830"/>
         <source>Location: %1</source>
         <translation>Speicherort: %1</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1816"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1839"/>
         <source>Clear Cache Now</source>
         <translation>Cache jetzt leeren</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1824"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1847"/>
         <source>Clear Cache?</source>
         <translation>Cache leeren?</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1825"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1848"/>
         <source>This will delete all temporary cache files.
 
 ⚠️ WARNING: Make sure all notebooks are closed before clearing cache, otherwise you may lose unsaved changes!
@@ -1571,112 +1474,112 @@ Continue?</source>
 Fortfahren?</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1842"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1865"/>
         <source>Cache Cleared</source>
         <translation>Cache geleert</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1843"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1866"/>
         <source>Cache cleanup is temporarily disabled during architecture migration.</source>
         <translation>Die Cache-Bereinigung ist während der Architekturmigration vorübergehend deaktiviert.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1857"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1880"/>
         <source>⚠️ Only clear cache when all notebooks are closed</source>
         <translation>⚠️ Cache nur leeren, wenn alle Notizbücher geschlossen sind</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1867"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1890"/>
         <source>Cache</source>
         <translation>Cache</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1879"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1902"/>
         <source>Language Settings</source>
         <translation>Spracheinstellungen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1886"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1909"/>
         <source>Use System Language (Auto-detect)</source>
         <translation>Systemsprache verwenden (automatisch erkennen)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1889"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1912"/>
         <source>When enabled, SpeedyNote will automatically detect and use your system&apos;s language setting.</source>
         <translation>Wenn aktiviert, erkennt SpeedyNote automatisch Ihre Systemeinstellung für die Sprache und verwendet diese.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1895"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1918"/>
         <source>Manual Language Override:</source>
         <translation>Manuelle Sprachauswahl:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1937"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1960"/>
         <source>Unknown</source>
         <translation type="unfinished">Unbekannt</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1922"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1945"/>
         <source>Select a specific language to override the system setting. Changes take effect after restarting the application.</source>
         <translation>Wählen Sie eine bestimmte Sprache, um die Systemeinstellung zu überschreiben. Änderungen werden nach einem Neustart der Anwendung wirksam.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1928"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1951"/>
         <source>Current Language Status:</source>
         <translation>Aktueller Sprachstatus:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1940"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1963"/>
         <source>System Language: %1 (%2)</source>
         <translation>Systemsprache: %1 (%2)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1952"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1975"/>
         <source>Handwriting Recognition Language</source>
         <translation>Sprache für Handschrifterkennung</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1959"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1982"/>
         <source>Default language for OCR handwriting recognition. Individual documents can override this in the overflow menu.</source>
         <translation>Standardsprache für die OCR-Handschrifterkennung. Einzelne Dokumente können dies über das Überlaufmenü überschreiben.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1966"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1989"/>
         <source>Auto-detect (system default)</source>
         <translation>Automatisch erkennen (Systemstandard)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1976"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1999"/>
         <source>%1 (%2)</source>
         <translation>%1 (%2)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1981"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="2004"/>
         <source> - needs download</source>
         <translation>– Download erforderlich</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1998"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="2021"/>
         <source>Language</source>
         <translation>Sprache</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="2010"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="2033"/>
         <source>Palm Rejection</source>
         <translation>Handballenerkennung</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="2014"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="2037"/>
         <source>Disable touch gestures when stylus is active</source>
         <translation>Berührungsgesten bei aktivem Eingabestift deaktivieren</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="2020"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="2043"/>
         <source>Restore delay:</source>
         <translation>Wiederherstellungsverzögerung:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="2033"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="2056"/>
         <source>When enabled, touch gestures are temporarily disabled while the stylus is hovering or touching the screen. After the stylus leaves, touch gestures are restored after the specified delay.
 
 This helps prevent accidental palm touches while writing. Only affects Y-Axis Only and Full touch gesture modes.</source>
@@ -1685,97 +1588,97 @@ This helps prevent accidental palm touches while writing. Only affects Y-Axis On
 Dies hilft, versehentliche Berührungen durch den Handballen während des Schreibens zu vermeiden. Betrifft nur die Gestenmodi „Nur Y-Achse“ und „Vollständig“.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="2055"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="2078"/>
         <source>Stylus</source>
         <translation>Eingabestift</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1729"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1752"/>
         <source>A fast and intuitive note-taking application with PDF annotation support</source>
         <translation>Eine schnelle und intuitive Notiz-App mit Unterstützung für PDF-Anmerkungen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1738"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1761"/>
         <source>Developed by GitHub @alpha-liu-01 and various contributors</source>
         <translation>Entwickelt von GitHub @alpha-liu-01 und verschiedenen Mitwirkenden</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1755"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1778"/>
         <source>Built with Qt %1</source>
         <translation>Erstellt mit Qt %1</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="1762"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="1785"/>
         <source>About</source>
         <translation>Über</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="936"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="942"/>
         <source>Default Page &amp; Background Settings</source>
         <translation>Standard-Seiten- &amp; Hintergrundeinstellungen</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="940"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="946"/>
         <source>These settings apply to newly created documents only. Background changes will also be applied to the current document.</source>
         <translation>Diese Einstellungen gelten nur für neu erstellte Dokumente. Hintergrundänderungen werden auch auf das aktuelle Dokument angewendet.</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="947"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="953"/>
         <source>Default Page Size</source>
         <translation>Standard-Seitengröße</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="953"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="959"/>
         <source>Paper Size:</source>
         <translation>Papierformat:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="961"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="967"/>
         <source>A3 (297 × 420 mm)</source>
         <translation>A3 (297 × 420 mm)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="962"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="968"/>
         <source>B4 (250 × 353 mm)</source>
         <translation>B4 (250 × 353 mm)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="963"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="969"/>
         <source>A4 (210 × 297 mm)</source>
         <translation>A4 (210 × 297 mm)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="964"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="970"/>
         <source>B5 (176 × 250 mm)</source>
         <translation>B5 (176 × 250 mm)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="965"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="971"/>
         <source>A5 (148 × 210 mm)</source>
         <translation>A5 (148 × 210 mm)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="967"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="973"/>
         <source>US Letter (8.5 × 11 in)</source>
         <translation>US Letter (8,5 × 11 Zoll)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="968"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="974"/>
         <source>US Legal (8.5 × 14 in)</source>
         <translation>US Legal (8,5 × 14 Zoll)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="969"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="975"/>
         <source>US Tabloid (11 × 17 in)</source>
         <translation>US Tabloid (11 × 17 Zoll)</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="978"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="984"/>
         <source>Dimensions:</source>
         <translation>Abmessungen:</translation>
     </message>
     <message>
-        <location filename="../../source/ControlPanelDialog.cpp" line="991"/>
+        <location filename="../../source/ControlPanelDialog.cpp" line="997"/>
         <source>Default Background</source>
         <translation>Standard-Hintergrund</translation>
     </message>
@@ -1829,12 +1732,13 @@ Dies hilft, versehentliche Berührungen durch den Handballen während des Schrei
 <context>
     <name>Document</name>
     <message>
-        <location filename="../../source/core/Document.h" line="277"/>
+        <location filename="../../source/core/Document.h" line="309"/>
         <source>Untitled</source>
         <translation>Unbenannt</translation>
     </message>
     <message>
-        <location filename="../../source/core/Document.cpp" line="898"/>
+        <location filename="../../source/core/Document.cpp" line="466"/>
+        <location filename="../../source/core/Document.cpp" line="1219"/>
         <source>Source %1</source>
         <translation>Quelle %1</translation>
     </message>
@@ -1842,16 +1746,16 @@ Dies hilft, versehentliche Berührungen durch den Handballen während des Schrei
 <context>
     <name>DocumentManager</name>
     <message>
-        <location filename="../../source/core/DocumentManager.cpp" line="65"/>
-        <location filename="../../source/core/DocumentManager.cpp" line="601"/>
-        <location filename="../../source/core/DocumentManager.cpp" line="609"/>
+        <location filename="../../source/core/DocumentManager.cpp" line="68"/>
+        <location filename="../../source/core/DocumentManager.cpp" line="608"/>
+        <location filename="../../source/core/DocumentManager.cpp" line="616"/>
         <source>Untitled</source>
         <translation>Unbenannt</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentManager.cpp" line="86"/>
-        <location filename="../../source/core/DocumentManager.cpp" line="601"/>
-        <location filename="../../source/core/DocumentManager.cpp" line="609"/>
+        <location filename="../../source/core/DocumentManager.cpp" line="89"/>
+        <location filename="../../source/core/DocumentManager.cpp" line="608"/>
+        <location filename="../../source/core/DocumentManager.cpp" line="616"/>
         <source>Untitled Canvas</source>
         <translation>Unbenannte Arbeitsfläche</translation>
     </message>
@@ -2091,62 +1995,134 @@ Dies hilft, versehentliche Berührungen durch den Handballen während des Schrei
 <context>
     <name>DocumentViewport</name>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="1235"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="1426"/>
         <source>Target page not found.</source>
         <translation>Zielseite nicht gefunden.</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="2721"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="2613"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10090"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10403"/>
+        <source>Text box cannot grow beyond the page</source>
+        <translation>Das Textfeld kann nicht über die Seite hinauswachsen</translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="3059"/>
         <source>No document loaded</source>
         <translation>Kein Dokument geladen</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="7580"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="3749"/>
+        <source>Cut</source>
+        <translation type="unfinished">Ausschneiden</translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="3756"/>
+        <source>Copy</source>
+        <translation type="unfinished">Kopieren</translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="3761"/>
+        <source>Paste</source>
+        <translation type="unfinished">Einfügen</translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="3770"/>
+        <source>Edit Text</source>
+        <translation>Text bearbeiten</translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="3779"/>
+        <source>Delete</source>
+        <translation type="unfinished">Löschen</translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="8262"/>
         <source>Insert Image</source>
         <translation>Bild einfügen</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="7582"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="8264"/>
         <source>Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;All Files (*)</source>
         <translation>Bilder (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;Alle Dateien (*)</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="8481"/>
-        <source>Add Position Link</source>
-        <translation>Positionslink hinzufügen</translation>
+        <location filename="../../source/core/DocumentViewport.cpp" line="8759"/>
+        <source>Not enough room on this page to convert this text</source>
+        <translation>Nicht genügend Platz auf dieser Seite, um diesen Text umzuwandeln</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="8482"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10879"/>
+        <source>Start position link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10885"/>
+        <source>Finish position link here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10886"/>
+        <source>Finish position link from &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10889"/>
+        <source>Cancel position link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10892"/>
         <source>Add URL Link</source>
         <translation>URL-Link hinzufügen</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="8483"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10893"/>
         <source>Add Markdown Note</source>
         <translation>Markdown-Notiz hinzufügen</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="8493"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10904"/>
         <source>Add URL</source>
         <translation>URL hinzufügen</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="8493"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="10904"/>
         <source>Enter URL:</source>
         <translation>URL eingeben:</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="8631"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="11037"/>
+        <source>Cannot start a position link from this annotation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="11187"/>
+        <source>The other end of this link no longer exists.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="11196"/>
+        <source>That link slot is no longer free.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="11206"/>
+        <source>Cannot finish the position link here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/DocumentViewport.cpp" line="11362"/>
         <source>Cannot create note: please save the document first.</source>
         <translation>Notiz kann nicht erstellt werden: Bitte speichern Sie zuerst das Dokument.</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="8642"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="11373"/>
         <source>Untitled Note</source>
         <translation>Unbenannte Notiz</translation>
     </message>
     <message>
-        <location filename="../../source/core/DocumentViewport.cpp" line="8650"/>
+        <location filename="../../source/core/DocumentViewport.cpp" line="11381"/>
         <source>Failed to create note file. Check disk space and permissions.</source>
         <translation>Notizdatei konnte nicht erstellt werden. Überprüfen Sie den Speicherplatz und die Berechtigungen.</translation>
     </message>
@@ -2322,44 +2298,6 @@ Dies hilft, versehentliche Berührungen durch den Handballen während des Schrei
     </message>
 </context>
 <context>
-    <name>FloatingTextEditor</name>
-    <message>
-        <location filename="../../source/ui/panels/FloatingTextEditor.cpp" line="42"/>
-        <source>Text Editor</source>
-        <translation>Texteditor</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/panels/FloatingTextEditor.cpp" line="79"/>
-        <source>Align Left</source>
-        <translation>Linksbündig</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/panels/FloatingTextEditor.cpp" line="80"/>
-        <source>Align Center</source>
-        <translation>Zentriert</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/panels/FloatingTextEditor.cpp" line="81"/>
-        <source>Align Right</source>
-        <translation>Rechtsbündig</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/panels/FloatingTextEditor.cpp" line="90"/>
-        <source>Text Color (click to change)</source>
-        <translation>Textfarbe (zum Ändern klicken)</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/panels/FloatingTextEditor.cpp" line="95"/>
-        <source>Opacity:</source>
-        <translation>Deckkraft:</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/panels/FloatingTextEditor.cpp" line="285"/>
-        <source>Select Text Color</source>
-        <translation>Textfarbe auswählen</translation>
-    </message>
-</context>
-<context>
     <name>FolderPickerDialog</name>
     <message>
         <location filename="../../source/ui/launcher/FolderPickerDialog.cpp" line="17"/>
@@ -2443,47 +2381,52 @@ Dies hilft, versehentliche Berührungen durch den Handballen während des Schrei
 <context>
     <name>HighlighterSubToolbar</name>
     <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="42"/>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="43"/>
         <source>Color preset %1 (click to select, click again to edit)</source>
         <translation>Farben-Voreinstellung %1 (klicken zum Auswählen, erneut klicken zum Bearbeiten)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="52"/>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="57"/>
+        <source>Select text only (click to highlight on release)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="58"/>
+        <source>Highlight on release (click to select text only)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="66"/>
         <source>Auto-highlight style</source>
         <translation>Stil für automatische Hervorhebung</translation>
     </message>
     <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="57"/>
-        <source>None</source>
-        <translation>Keine</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="58"/>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="71"/>
         <source>Cover text</source>
         <translation>Text abdecken</translation>
     </message>
     <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="59"/>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="72"/>
         <source>Underline</source>
         <translation>Unterstreichen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="60"/>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="73"/>
         <source>Dotted underline</source>
         <translation>Gepunktete Unterstreichung</translation>
     </message>
     <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="78"/>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="92"/>
         <source>PDF text selection (click to switch to OCR text)</source>
         <translation>PDF-Textauswahl (klicken, um zu OCR-Text zu wechseln)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="79"/>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="93"/>
         <source>OCR text selection (click to switch to PDF text)</source>
         <translation>OCR-Textauswahl (klicken, um zu PDF-Text zu wechseln)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="295"/>
+        <location filename="../../source/ui/subtoolbars/HighlighterSubToolbar.cpp" line="340"/>
         <source>Select Highlighter Color</source>
         <translation>Textmarkerfarbe auswählen</translation>
     </message>
@@ -2553,99 +2496,99 @@ Dies hilft, versehentliche Berührungen durch den Handballen während des Schrei
 <context>
     <name>Launcher</name>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="203"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="202"/>
         <source>SpeedyNote</source>
         <translation>SpeedyNote</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="293"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="292"/>
         <source>Return</source>
         <translation>Zurück</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="311"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="310"/>
         <source>Timeline</source>
         <translation>Zeitachse</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="318"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="317"/>
         <source>Starred</source>
         <translation>Favoriten</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="325"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="324"/>
         <source>Search</source>
         <translation>Suche</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="969"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="996"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1580"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="968"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="995"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1582"/>
         <source>Move to Folder</source>
         <translation>In Ordner verschieben</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="973"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="972"/>
         <source>Unfiled</source>
         <translation>Nicht zugeordnet</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="994"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="993"/>
         <source>More Folders...</source>
         <translation>Weitere Ordner...</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1003"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1002"/>
         <source>+ New Folder...</source>
         <translation>+ Neuer Ordner...</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1006"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1005"/>
         <source>New Folder</source>
         <translation>Neuer Ordner</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1007"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1006"/>
         <source>Folder name:</source>
         <translation>Ordnername:</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1033"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1548"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1032"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1550"/>
         <source>Export</source>
         <translation>Exportieren</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1036"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1552"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1035"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1554"/>
         <source>To PDF...</source>
         <translation>Als PDF...</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1041"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1561"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1040"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1563"/>
         <source>To SNBX...</source>
         <translation>Zu SNBX...</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1076"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1075"/>
         <source>Rename Folder</source>
         <translation>Ordner umbenennen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1077"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1249"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1076"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1248"/>
         <source>New name:</source>
         <translation>Neuer Name:</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1096"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1100"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1095"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1099"/>
         <source>Delete Folder</source>
         <translation>Ordner löschen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1101"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1100"/>
         <source>Delete folder &quot;%1&quot;?
 
 Notebooks in this folder will become unfiled.</source>
@@ -2654,12 +2597,12 @@ Notebooks in this folder will become unfiled.</source>
 Notizbücher in diesem Ordner werden als unkategorisiert markiert.</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1139"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1138"/>
         <source>Delete Notebook</source>
         <translation>Notizbuch löschen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1140"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1139"/>
         <source>Permanently delete &quot;%1&quot;?
 
 This action cannot be undone.</source>
@@ -2668,18 +2611,18 @@ This action cannot be undone.</source>
 Diese Aktion kann nicht rückgängig gemacht werden.</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1152"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1151"/>
         <source>  ... and %1 more
 </source>
         <translation>... und %1 weitere</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1157"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1156"/>
         <source>Delete Notebooks</source>
         <translation>Notizbücher löschen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1158"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1157"/>
         <source>Permanently delete %1 notebooks?
 
 %2
@@ -2690,90 +2633,90 @@ This action cannot be undone.</source>
 Diese Aktion kann nicht rückgängig gemacht werden.</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1248"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1247"/>
         <source>Rename Notebook</source>
         <translation>Notizbuch umbenennen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1267"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1315"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1266"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1317"/>
         <source>Rename Failed</source>
         <translation>Umbenennen fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1268"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1267"/>
         <source>A notebook named &quot;%1&quot; already exists.</source>
         <translation>Ein Notizbuch mit dem Namen &quot;%1&quot; existiert bereits.</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1316"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1318"/>
         <source>Could not rename the notebook.</source>
         <translation>Das Notizbuch konnte nicht umbenannt werden.</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1348"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1356"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1350"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1358"/>
         <source>Duplicate Failed</source>
         <translation>Duplizieren fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1349"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1351"/>
         <source>Source notebook not found.</source>
         <translation>Quell-Notizbuch nicht gefunden.</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1357"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1359"/>
         <source>Could not create destination directory.</source>
         <translation>Zielverzeichnis konnte nicht erstellt werden.</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1475"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1477"/>
         <source>1 selected</source>
         <translation>1 ausgewählt</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1477"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1479"/>
         <source>%1 selected</source>
         <translation>%1 ausgewählt</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1534"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1536"/>
         <source>Select All</source>
         <translation>Alle auswählen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1539"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1541"/>
         <source>Deselect All</source>
         <translation>Auswahl aufheben</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1573"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1575"/>
         <source>Move to Folder...</source>
         <translation>In Ordner verschieben...</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1581"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1583"/>
         <source>Move %1 notebooks to...</source>
         <translation>%1 Notizbücher verschieben nach...</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1591"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1593"/>
         <source>Star Selected</source>
         <translation>Ausgewählte markieren</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1604"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1606"/>
         <source>Delete Selected</source>
         <translation>Ausgewählte löschen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1767"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1776"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1773"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1782"/>
         <source>Export Complete</source>
         <translation>Export abgeschlossen</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1768"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1774"/>
         <source>%n notebook(s) exported successfully</source>
         <translation>
             <numerusform>%n Notizbuch erfolgreich exportiert</numerusform>
@@ -2781,70 +2724,70 @@ Diese Aktion kann nicht rückgängig gemacht werden.</translation>
         </translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1770"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1776"/>
         <source>Export Completed with Errors</source>
         <translation>Export mit Fehlern abgeschlossen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1771"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1949"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1777"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1955"/>
         <source>%1 succeeded, %2 failed</source>
         <translation>%1 erfolgreich, %2 fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1773"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1951"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1779"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1957"/>
         <source>, %1 skipped</source>
         <translation>, %1 übersprungen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1777"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1783"/>
         <source>%1 exported, %2 skipped</source>
         <translation>%1 exportiert, %2 übersprungen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1789"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1809"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1795"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1815"/>
         <source>Share Files</source>
         <translation>Dateien teilen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1794"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1814"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1800"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1820"/>
         <source>Share PDF</source>
         <translation>PDF teilen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1795"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1815"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1801"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1821"/>
         <source>Share %1 PDFs</source>
         <translation>%1 PDFs teilen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1799"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1819"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1805"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1825"/>
         <source>Share Notebook</source>
         <translation>Notizbuch teilen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1800"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1820"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1806"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1826"/>
         <source>Share %1 Notebooks</source>
         <translation>%1 Notizbücher teilen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1910"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1916"/>
         <source>Importing...</source>
         <translation>Importiere...</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1945"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1954"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1951"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1960"/>
         <source>Import Complete</source>
         <translation>Import abgeschlossen</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1946"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1952"/>
         <source>%n notebook(s) imported successfully</source>
         <translation>
             <numerusform>%n Notizbuch erfolgreich importiert</numerusform>
@@ -2852,59 +2795,59 @@ Diese Aktion kann nicht rückgängig gemacht werden.</translation>
         </translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1948"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1954"/>
         <source>Import Completed with Errors</source>
         <translation>Import mit Fehlern abgeschlossen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1955"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1961"/>
         <source>%1 imported, %2 skipped</source>
         <translation>%1 importiert, %2 übersprungen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1025"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1387"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1024"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1389"/>
         <source>Duplicate</source>
         <translation>Duplizieren</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="867"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="866"/>
         <source>Import %1 notebooks?</source>
         <translation>%1 Notizbücher importieren?</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="870"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="869"/>
         <source>Import Notebooks</source>
         <translation>Notizbücher importieren</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="960"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="959"/>
         <source>Unstar</source>
         <translation>Stern entfernen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="960"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="959"/>
         <source>Star</source>
         <translation>Stern hinzufügen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1019"/>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1073"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1018"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1072"/>
         <source>Rename</source>
         <translation>Umbenennen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1050"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1049"/>
         <source>Show in File Manager</source>
         <translation>Im Dateimanager anzeigen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1059"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1058"/>
         <source>Delete</source>
         <translation>Löschen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/Launcher.cpp" line="1388"/>
+        <location filename="../../source/ui/launcher/Launcher.cpp" line="1390"/>
         <source>Some files could not be copied.</source>
         <translation>Einige Dateien konnten nicht kopiert werden.</translation>
     </message>
@@ -2981,122 +2924,237 @@ Diese Aktion kann nicht rückgängig gemacht werden.</translation>
     </message>
 </context>
 <context>
+    <name>LinkObjectBar</name>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="128"/>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="297"/>
+        <source>LinkObject color (click to edit)</source>
+        <translation type="unfinished">Farbe des Link-Objekts (zum Bearbeiten klicken)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="137"/>
+        <source>Highlight style</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="144"/>
+        <source>Cover text</source>
+        <translation type="unfinished">Text abdecken</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="145"/>
+        <source>Underline</source>
+        <translation type="unfinished">Unterstreichen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="146"/>
+        <source>Dotted underline</source>
+        <translation type="unfinished">Gepunktete Unterstreichung</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="165"/>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="316"/>
+        <source>Adjust highlight range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="174"/>
+        <source>Edit LinkObject description</source>
+        <translation type="unfinished">Beschreibung des Link-Objekts bearbeiten</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="186"/>
+        <source>Slot %1</source>
+        <translation type="unfinished">Slot %1</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="199"/>
+        <source>Enter description...</source>
+        <translation type="unfinished">Beschreibung eingeben...</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="215"/>
+        <source>Confirm</source>
+        <translation type="unfinished">Bestätigen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="227"/>
+        <source>Cancel</source>
+        <translation type="unfinished">Abbrechen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="294"/>
+        <source>Highlight color (click to edit)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="315"/>
+        <source>Done adjusting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="368"/>
+        <source>Position link</source>
+        <translation type="unfinished">Link positionieren</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="371"/>
+        <source>URL link</source>
+        <translation type="unfinished">URL-Link</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="374"/>
+        <source>Markdown link</source>
+        <translation type="unfinished">Markdown-Link</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="380"/>
+        <source>Clear the %1 from slot %2?</source>
+        <translation type="unfinished">%1 aus Slot %2 entfernen?</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="387"/>
+        <source>This also clears the matching slot on the linked annotation, freeing it at both ends.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="393"/>
+        <source>Clear Slot</source>
+        <translation type="unfinished">Slot leeren</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="490"/>
+        <source>Select Highlight Color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/LinkObjectBar.cpp" line="490"/>
+        <source>Select LinkObject Color</source>
+        <translation type="unfinished">Farbe für Link-Objekt auswählen</translation>
+    </message>
+</context>
+<context>
     <name>LinkSlotButton</name>
     <message>
-        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="290"/>
+        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="304"/>
         <source>Empty slot (click to add link)</source>
         <translation>Leerer Platz (zum Hinzufügen eines Links klicken)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="293"/>
+        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="307"/>
         <source>Position link (click to navigate, long-press to delete)</source>
         <translation>Positionslink (klicken zum Navigieren, lange drücken zum Löschen)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="296"/>
+        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="310"/>
         <source>URL link (click to open, long-press to delete)</source>
         <translation>URL-Link (klicken zum Öffnen, lange drücken zum Löschen)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="299"/>
+        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="313"/>
         <source>Markdown link (click to view, long-press to delete)</source>
         <translation>Markdown-Link (klicken zum Anzeigen, lange drücken zum Löschen)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/widgets/LinkSlotButton.cpp" line="316"/>
+        <source>Position link started (open a slot on another annotation to finish, long-press to cancel)</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>MacMenuBar</name>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="57"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="61"/>
         <source>&amp;File</source>
         <translation>&amp;Datei</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="58"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="62"/>
         <source>&amp;Edit</source>
         <translation>&amp;Bearbeiten</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="59"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="63"/>
         <source>&amp;View</source>
         <translation>&amp;Ansicht</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="60"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="64"/>
         <source>&amp;Document</source>
         <translation>&amp;Dokument</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="61"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="65"/>
         <source>&amp;Tools</source>
         <translation>&amp;Extras</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="62"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="66"/>
         <source>&amp;OCR</source>
         <translation>&amp;OCR</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="63"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="67"/>
         <source>&amp;Window</source>
         <translation>&amp;Fenster</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="64"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="68"/>
         <source>&amp;Help</source>
         <translation>&amp;Hilfe</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="88"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="92"/>
         <source>About SpeedyNote</source>
         <translation>Über SpeedyNote</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="160"/>
-        <source>Relink PDF...</source>
-        <translation type="unfinished">PDF neu verknüpfen...</translation>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="157"/>
+        <source>PDF Sources...</source>
+        <translation>PDF-Quellen...</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="193"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="203"/>
         <source>Visit GitHub</source>
         <translation>GitHub besuchen</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="198"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="208"/>
         <source>Report a Bug...</source>
         <translation>Fehler melden...</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="371"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="381"/>
         <source>Highlighter Style</source>
         <translation>Textmarker-Stil</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="383"/>
-        <source>Insert</source>
-        <translation>Einfügen</translation>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="392"/>
+        <source>Object Mode</source>
+        <translation>Objektmodus</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="393"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="419"/>
         <source>Object</source>
         <translation>Objekt</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="407"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="433"/>
         <source>Layers</source>
         <translation type="unfinished">Ebenen</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="417"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="443"/>
         <source>Links</source>
         <translation type="unfinished">Links</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="456"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="482"/>
         <source>OCR Language...</source>
         <translation type="unfinished">OCR-Sprache...</translation>
     </message>
     <message>
-        <location filename="../../source/macos/MacMenuBar.cpp" line="464"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="490"/>
         <source>Lock All OCR Text</source>
         <translation type="unfinished">Alle OCR-Texte sperren</translation>
     </message>
@@ -3104,72 +3162,70 @@ Diese Aktion kann nicht rückgängig gemacht werden.</translation>
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1161"/>
-        <location filename="../../source/MainWindow.cpp" line="1169"/>
-        <location filename="../../source/MainWindow.cpp" line="1194"/>
-        <location filename="../../source/MainWindow.cpp" line="1244"/>
-        <location filename="../../source/MainWindow.cpp" line="3423"/>
+        <location filename="../../source/MainWindow.cpp" line="3421"/>
+        <location filename="../../source/MainWindow.cpp" line="3430"/>
+        <location filename="../../source/MainWindow.cpp" line="3529"/>
         <source>Export Failed</source>
         <translation>Export fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1238"/>
-        <location filename="../../source/MainWindow.cpp" line="3415"/>
+        <location filename="../../source/MainWindow.cpp" line="3449"/>
+        <location filename="../../source/MainWindow.cpp" line="3521"/>
         <source>Export Complete</source>
         <translation>Export abgeschlossen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4169"/>
-        <location filename="../../source/MainWindow.cpp" line="4205"/>
-        <location filename="../../source/MainWindow.cpp" line="4221"/>
-        <location filename="../../source/MainWindow.cpp" line="4229"/>
+        <location filename="../../source/MainWindow.cpp" line="4279"/>
+        <location filename="../../source/MainWindow.cpp" line="4315"/>
+        <location filename="../../source/MainWindow.cpp" line="4331"/>
+        <location filename="../../source/MainWindow.cpp" line="4339"/>
         <source>Page Import (Debug)</source>
         <translation>Seitenimport (Debug)</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4170"/>
+        <location filename="../../source/MainWindow.cpp" line="4280"/>
         <source>No document is open in the active pane.</source>
         <translation>Im aktiven Bereich ist kein Dokument geöffnet.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4206"/>
+        <location filename="../../source/MainWindow.cpp" line="4316"/>
         <source>Open a second document in another tab or split pane to import from.</source>
         <translation>Öffnen Sie ein zweites Dokument in einem anderen Tab oder einem geteilten Bereich, um daraus zu importieren.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4222"/>
+        <location filename="../../source/MainWindow.cpp" line="4332"/>
         <source>Source document has no pages to import.</source>
         <translation>Das Quelldokument enthält keine Seiten zum Importieren.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4230"/>
+        <location filename="../../source/MainWindow.cpp" line="4340"/>
         <source>Import failed.</source>
         <translation>Import fehlgeschlagen.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4281"/>
-        <location filename="../../source/MainWindow.cpp" line="4313"/>
-        <location filename="../../source/MainWindow.cpp" line="4323"/>
+        <location filename="../../source/MainWindow.cpp" line="4391"/>
+        <location filename="../../source/MainWindow.cpp" line="4423"/>
+        <location filename="../../source/MainWindow.cpp" line="4433"/>
         <source>Copy Pages</source>
         <translation>Seiten kopieren</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4282"/>
+        <location filename="../../source/MainWindow.cpp" line="4392"/>
         <source>Open another document in a tab or split pane to copy pages into it.</source>
         <translation>Öffnen Sie ein weiteres Dokument in einem Tab oder einem geteilten Bereich, um Seiten hinein zu kopieren.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4294"/>
+        <location filename="../../source/MainWindow.cpp" line="4404"/>
         <source>%1 (%2)</source>
         <translation type="unfinished">%1 (%2)</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4314"/>
+        <location filename="../../source/MainWindow.cpp" line="4424"/>
         <source>Failed to copy the selected pages.</source>
         <translation>Das Kopieren der ausgewählten Seiten ist fehlgeschlagen.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../source/MainWindow.cpp" line="4324"/>
+        <location filename="../../source/MainWindow.cpp" line="4434"/>
         <source>Copied %n page(s) to &quot;%1&quot;.</source>
         <translation>
             <numerusform>%n Seite nach &quot;%1&quot; kopiert.</numerusform>
@@ -3177,237 +3233,194 @@ Diese Aktion kann nicht rückgängig gemacht werden.</translation>
         </translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7192"/>
+        <location filename="../../source/MainWindow.cpp" line="7400"/>
         <source>Untitled</source>
         <translation>Unbenannt</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="625"/>
-        <location filename="../../source/MainWindow.cpp" line="9139"/>
+        <location filename="../../source/MainWindow.cpp" line="645"/>
+        <location filename="../../source/MainWindow.cpp" line="9305"/>
         <source>canvas</source>
         <translation>Leinwand</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="625"/>
-        <location filename="../../source/MainWindow.cpp" line="9139"/>
+        <location filename="../../source/MainWindow.cpp" line="645"/>
+        <location filename="../../source/MainWindow.cpp" line="9305"/>
         <source>document</source>
         <translation>Dokument</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="628"/>
-        <location filename="../../source/MainWindow.cpp" line="9142"/>
+        <location filename="../../source/MainWindow.cpp" line="648"/>
+        <location filename="../../source/MainWindow.cpp" line="9308"/>
         <source>Save Changes?</source>
         <translation>Änderungen speichern?</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="629"/>
+        <location filename="../../source/MainWindow.cpp" line="649"/>
         <source>This %1 has unsaved changes. Do you want to save before closing?</source>
         <translation>Dieses %1 enthält ungespeicherte Änderungen. Möchten Sie vor dem Schließen speichern?</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="644"/>
-        <location filename="../../source/MainWindow.cpp" line="3693"/>
-        <location filename="../../source/MainWindow.cpp" line="3779"/>
-        <location filename="../../source/MainWindow.cpp" line="9160"/>
-        <location filename="../../source/MainWindow.cpp" line="9471"/>
+        <location filename="../../source/MainWindow.cpp" line="664"/>
+        <location filename="../../source/MainWindow.cpp" line="681"/>
+        <location filename="../../source/MainWindow.cpp" line="705"/>
+        <location filename="../../source/MainWindow.cpp" line="3799"/>
+        <location filename="../../source/MainWindow.cpp" line="3887"/>
+        <location filename="../../source/MainWindow.cpp" line="9326"/>
+        <location filename="../../source/MainWindow.cpp" line="9340"/>
+        <location filename="../../source/MainWindow.cpp" line="9354"/>
+        <location filename="../../source/MainWindow.cpp" line="9649"/>
         <source>Save Error</source>
         <translation>Speicherfehler</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="645"/>
-        <location filename="../../source/MainWindow.cpp" line="3694"/>
-        <location filename="../../source/MainWindow.cpp" line="3780"/>
+        <location filename="../../source/MainWindow.cpp" line="665"/>
+        <location filename="../../source/MainWindow.cpp" line="3800"/>
+        <location filename="../../source/MainWindow.cpp" line="3888"/>
         <source>Failed to save document to:
 %1</source>
         <translation>Dokument konnte nicht gespeichert werden unter:
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1019"/>
+        <location filename="../../source/MainWindow.cpp" line="682"/>
+        <location filename="../../source/MainWindow.cpp" line="706"/>
+        <source>PDF sources could not be finalized. Repair the unavailable sources before closing.</source>
+        <translation>PDF-Quellen konnten nicht finalisiert werden. Reparieren Sie die nicht verfügbaren Quellen vor dem Schließen.</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="1049"/>
         <source>Current Document Settings...</source>
         <translation>Aktuelle Dokumenteinstellungen...</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1195"/>
-        <location filename="../../source/MainWindow.cpp" line="3372"/>
+        <location filename="../../source/MainWindow.cpp" line="3345"/>
+        <source>Share Notebook</source>
+        <translation type="unfinished">Notizbuch teilen</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="3347"/>
+        <source>Export Notebook</source>
+        <translation type="unfinished">Notizbuch exportieren</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="3374"/>
+        <source>The document has unsaved changes.
+Please save the document before exporting.
+
+Would you like to save now?</source>
+        <translation>Das Dokument enthält ungespeicherte Änderungen.
+Bitte speichern Sie das Dokument vor dem Exportieren.
+
+Möchten Sie jetzt speichern?</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="3407"/>
+        <location filename="../../source/MainWindow.cpp" line="3478"/>
         <source>Could not find a unique filename. Please choose a different location.</source>
         <translation>Es konnte kein eindeutiger Dateiname gefunden werden. Bitte wählen Sie einen anderen Speicherort.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3642"/>
-        <location filename="../../source/MainWindow.cpp" line="3670"/>
+        <location filename="../../source/MainWindow.cpp" line="3748"/>
+        <location filename="../../source/MainWindow.cpp" line="3776"/>
         <source>Save Canvas</source>
         <translation>Leinwand speichern</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3642"/>
-        <location filename="../../source/MainWindow.cpp" line="3670"/>
-        <location filename="../../source/MainWindow.cpp" line="3755"/>
-        <location filename="../../source/MainWindow.cpp" line="3762"/>
+        <location filename="../../source/MainWindow.cpp" line="3748"/>
+        <location filename="../../source/MainWindow.cpp" line="3776"/>
+        <location filename="../../source/MainWindow.cpp" line="3863"/>
+        <location filename="../../source/MainWindow.cpp" line="3870"/>
         <source>Save Document</source>
         <translation>Dokument speichern</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3672"/>
+        <location filename="../../source/MainWindow.cpp" line="3778"/>
         <source>SpeedyNote Bundle (*.snb)</source>
         <translation>SpeedyNote-Paket (*.snb)</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1002"/>
-        <location filename="../../source/MainWindow.cpp" line="2979"/>
-        <location filename="../../source/MainWindow.cpp" line="3268"/>
-        <source>Relink PDF...</source>
-        <translation>PDF neu verknüpfen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="1044"/>
-        <source>Jump to Page...</source>
-        <translation>Zu Seite springen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="1048"/>
+        <location filename="../../source/MainWindow.cpp" line="1070"/>
         <source>Settings</source>
         <translation>Einstellungen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3756"/>
-        <location filename="../../source/MainWindow.cpp" line="3763"/>
+        <location filename="../../source/MainWindow.cpp" line="3864"/>
+        <location filename="../../source/MainWindow.cpp" line="3871"/>
         <source>No document is open.</source>
         <translation>Es ist kein Dokument geöffnet.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3930"/>
+        <location filename="../../source/MainWindow.cpp" line="4040"/>
         <source>SpeedyNote Files (*.snb *.pdf);;SpeedyNote Bundle (*.snb);;PDF Documents (*.pdf);;All Files (*)</source>
         <translation>SpeedyNote-Dateien (*.snb *.pdf);;SpeedyNote-Paket (*.snb);;PDF-Dokumente (*.pdf);;Alle Dateien (*)</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3913"/>
-        <location filename="../../source/MainWindow.cpp" line="3933"/>
+        <location filename="../../source/MainWindow.cpp" line="4023"/>
+        <location filename="../../source/MainWindow.cpp" line="4043"/>
         <source>Open Document</source>
         <translation>Dokument öffnen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1009"/>
-        <source>Export to PDF...</source>
-        <translation>Als PDF exportieren...</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="1029"/>
+        <location filename="../../source/MainWindow.cpp" line="1059"/>
         <source>Lock All OCR Text</source>
         <translation>Alle OCR-Texte sperren</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1036"/>
+        <location filename="../../source/MainWindow.cpp" line="1066"/>
         <source>Import Pages from Other Doc (Debug)...</source>
         <translation>Seiten aus anderem Dokument importieren (Debug)...</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1162"/>
-        <location filename="../../source/MainWindow.cpp" line="3291"/>
-        <location filename="../../source/MainWindow.cpp" line="3298"/>
+        <location filename="../../source/MainWindow.cpp" line="3353"/>
+        <location filename="../../source/MainWindow.cpp" line="3360"/>
         <source>No document is currently open.</source>
         <translation>Es ist derzeit kein Dokument geöffnet.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1170"/>
-        <location filename="../../source/MainWindow.cpp" line="3306"/>
+        <location filename="../../source/MainWindow.cpp" line="3368"/>
         <source>Please save the document before exporting.</source>
         <translation>Bitte speichern Sie das Dokument vor dem Exportieren.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1226"/>
+        <location filename="../../source/MainWindow.cpp" line="3444"/>
         <source>Share Notebook Package</source>
         <translation>Notizbuchpaket teilen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="1231"/>
-        <source>%1 bytes</source>
-        <translation>%1 Bytes</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="1233"/>
-        <source>%1 KB</source>
-        <translation>%1 KB</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="1236"/>
-        <source>%1 MB</source>
-        <translation>%1 MB</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="1239"/>
-        <source>Notebook exported successfully.
-
-File: %1
-Size: %2</source>
-        <translation>Notizbuch erfolgreich exportiert.
-
-Datei: %1
-Größe: %2</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="2887"/>
+        <location filename="../../source/MainWindow.cpp" line="2982"/>
         <source>Warning</source>
         <translation>Warnung</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="2981"/>
-        <location filename="../../source/MainWindow.cpp" line="3270"/>
-        <source>Link PDF...</source>
-        <translation>PDF verknüpfen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="3283"/>
-        <source>Share as PDF</source>
-        <translation>Als PDF teilen</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="3285"/>
-        <source>Export to PDF</source>
-        <translation>Als PDF exportieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="3314"/>
-        <source>PDF export is only available for paged documents.
-Edgeless canvas export is not yet supported.</source>
-        <translation>Der PDF-Export ist nur für paginierte Dokumente verfügbar.
-Der Export von unendlichen Arbeitsflächen wird noch nicht unterstützt.</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="3322"/>
-        <source>The document has unsaved changes.
-Please save the document before sharing as PDF.
-
-Would you like to save now?</source>
-        <translation>Das Dokument enthält ungespeicherte Änderungen.
-Bitte speichern Sie das Dokument, bevor Sie es als PDF teilen.
-
-Möchten Sie jetzt speichern?</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="3326"/>
-        <source>The document has unsaved changes.
-Please save the document before exporting to PDF.
-
-Would you like to save now?</source>
-        <translation>Das Dokument enthält ungespeicherte Änderungen.
-Bitte speichern Sie das Dokument, bevor Sie es als PDF exportieren.
-
-Möchten Sie jetzt speichern?</translation>
-    </message>
-    <message>
-        <location filename="../../source/MainWindow.cpp" line="3331"/>
+        <location filename="../../source/MainWindow.cpp" line="3379"/>
         <source>Save Document First</source>
         <translation>Dokument zuerst speichern</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3409"/>
-        <location filename="../../source/MainWindow.cpp" line="3412"/>
+        <location filename="../../source/MainWindow.cpp" line="3422"/>
+        <source>PDF sources could not be finalized. Repair the unavailable sources and try again.</source>
+        <translation>PDF-Quellen konnten nicht finalisiert werden. Reparieren Sie die nicht verfügbaren Quellen und versuchen Sie es erneut.</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="3450"/>
+        <source>Notebook exported successfully.
+
+File: %1
+Size: %2 MB</source>
+        <translation>Notizbuch erfolgreich exportiert.
+
+Datei: %1
+Größe: %2 MB</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="3515"/>
+        <location filename="../../source/MainWindow.cpp" line="3518"/>
         <source>Share PDF</source>
         <translation>PDF teilen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3416"/>
+        <location filename="../../source/MainWindow.cpp" line="3522"/>
         <source>PDF exported successfully!
 
 Pages exported: %1
@@ -3418,41 +3431,41 @@ Exportierte Seiten: %1
 Dateigröße: %2 KB</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3424"/>
+        <location filename="../../source/MainWindow.cpp" line="3530"/>
         <source>Failed to export PDF:
 %1</source>
         <translation>PDF-Export fehlgeschlagen:
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3631"/>
+        <location filename="../../source/MainWindow.cpp" line="3737"/>
         <source>Untitled Canvas</source>
         <translation>Unbenannte Arbeitsfläche</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3631"/>
+        <location filename="../../source/MainWindow.cpp" line="3737"/>
         <source>Untitled Document</source>
         <translation>Unbenanntes Dokument</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3653"/>
+        <location filename="../../source/MainWindow.cpp" line="3759"/>
         <source>Overwrite?</source>
         <translation>Überschreiben?</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3654"/>
+        <location filename="../../source/MainWindow.cpp" line="3760"/>
         <source>A document named &apos;%1&apos; already exists.
 Do you want to replace it?</source>
         <translation>Ein Dokument mit dem Namen &apos;%1&apos; existiert bereits.
 Möchten Sie es ersetzen?</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3906"/>
+        <location filename="../../source/MainWindow.cpp" line="4016"/>
         <source>No Documents</source>
         <translation>Keine Dokumente</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3907"/>
+        <location filename="../../source/MainWindow.cpp" line="4017"/>
         <source>No saved documents found.
 
 Documents are saved to:
@@ -3463,62 +3476,100 @@ Dokumente werden gespeichert unter:
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3914"/>
+        <location filename="../../source/MainWindow.cpp" line="4024"/>
         <source>Select a document:</source>
         <translation>Dokument auswählen:</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3949"/>
-        <location filename="../../source/MainWindow.cpp" line="4691"/>
+        <location filename="../../source/MainWindow.cpp" line="4059"/>
+        <location filename="../../source/MainWindow.cpp" line="4899"/>
         <source>Load Error</source>
         <translation>Ladefehler</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="3950"/>
+        <location filename="../../source/MainWindow.cpp" line="4060"/>
         <source>Failed to load document from:
 %1</source>
         <translation>Dokument konnte nicht geladen werden von:
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4113"/>
+        <location filename="../../source/MainWindow.cpp" line="4223"/>
         <source>Cannot Delete</source>
         <translation>Löschen nicht möglich</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4114"/>
+        <location filename="../../source/MainWindow.cpp" line="4224"/>
         <source>Cannot delete the last remaining page.</source>
         <translation>Die letzte verbleibende Seite kann nicht gelöscht werden.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4470"/>
+        <location filename="../../source/MainWindow.cpp" line="4570"/>
+        <location filename="../../source/MainWindow.cpp" line="4678"/>
         <source>PDF Files (*.pdf);;All Files (*)</source>
         <translation>PDF-Dateien (*.pdf);;Alle Dateien (*)</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4473"/>
+        <location filename="../../source/MainWindow.cpp" line="4681"/>
         <source>Open PDF</source>
         <translation>PDF öffnen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4494"/>
+        <location filename="../../source/MainWindow.cpp" line="4584"/>
+        <location filename="../../source/MainWindow.cpp" line="4702"/>
         <source>PDF Error</source>
         <translation>PDF-Fehler</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4495"/>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="172"/>
+        <location filename="../../source/MainWindow.cpp" line="1038"/>
+        <location filename="../../source/MainWindow.cpp" line="3284"/>
+        <source>PDF Sources...</source>
+        <translation>PDF-Quellen...</translation>
+    </message>
+    <message>
+        <location filename="../../source/macos/MacMenuBar.cpp" line="170"/>
+        <location filename="../../source/MainWindow.cpp" line="3283"/>
+        <source>Repair PDF Sources... (%1)</source>
+        <translation>PDF-Quellen reparieren... (%1)</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="4569"/>
+        <location filename="../../source/MainWindow.cpp" line="4590"/>
+        <source>Add Pages from PDF</source>
+        <translation>Seiten aus PDF hinzufügen</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="4585"/>
+        <source>The selected PDF could not be opened:
+%1</source>
+        <translation>Das ausgewählte PDF konnte nicht geöffnet werden:
+%1</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="4612"/>
+        <source>PDF Import</source>
+        <translation>PDF-Import</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="4613"/>
+        <source>The selected PDF pages could not be added to this document.</source>
+        <translation>Die ausgewählten PDF-Seiten konnten diesem Dokument nicht hinzugefügt werden.</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="4703"/>
         <source>Failed to open PDF file:
 %1</source>
         <translation>PDF-Datei konnte nicht geöffnet werden:
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4675"/>
+        <location filename="../../source/MainWindow.cpp" line="4883"/>
         <source>Open SpeedyNote Bundle (.snb folder)</source>
         <translation>SpeedyNote-Bundle öffnen (.snb-Ordner)</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4692"/>
+        <location filename="../../source/MainWindow.cpp" line="4900"/>
         <source>Selected folder is not a valid SpeedyNote bundle.
 Missing document.json manifest.
 
@@ -3529,27 +3580,27 @@ Das Manifest document.json fehlt.
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4810"/>
+        <location filename="../../source/MainWindow.cpp" line="5019"/>
         <source>Jump to Page</source>
         <translation>Zu Seite springen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="4810"/>
+        <location filename="../../source/MainWindow.cpp" line="5019"/>
         <source>Enter Page Number:</source>
         <translation>Seitennummer eingeben:</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="5816"/>
+        <location filename="../../source/MainWindow.cpp" line="5952"/>
         <source>Pick recolor target</source>
         <translation>Ziel für Umfärbung wählen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="6455"/>
+        <location filename="../../source/MainWindow.cpp" line="6616"/>
         <source>No results found</source>
         <translation>Keine Ergebnisse gefunden</translation>
     </message>
     <message numerus="yes">
-        <location filename="../../source/MainWindow.cpp" line="6457"/>
+        <location filename="../../source/MainWindow.cpp" line="6618"/>
         <source>%n match(es)</source>
         <translation>
             <numerusform>%n Treffer</numerusform>
@@ -3557,117 +3608,123 @@ Das Manifest document.json fehlt.
         </translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="6527"/>
+        <location filename="../../source/MainWindow.cpp" line="6688"/>
         <source>Scanning...</source>
         <translation>Scan läuft...</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="6584"/>
+        <location filename="../../source/MainWindow.cpp" line="6745"/>
         <source>Scanning all pages...</source>
         <translation>Alle Seiten werden gescannt...</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="6662"/>
-        <location filename="../../source/MainWindow.cpp" line="6694"/>
+        <location filename="../../source/MainWindow.cpp" line="6823"/>
+        <location filename="../../source/MainWindow.cpp" line="6855"/>
         <source>Auto-scanning...</source>
         <translation>Automatischer Scan läuft...</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="6828"/>
+        <location filename="../../source/MainWindow.cpp" line="7001"/>
         <source>Done: %1 words</source>
         <translation>Fertig: %1 Wörter</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="6840"/>
+        <location filename="../../source/MainWindow.cpp" line="7013"/>
         <source>OCR complete: %1 pages scanned, %2 with text</source>
         <translation>OCR abgeschlossen: %1 Seiten gescannt, %2 mit Text</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="6877"/>
+        <location filename="../../source/MainWindow.cpp" line="7050"/>
         <source>OCR error: %1</source>
         <translation>OCR-Fehler: %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7179"/>
+        <location filename="../../source/MainWindow.cpp" line="7387"/>
         <source>%1[*]</source>
         <translation>%1[*]</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7181"/>
+        <location filename="../../source/MainWindow.cpp" line="7389"/>
         <source>%1[*] — SpeedyNote</source>
         <translation>%1[*] — SpeedyNote</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7244"/>
+        <location filename="../../source/MainWindow.cpp" line="7452"/>
         <source>OCR Language</source>
         <translation>OCR-Sprache</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7250"/>
+        <location filename="../../source/MainWindow.cpp" line="7458"/>
         <source>Document: %1</source>
         <translation>Dokument: %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7256"/>
+        <location filename="../../source/MainWindow.cpp" line="7464"/>
         <source>Handwriting recognition language for this document:</source>
         <translation>Handschrifterkennungssprache für dieses Dokument:</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7261"/>
+        <location filename="../../source/MainWindow.cpp" line="7469"/>
         <source>Use global setting</source>
         <translation>Globale Einstellung verwenden</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7262"/>
+        <location filename="../../source/MainWindow.cpp" line="7470"/>
         <source>Auto-detect (system default)</source>
         <translation>Automatisch erkennen (Systemstandard)</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7321"/>
+        <location filename="../../source/MainWindow.cpp" line="7529"/>
         <source>&quot;Use global setting&quot; inherits from Settings &gt; Language &gt; Handwriting Recognition Language.</source>
         <translation>„Globale Einstellung verwenden“ übernimmt die Einstellung aus Einstellungen &gt; Sprache &gt; Handschrifterkennungssprache.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7365"/>
-        <source>Lock OCR Text</source>
-        <translation>OCR-Text sperren</translation>
+        <location filename="../../source/MainWindow.cpp" line="7576"/>
+        <location filename="../../source/MainWindow.cpp" line="7591"/>
+        <source>Convert OCR Text</source>
+        <translation>OCR-Text konvertieren</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="7366"/>
-        <source>Lock this OCR text? It will no longer be updated by automatic scanning.
+        <location filename="../../source/MainWindow.cpp" line="7577"/>
+        <source>Convert this recognized text into an editable text box?
 
-Proceed to lock and edit?</source>
-        <translation>Diesen OCR-Text sperren? Er wird nicht mehr durch automatische Scans aktualisiert.
+The recognized block is removed and its ink is excluded from future scans.</source>
+        <translation>Diesen erkannten Text in ein bearbeitbares Textfeld konvertieren?
 
-Sperren und bearbeiten?</translation>
+Der erkannte Block wird entfernt und seine Tinte von zukünftigen Scans ausgeschlossen.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="8448"/>
+        <location filename="../../source/MainWindow.cpp" line="7592"/>
+        <source>This recognized text is no longer available. A new scan may have replaced it.</source>
+        <translation>Dieser erkannte Text ist nicht mehr verfügbar. Möglicherweise wurde er durch einen neuen Scan ersetzt.</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="8590"/>
         <source>New Edgeless Canvas</source>
         <translation>Neue unendliche Leinwand</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="8453"/>
+        <location filename="../../source/MainWindow.cpp" line="8595"/>
         <source>New Paged Notebook</source>
         <translation>Neues Notizbuch mit Seiten</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="8461"/>
+        <location filename="../../source/MainWindow.cpp" line="8603"/>
         <source>Open PDF...</source>
         <translation>PDF öffnen...</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="8466"/>
+        <location filename="../../source/MainWindow.cpp" line="8608"/>
         <source>Open Notebook...</source>
         <translation>Notizbuch öffnen...</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="9143"/>
+        <location filename="../../source/MainWindow.cpp" line="9309"/>
         <source>The %1 &quot;%2&quot; has unsaved changes. Do you want to save before quitting?</source>
         <translation>Das %1 &quot;%2&quot; enthält ungespeicherte Änderungen. Möchten Sie vor dem Beenden speichern?</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="9161"/>
+        <location filename="../../source/MainWindow.cpp" line="9327"/>
         <source>Failed to save document to:
 %1
 
@@ -3678,49 +3735,55 @@ Quit anyway?</source>
 Trotzdem beenden?</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="9472"/>
+        <location filename="../../source/MainWindow.cpp" line="9341"/>
+        <location filename="../../source/MainWindow.cpp" line="9355"/>
+        <source>PDF sources could not be finalized. Repair the unavailable sources before quitting.</source>
+        <translation>PDF-Quellen konnten nicht finalisiert werden. Reparieren Sie die nicht verfügbaren Quellen vor dem Beenden.</translation>
+    </message>
+    <message>
+        <location filename="../../source/MainWindow.cpp" line="9650"/>
         <source>Failed to save document before closing.</source>
         <translation>Dokument konnte vor dem Schließen nicht gespeichert werden.</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="9519"/>
+        <location filename="../../source/MainWindow.cpp" line="9697"/>
         <source>The file does not exist:
 %1</source>
         <translation>Die Datei existiert nicht:
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="9553"/>
-        <location filename="../../source/MainWindow.cpp" line="9571"/>
+        <location filename="../../source/MainWindow.cpp" line="9731"/>
+        <location filename="../../source/MainWindow.cpp" line="9749"/>
         <source>Open Error</source>
         <translation>Fehler beim Öffnen</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="9554"/>
+        <location filename="../../source/MainWindow.cpp" line="9732"/>
         <source>Failed to open file:
 %1</source>
         <translation>Datei konnte nicht geöffnet werden:
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="9572"/>
+        <location filename="../../source/MainWindow.cpp" line="9750"/>
         <source>Failed to create tab for:
 %1</source>
         <translation>Tab konnte nicht erstellt werden für:
 %1</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="9518"/>
+        <location filename="../../source/MainWindow.cpp" line="9696"/>
         <source>File Not Found</source>
         <translation>Datei nicht gefunden</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="600"/>
+        <location filename="../../source/MainWindow.cpp" line="620"/>
         <source>Notice</source>
         <translation>Hinweis</translation>
     </message>
     <message>
-        <location filename="../../source/MainWindow.cpp" line="601"/>
+        <location filename="../../source/MainWindow.cpp" line="621"/>
         <source>At least one tab must remain open.</source>
         <translation>Mindestens ein Tab muss geöffnet bleiben.</translation>
     </message>
@@ -3870,81 +3933,86 @@ Trotzdem beenden?</translation>
     </message>
     <message>
         <location filename="../../source/ui/banners/MissingPdfBanner.cpp" line="41"/>
-        <source>Locate PDF</source>
-        <translation>PDF suchen</translation>
+        <source>Review Sources...</source>
+        <translation>Quellen überprüfen...</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/banners/MissingPdfBanner.cpp" line="98"/>
+        <source>PDF source &quot;%1&quot; is unavailable — %2 page background(s) affected.</source>
+        <translation>PDF-Quelle &quot;%1&quot; ist nicht verfügbar – %2 Seitenhintergrund/-hintergründe betroffen.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/banners/MissingPdfBanner.cpp" line="102"/>
+        <source>%1 PDF source(s) unavailable — %2 page background(s) affected.</source>
+        <translation>%1 PDF-Quelle(n) nicht verfügbar – %2 Seitenhintergrund/-hintergründe betroffen.</translation>
     </message>
     <message>
         <location filename="../../source/ui/banners/MissingPdfBanner.cpp" line="63"/>
         <source>Dismiss</source>
         <translation>Schließen</translation>
     </message>
-    <message>
-        <location filename="../../source/ui/banners/MissingPdfBanner.cpp" line="96"/>
-        <source>PDF file not found: %1</source>
-        <translation>PDF-Datei nicht gefunden: %1</translation>
-    </message>
 </context>
 <context>
     <name>MuPdfExporter</name>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="708"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="709"/>
         <source>No document set for export</source>
         <translation>Kein Dokument zum Exportieren festgelegt</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="714"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="715"/>
         <source>No output path specified</source>
         <translation>Kein Ausgabepfad angegeben</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="722"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="723"/>
         <source>Invalid page range</source>
         <translation>Ungültiger Seitenbereich</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="740"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="741"/>
         <source>Failed to initialize PDF engine</source>
         <translation>Initialisierung der PDF-Engine fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="751"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="752"/>
         <source>Failed to open source PDF</source>
         <translation>Quell-PDF konnte nicht geöffnet werden</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="763"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="764"/>
         <source>Export cancelled</source>
         <translation>Export abgebrochen</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="813"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="814"/>
         <source>Failed to export page %1</source>
         <translation>Export der Seite %1 fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="839"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="840"/>
         <source>Failed to save PDF file</source>
         <translation>Speichern der PDF-Datei fehlgeschlagen</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="1071"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="1073"/>
         <source>Source PDF file not found: %1</source>
         <translation>Quell-PDF-Datei nicht gefunden: %1</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="1086"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="1088"/>
         <source>Cannot export password-protected PDF.
 Please remove the password and try again.</source>
         <translation>Passwortgeschützte PDFs können nicht exportiert werden.
 Bitte entfernen Sie das Passwort und versuchen Sie es erneut.</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="1096"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="1098"/>
         <source>Source file is not a valid PDF document.</source>
         <translation>Die Quelldatei ist kein gültiges PDF-Dokument.</translation>
     </message>
     <message>
-        <location filename="../../source/pdf/MuPdfExporter.cpp" line="1108"/>
+        <location filename="../../source/pdf/MuPdfExporter.cpp" line="1110"/>
         <source>Failed to open source PDF: %1</source>
         <translation>Quell-PDF konnte nicht geöffnet werden: %1</translation>
     </message>
@@ -4069,153 +4137,69 @@ Bitte entfernen Sie das Passwort und versuchen Sie es erneut.</translation>
 <context>
     <name>ObjectSelectActionBar</name>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="17"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="230"/>
+        <source>Add mode (click to switch to Select) (Ctrl+6)</source>
+        <translation>Hinzufügen-Modus (klicken, um zu Auswählen zu wechseln) (Ctrl+6)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="231"/>
+        <source>Select mode (click to switch to Add) (Ctrl+7)</source>
+        <translation>Auswählen-Modus (klicken, um zu Hinzufügen zu wechseln) (Ctrl+7)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="31"/>
         <source>Lock/Unlock Aspect Ratio</source>
         <translation>Seitenverhältnis sperren/entsperren</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="28"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="42"/>
         <source>Lock/Unlock OCR Text</source>
         <translation>OCR-Text sperren/entsperren</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="41"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="53"/>
+        <source>Convert to Editable Text Box</source>
+        <translation>In bearbeitbares Textfeld konvertieren</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="63"/>
         <source>Copy (Ctrl+C)</source>
         <translation>Kopieren (Ctrl+C)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="48"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="70"/>
         <source>Paste (Ctrl+V)</source>
         <translation>Einfügen (Ctrl+V)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="55"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="77"/>
         <source>Clear Clipboard (Esc)</source>
         <translation>Zwischenablage leeren (Esc)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="62"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="84"/>
         <source>Delete</source>
         <translation>Löschen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="86"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="108"/>
         <source>Bring Forward (Ctrl+])</source>
         <translation>Ebene nach vorne (Ctrl+])</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="93"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="115"/>
         <source>Send Backward (Ctrl+[)</source>
         <translation>Ebene nach hinten (Ctrl+[)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="100"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="122"/>
         <source>Increase Affinity (Alt+])</source>
         <translation>Affinität erhöhen (Alt+])</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="107"/>
+        <location filename="../../source/ui/actionbars/ObjectSelectActionBar.cpp" line="129"/>
         <source>Decrease Affinity (Alt+[)</source>
         <translation>Affinität verringern (Alt+[)</translation>
-    </message>
-</context>
-<context>
-    <name>ObjectSelectSubToolbar</name>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="67"/>
-        <source>Insert mode</source>
-        <translation>Einfügemodus</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="72"/>
-        <source>Image</source>
-        <translation>Bild</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="73"/>
-        <source>Link</source>
-        <translation>Link</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="74"/>
-        <source>Text</source>
-        <translation>Text</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="85"/>
-        <source>Select mode (click to switch to Create)</source>
-        <translation>Auswahlmodus (klicken, um zu Erstellen zu wechseln)</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="86"/>
-        <source>Create mode (click to switch to Select)</source>
-        <translation>Erstellungsmodus (klicken, um zu Auswahl zu wechseln)</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="108"/>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="491"/>
-        <source>Select a LinkObject to edit color</source>
-        <translation>Wählen Sie ein Link-Objekt aus, um die Farbe zu bearbeiten</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="116"/>
-        <source>Edit LinkObject description</source>
-        <translation>Beschreibung des Link-Objekts bearbeiten</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="130"/>
-        <source>Slot %1</source>
-        <translation>Slot %1</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="145"/>
-        <source>Enter description...</source>
-        <translation>Beschreibung eingeben...</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="161"/>
-        <source>Confirm</source>
-        <translation>Bestätigen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="173"/>
-        <source>Cancel</source>
-        <translation>Abbrechen</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="341"/>
-        <source>Position link</source>
-        <translation>Link positionieren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="344"/>
-        <source>URL link</source>
-        <translation>URL-Link</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="347"/>
-        <source>Markdown link</source>
-        <translation>Markdown-Link</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="355"/>
-        <source>Clear Slot</source>
-        <translation>Slot leeren</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="356"/>
-        <source>Clear the %1 from slot %2?</source>
-        <translation>%1 aus Slot %2 entfernen?</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="486"/>
-        <source>LinkObject color (click to edit)</source>
-        <translation>Farbe des Link-Objekts (zum Bearbeiten klicken)</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/subtoolbars/ObjectSelectSubToolbar.cpp" line="509"/>
-        <source>Select LinkObject Color</source>
-        <translation>Farbe für Link-Objekt auswählen</translation>
     </message>
 </context>
 <context>
@@ -4307,17 +4291,19 @@ Bitte entfernen Sie das Passwort und versuchen Sie es erneut.</translation>
         <translation>Vorherige Seite (Bild auf)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="39"/>
-        <source>Drag to scroll through pages</source>
-        <translation>Zum Blättern ziehen</translation>
+        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="40"/>
+        <source>Scroll or drag to change pages
+Double-click or double-tap to jump to a page</source>
+        <translation>Scrollen oder ziehen, um Seiten zu wechseln
+Doppelklicken oder zweimal tippen, um zu einer Seite zu springen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="45"/>
+        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="46"/>
         <source>Next Page (Page Down)</source>
         <translation>Nächste Seite (Bild ab)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="51"/>
+        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="52"/>
         <source>Toggle Column Layout (Ctrl+2)
 1 = Single Column
 A = Auto 1/2 Columns</source>
@@ -4326,22 +4312,27 @@ A = Auto 1/2 Columns</source>
 A = Automatisch 1/2 Spalten</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="62"/>
+        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="63"/>
         <source>Select Multiple Pages</source>
         <translation>Mehrere Seiten auswählen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="69"/>
+        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="70"/>
         <source>Add Page at End</source>
         <translation>Seite am Ende hinzufügen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="75"/>
+        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="76"/>
         <source>Insert Page After Current</source>
         <translation>Seite nach aktueller einfügen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="80"/>
+        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="81"/>
+        <source>Add Pages from PDF...</source>
+        <translation>Seiten aus PDF hinzufügen...</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/actionbars/PagePanelActionBar.cpp" line="86"/>
         <source>Delete Current Page</source>
         <translation>Aktuelle Seite löschen</translation>
     </message>
@@ -4349,37 +4340,42 @@ A = Automatisch 1/2 Spalten</translation>
 <context>
     <name>PageRangeSelectDialog</name>
     <message>
-        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="16"/>
+        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="20"/>
         <source>Select Pages by Range</source>
         <translation>Seitenbereich auswählen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="21"/>
+        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="27"/>
         <source>Enter page numbers and/or ranges:</source>
         <translation>Seitenzahlen und/oder Bereiche eingeben:</translation>
     </message>
     <message>
-        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="25"/>
+        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="28"/>
+        <source>Choose pages from %1:</source>
+        <translation>Seiten auswählen von %1:</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="33"/>
         <source>e.g. 3-7, 12</source>
         <translation>z. B. 3-7, 12</translation>
     </message>
     <message>
-        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="28"/>
+        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="38"/>
         <source>Valid pages: 1 to %1</source>
         <translation>Gültige Seiten: 1 bis %1</translation>
     </message>
     <message>
-        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="41"/>
+        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="51"/>
         <source>Cancel</source>
         <translation type="unfinished">Abbrechen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="42"/>
+        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="52"/>
         <source>OK</source>
         <translation type="unfinished">OK</translation>
     </message>
     <message>
-        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="57"/>
+        <location filename="../../source/ui/dialogs/PageRangeSelectDialog.cpp" line="67"/>
         <source>No valid pages in that range.</source>
         <translation>Keine gültigen Seiten in diesem Bereich.</translation>
     </message>
@@ -4395,269 +4391,182 @@ A = Automatisch 1/2 Spalten</translation>
 <context>
     <name>PageWheelPicker</name>
     <message>
-        <location filename="../../source/ui/widgets/PageWheelPicker.cpp" line="36"/>
-        <source>Drag to scroll through pages</source>
-        <translation>Zum Blättern ziehen</translation>
-    </message>
-</context>
-<context>
-    <name>PdfMismatchDialog</name>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="16"/>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="54"/>
-        <source>Different PDF Detected</source>
-        <translation>Anderes PDF erkannt</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="66"/>
-        <source>The selected PDF appears to be different from the one originally used with this notebook.</source>
-        <translation>Das ausgewählte PDF scheint nicht mit dem ursprünglich für dieses Notizbuch verwendeten PDF übereinzustimmen.</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="78"/>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="177"/>
-        <source>unknown</source>
-        <translation>Unbekannt</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="81"/>
-        <source>Original: %1 (%2)</source>
-        <translation>Original: %1 (%2)</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="84"/>
-        <source>Selected: %1 (%2)</source>
-        <translation>Ausgewählt: %1 (%2)</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="92"/>
-        <source>Using a different PDF may cause annotations to appear in the wrong positions.</source>
-        <translation>Die Verwendung eines anderen PDFs kann dazu führen, dass Anmerkungen an falschen Positionen erscheinen.</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="105"/>
-        <source>Use This PDF</source>
-        <translation>Dieses PDF verwenden</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="127"/>
-        <source>Choose Different</source>
-        <translation>Andere wählen</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfMismatchDialog.cpp" line="148"/>
-        <source>Cancel</source>
-        <translation>Abbrechen</translation>
-    </message>
-</context>
-<context>
-    <name>PdfRelinkDialog</name>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="35"/>
-        <source>PDF File Missing</source>
-        <translation>PDF-Datei fehlt</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="33"/>
-        <source>Reconnect PDF</source>
-        <translation>PDF neu verbinden</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="31"/>
-        <source>Link PDF</source>
-        <translation>PDF verknüpfen</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="82"/>
-        <source>Link PDF File</source>
-        <translation>PDF-Datei verknüpfen</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="85"/>
-        <source>Reconnect PDF File</source>
-        <translation>PDF-Datei neu verbinden</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="88"/>
-        <source>PDF File Not Found</source>
-        <translation>PDF-Datei nicht gefunden</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="108"/>
-        <source>This notebook does not have a linked PDF file.
-
-You can select a PDF file to link to this notebook.</source>
-        <translation>Mit diesem Notizbuch ist keine PDF-Datei verknüpft.
-
-Sie können eine PDF-Datei auswählen, um sie mit diesem Notizbuch zu verknüpfen.</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="111"/>
-        <source>A PDF file is currently linked to this notebook:
-
-Current file: %1
-
-You can select a different PDF file to link to this notebook.
-
-What would you like to do?</source>
-        <translation>Mit diesem Notizbuch ist derzeit eine PDF-Datei verknüpft:
-
-Aktuelle Datei: %1
-
-Sie können eine andere PDF-Datei auswählen, um sie mit diesem Notizbuch zu verknüpfen.
-
-Was möchten Sie tun?</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="116"/>
-        <source>The PDF file linked to this notebook could not be found:
-
-Missing file: %1
-
-This may happen if the file was moved, renamed, or you&apos;re opening the notebook on a different computer.
-
-What would you like to do?</source>
-        <translation>Die mit diesem Notizbuch verknüpfte PDF-Datei konnte nicht gefunden werden:
-
-Fehlende Datei: %1
-
-Dies kann passieren, wenn die Datei verschoben oder umbenannt wurde oder wenn Sie das Notizbuch auf einem anderen Computer öffnen.
-
-Was möchten Sie tun?</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="136"/>
-        <source>Choose PDF File...</source>
-        <translation>PDF-Datei auswählen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="138"/>
-        <source>Choose New PDF File...</source>
-        <translation>Neue PDF-Datei auswählen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="140"/>
-        <source>Locate PDF File...</source>
-        <translation>PDF-Datei suchen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="170"/>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="412"/>
-        <source>Unlink PDF</source>
-        <translation>PDF-Verknüpfung aufheben</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="171"/>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="412"/>
-        <source>Continue Without PDF</source>
-        <translation>Ohne PDF fortfahren</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="202"/>
-        <source>Cancel</source>
-        <translation>Abbrechen</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="271"/>
-        <source>Locate PDF File</source>
-        <translation>PDF-Datei suchen</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="273"/>
-        <source>PDF Files (*.pdf);;All Files (*)</source>
-        <translation>PDF-Dateien (*.pdf);;Alle Dateien (*)</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="285"/>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="336"/>
-        <source>Invalid File</source>
-        <translation>Ungültige Datei</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="286"/>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="337"/>
-        <source>The selected file is not a valid PDF file.</source>
-        <translation>Die ausgewählte Datei ist keine gültige PDF-Datei.</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="414"/>
-        <source>Are you sure you want to unlink the current PDF file?
-
-You can still use the notebook for taking notes, but PDF annotation features will not be available.
-
-You can relink a PDF file later from the menu.</source>
-        <translation>Sind Sie sicher, dass Sie die Verknüpfung zur aktuellen PDF-Datei aufheben möchten?
-
-Sie können das Notizbuch weiterhin zum Erstellen von Notizen verwenden, aber die PDF-Anmerkungsfunktionen sind dann nicht verfügbar.
-
-Sie können später über das Menü wieder eine PDF-Datei verknüpfen.</translation>
-    </message>
-    <message>
-        <location filename="../../source/pdf/PdfRelinkDialog.cpp" line="417"/>
-        <source>Are you sure you want to continue without linking a PDF file?
-
-You can still use the notebook for taking notes, but PDF annotation features will not be available.</source>
-        <translation>Sind Sie sicher, dass Sie ohne die Verknüpfung einer PDF-Datei fortfahren möchten?
-
-Sie können das Notizbuch weiterhin zum Erstellen von Notizen verwenden, aber die PDF-Anmerkungsfunktionen sind dann nicht verfügbar.</translation>
+        <location filename="../../source/ui/widgets/PageWheelPicker.cpp" line="37"/>
+        <source>Scroll or drag to change pages
+Double-click or double-tap to jump to a page</source>
+        <translation>Scrollen oder ziehen, um Seiten zu wechseln
+Doppelklicken oder zweimal tippen, um zu einer Seite zu springen</translation>
     </message>
 </context>
 <context>
     <name>PdfSearchBar</name>
     <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="139"/>
+        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="146"/>
         <source>Close (Escape)</source>
         <translation>Schließen (Escape)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="144"/>
-        <source>Find:</source>
-        <translation>Suchen:</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="149"/>
-        <source>Search in PDF...</source>
-        <translation>In PDF suchen...</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="162"/>
-        <source>Next</source>
-        <translation>Weiter</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="165"/>
+        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="180"/>
         <source>Find Next (F3)</source>
         <translation>Weitersuchen (F3)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="170"/>
-        <source>Previous</source>
-        <translation>Zurück</translation>
-    </message>
-    <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="173"/>
+        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="172"/>
         <source>Find Previous (Shift+F3)</source>
         <translation>Zurücksuchen (Shift+F3)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="178"/>
-        <source>Options</source>
-        <translation>Optionen</translation>
+        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="152"/>
+        <source>Find</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="181"/>
+        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="189"/>
         <source>Search Options</source>
         <translation>Suchoptionen</translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="187"/>
+        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="195"/>
         <source>Case Sensitive</source>
         <translation>Groß-/Kleinschreibung beachten</translation>
     </message>
     <message>
-        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="195"/>
+        <location filename="../../source/ui/widgets/PdfSearchBar.cpp" line="203"/>
         <source>Whole Word</source>
         <translation>Nur ganzes Wort</translation>
+    </message>
+</context>
+<context>
+    <name>PdfSourcesDialog</name>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="36"/>
+        <source>Available</source>
+        <translation>Verfügbar</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="38"/>
+        <source>Available (relative copy)</source>
+        <translation>Verfügbar (relative Kopie)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="40"/>
+        <source>Available (embedded copy)</source>
+        <translation>Verfügbar (eingebettete Kopie)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="42"/>
+        <source>Embedded copy is incomplete</source>
+        <translation>Eingebettete Kopie ist unvollständig</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="44"/>
+        <source>Different file found</source>
+        <translation>Andere Datei gefunden</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="46"/>
+        <source>Unreadable or damaged</source>
+        <translation>Unlesbar oder beschädigt</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="49"/>
+        <source>Missing</source>
+        <translation>Fehlt</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="59"/>
+        <source>PDF Sources</source>
+        <translation>PDF-Quellen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="65"/>
+        <source>PDF-backed pages keep a reference to the file they came from. Locate unavailable sources to restore their page backgrounds.</source>
+        <translation>PDF-basierte Seiten behalten einen Verweis auf ihre Ursprungsdatei. Suchen Sie nicht verfügbare Quellen, um deren Seitenhintergründe wiederherzustellen.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="74"/>
+        <source>Source</source>
+        <translation>Quelle</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="74"/>
+        <source>Status</source>
+        <translation>Status</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="74"/>
+        <source>Pages</source>
+        <translation type="unfinished">Seiten</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="74"/>
+        <source>Location</source>
+        <translation>Speicherort</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="85"/>
+        <source>Locate...</source>
+        <translation>Suchen...</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="86"/>
+        <source>Retry</source>
+        <translation>Wiederholen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="87"/>
+        <source>Show in Folder</source>
+        <translation type="unfinished">Im Ordner anzeigen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="88"/>
+        <source>Locate Folder...</source>
+        <translation>Ordner suchen...</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="147"/>
+        <source>%1 of %2 unavailable</source>
+        <translation>%1 von %2 nicht verfügbar</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="148"/>
+        <source>%1</source>
+        <translation>%1</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="191"/>
+        <source>Locate PDF Source</source>
+        <translation>PDF-Quelle suchen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="192"/>
+        <source>PDF Files (*.pdf);;All Files (*)</source>
+        <translation type="unfinished">PDF-Dateien (*.pdf);;Alle Dateien (*)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="220"/>
+        <source>PDF Source Not Matched</source>
+        <translation>PDF-Quelle stimmt nicht überein</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="221"/>
+        <source>The selected PDF is damaged or does not match the original source. No document links were changed.</source>
+        <translation>Die ausgewählte PDF ist beschädigt oder stimmt nicht mit der Originalquelle überein. Es wurden keine Dokumentenlinks geändert.</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="255"/>
+        <source>Locate PDF Sources</source>
+        <translation>PDF-Quellen suchen</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="290"/>
+        <source>PDF Source Search</source>
+        <translation>PDF-Quellensuche</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/dialogs/PdfSourcesDialog.cpp" line="291"/>
+        <source>Repaired %1 PDF source(s).</source>
+        <translation>%1 PDF-Quelle(n) repariert.</translation>
     </message>
 </context>
 <context>
@@ -4707,20 +4616,20 @@ Sie können das Notizbuch weiterhin zum Erstellen von Notizen verwenden, aber di
     </message>
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="128"/>
-        <location filename="../../source/batch/BatchOperations.cpp" line="306"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="311"/>
         <source>No output path specified</source>
         <translation>Kein Ausgabepfad angegeben</translation>
     </message>
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="153"/>
-        <location filename="../../source/batch/BatchOperations.cpp" line="331"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="336"/>
         <source>Failed to create output directory: %1</source>
         <translation>Erstellen des Ausgabeverzeichnisses fehlgeschlagen: %1</translation>
     </message>
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="183"/>
-        <location filename="../../source/batch/BatchOperations.cpp" line="361"/>
-        <location filename="../../source/batch/BatchOperations.cpp" line="601"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="366"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="606"/>
         <source>Cancelled</source>
         <translation>Abgebrochen</translation>
     </message>
@@ -4731,61 +4640,66 @@ Sie können das Notizbuch weiterhin zum Erstellen von Notizen verwenden, aber di
     </message>
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="208"/>
-        <location filename="../../source/batch/BatchOperations.cpp" line="414"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="419"/>
         <source>Would export to: %1</source>
         <translation>Exportieren nach: %1</translation>
     </message>
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="217"/>
-        <location filename="../../source/batch/BatchOperations.cpp" line="386"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="391"/>
         <source>Not a valid SpeedyNote bundle</source>
         <translation>Kein gültiges SpeedyNote-Paket</translation>
     </message>
     <message>
         <location filename="../../source/batch/BatchOperations.cpp" line="227"/>
-        <location filename="../../source/batch/BatchOperations.cpp" line="396"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="401"/>
         <source>Failed to load document</source>
         <translation>Dokument konnte nicht geladen werden</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="369"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="238"/>
+        <source>PDF sources could not be finalized</source>
+        <translation>PDF-Quellen konnten nicht finalisiert werden</translation>
+    </message>
+    <message>
+        <location filename="../../source/batch/BatchOperations.cpp" line="374"/>
         <source>Exporting to PDF...</source>
         <translation>Exportiere als PDF...</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="405"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="410"/>
         <source>Edgeless notebooks cannot be exported to PDF</source>
         <translation>Randlose Notizbücher können nicht als PDF exportiert werden</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="572"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="577"/>
         <location filename="../../source/sharing/NotebookExporter.cpp" line="63"/>
         <location filename="../../source/sharing/NotebookImporter.cpp" line="43"/>
         <source>Failed to create destination directory: %1</source>
         <translation>Zielverzeichnis konnte nicht erstellt werden: %1</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="609"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="614"/>
         <source>Importing...</source>
         <translation>Importiere...</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="615"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="620"/>
         <source>File not found</source>
         <translation>Datei nicht gefunden</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="634"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="639"/>
         <source>Would import to: %1</source>
         <translation>Importieren nach: %1</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="646"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="651"/>
         <source>Failed to remove existing notebook for overwrite</source>
         <translation>Vorhandenes Notizbuch konnte zum Überschreiben nicht entfernt werden</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="671"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="676"/>
         <source>Imported but could not add .snb extension</source>
         <translation>Importiert, aber die Dateiendung .snb konnte nicht hinzugefügt werden</translation>
     </message>
@@ -4835,7 +4749,7 @@ Sie können das Notizbuch weiterhin zum Erstellen von Notizen verwenden, aber di
         <translation>Paketdatei nicht gefunden: %1</translation>
     </message>
     <message>
-        <location filename="../../source/batch/BatchOperations.cpp" line="554"/>
+        <location filename="../../source/batch/BatchOperations.cpp" line="559"/>
         <location filename="../../source/sharing/NotebookImporter.cpp" line="36"/>
         <source>No destination directory specified</source>
         <translation>Kein Zielverzeichnis angegeben</translation>
@@ -4861,18 +4775,18 @@ Sie können das Notizbuch weiterhin zum Erstellen von Notizen verwenden, aber di
         <translation>Ungültiges Paket: document.json nach dem Entpacken nicht gefunden</translation>
     </message>
     <message>
-        <location filename="../../source/Main.cpp" line="1090"/>
-        <location filename="../../source/Main.cpp" line="1108"/>
+        <location filename="../../source/Main.cpp" line="1111"/>
+        <location filename="../../source/Main.cpp" line="1129"/>
         <source>Restore Previous Session</source>
         <translation>Vorherige Sitzung wiederherstellen</translation>
     </message>
     <message>
-        <location filename="../../source/Main.cpp" line="1091"/>
+        <location filename="../../source/Main.cpp" line="1112"/>
         <source>You had %1 other tab(s) open last time. Restore them?</source>
         <translation>Sie hatten beim letzten Mal %1 weitere(n) Tab(s) geöffnet. Wiederherstellen?</translation>
     </message>
     <message>
-        <location filename="../../source/Main.cpp" line="1109"/>
+        <location filename="../../source/Main.cpp" line="1130"/>
         <source>You had %1 tab(s) open last time. Restore them?</source>
         <translation>Sie hatten beim letzten Mal %1 Tab(s) geöffnet. Wiederherstellen?</translation>
     </message>
@@ -4913,12 +4827,12 @@ Sie können das Notizbuch weiterhin zum Erstellen von Notizen verwenden, aber di
 <context>
     <name>SearchModel</name>
     <message>
-        <location filename="../../source/ui/launcher/SearchModel.cpp" line="160"/>
+        <location filename="../../source/ui/launcher/SearchModel.cpp" line="165"/>
         <source>FOLDERS</source>
         <translation>ORDNER</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/SearchModel.cpp" line="177"/>
+        <location filename="../../source/ui/launcher/SearchModel.cpp" line="182"/>
         <source>NOTEBOOKS</source>
         <translation>NOTIZBÜCHER</translation>
     </message>
@@ -5138,6 +5052,9 @@ Versuchen Sie einen anderen Suchbegriff.</translation>
         <location filename="../../source/core/ShortcutManager.cpp" line="147"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="150"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="151"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="184"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="185"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="186"/>
         <source>Tools</source>
         <translation>Werkzeuge</translation>
     </message>
@@ -5292,11 +5209,8 @@ Versuchen Sie einen anderen Suchbegriff.</translation>
         <location filename="../../source/core/ShortcutManager.cpp" line="179"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="180"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="181"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="184"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="185"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="186"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="187"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="188"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="189"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="190"/>
         <source>Objects</source>
         <translation>Objekte</translation>
     </message>
@@ -5332,99 +5246,97 @@ Versuchen Sie einen anderen Suchbegriff.</translation>
     </message>
     <message>
         <location filename="../../source/core/ShortcutManager.cpp" line="184"/>
-        <source>Image Insert Mode</source>
-        <translation>Bild-Einfügemodus</translation>
+        <source>Image Object Tool</source>
+        <translation>Bildobjekt-Werkzeug</translation>
     </message>
     <message>
         <location filename="../../source/core/ShortcutManager.cpp" line="185"/>
-        <source>Link Insert Mode</source>
-        <translation>Link-Einfügemodus</translation>
+        <source>Link Object Tool</source>
+        <translation>Link-Objekt-Werkzeug</translation>
     </message>
     <message>
         <location filename="../../source/core/ShortcutManager.cpp" line="186"/>
-        <source>Text Insert Mode</source>
-        <translation>Text-Einfügemodus</translation>
+        <source>Text Object Tool</source>
+        <translation>Textobjekt-Werkzeug</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="187"/>
-        <source>Object Create Mode</source>
-        <translation>Objekt-Erstellungsmodus</translation>
+        <location filename="../../source/core/ShortcutManager.cpp" line="189"/>
+        <source>Object Add Mode</source>
+        <translation>Objekt-Hinzufügungsmodus</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="188"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="190"/>
         <source>Object Select Mode</source>
         <translation>Objekt-Auswahlmodus</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="191"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="193"/>
         <source>Activate Link Slot 1</source>
         <translation>Link-Slot 1 aktivieren</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="191"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="192"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="193"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="194"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="195"/>
         <source>Links</source>
         <translation>Links</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="192"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="194"/>
         <source>Activate Link Slot 2</source>
         <translation>Link-Slot 2 aktivieren</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="193"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="195"/>
         <source>Activate Link Slot 3</source>
         <translation>Link-Slot 3 aktivieren</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="196"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="198"/>
         <source>New Layer</source>
         <translation>Neue Ebene</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="196"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="197"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="198"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="199"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="200"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="201"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="202"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="203"/>
         <source>Layers</source>
         <translation>Ebenen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="197"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="199"/>
         <source>Toggle Layer Visibility</source>
         <translation>Ebenensichtbarkeit umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="198"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="200"/>
         <source>Select All Layers</source>
         <translation>Alle Ebenen auswählen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="199"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="201"/>
         <source>Select Top Layer</source>
         <translation>Oberste Ebene auswählen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="200"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="202"/>
         <source>Select Bottom Layer</source>
         <translation>Unterste Ebene auswählen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="201"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="203"/>
         <source>Merge Layers</source>
         <translation>Ebenen zusammenführen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="204"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="206"/>
         <source>Toggle Fullscreen</source>
         <translation>Vollbild umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="204"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="205"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="206"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="207"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="208"/>
@@ -5432,172 +5344,188 @@ Versuchen Sie einen anderen Suchbegriff.</translation>
         <location filename="../../source/core/ShortcutManager.cpp" line="210"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="211"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="212"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="213"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="214"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="215"/>
         <source>View</source>
         <translation>Ansicht</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="205"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="207"/>
         <source>Toggle Debug Overlay</source>
         <translation>Debug-Overlay umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="206"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="208"/>
+        <source>Toggle Performance HUD</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/ShortcutManager.cpp" line="209"/>
         <source>Toggle Auto Layout</source>
         <translation>Automatisches Layout umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="207"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="210"/>
         <source>Toggle Left Sidebar</source>
         <translation>Linke Seitenleiste umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="208"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="211"/>
         <source>Toggle Right Sidebar</source>
         <translation>Rechte Seitenleiste umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="209"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="212"/>
         <source>Split Tab Right</source>
         <translation>Tab nach rechts teilen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="210"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="213"/>
         <source>Merge All to Left</source>
         <translation>Alle nach links zusammenführen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="211"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="214"/>
         <source>Focus Left Pane</source>
         <translation>Linkes Fenster fokussieren</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="212"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="215"/>
         <source>Focus Right Pane</source>
         <translation>Rechtes Fenster fokussieren</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="215"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="218"/>
         <source>Scan Page</source>
         <translation>Seite scannen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="215"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="216"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="217"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="218"/>
         <location filename="../../source/core/ShortcutManager.cpp" line="219"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="220"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="221"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="222"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="216"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="219"/>
         <source>Scan All Pages</source>
         <translation>Alle Seiten scannen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="217"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="220"/>
         <source>Toggle Auto OCR</source>
         <translation>Automatisches OCR umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="218"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="221"/>
         <source>Toggle Recognized Text</source>
         <translation>Erkannten Text umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="219"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="222"/>
         <source>Toggle OCR Snap to Grid</source>
         <translation>OCR-Rastereinrastung umschalten</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="225"/>
-        <source>Auto-Highlight: None</source>
-        <translation>Auto-Hervorhebung: Keine</translation>
-    </message>
-    <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="225"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="226"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="227"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="228"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="229"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="232"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="233"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="234"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="235"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="236"/>
         <source>Highlighter</source>
         <translation>Textmarker</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="226"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="232"/>
+        <source>Highlighter: Select Text Only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/core/ShortcutManager.cpp" line="233"/>
         <source>Auto-Highlight: Cover Text</source>
         <translation>Auto-Hervorhebung: Text abdecken</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="227"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="234"/>
         <source>Auto-Highlight: Underline</source>
         <translation>Auto-Hervorhebung: Unterstreichen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="228"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="235"/>
         <source>Auto-Highlight: Dotted Underline</source>
         <translation>Auto-Hervorhebung: Gepunktete Unterstreichung</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="229"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="236"/>
         <source>Toggle Highlighter Source (PDF/OCR)</source>
         <translation>Textmarker-Quelle umschalten (PDF/OCR)</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="232"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="239"/>
         <source>Settings</source>
         <translation>Einstellungen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="232"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="233"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="234"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="235"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="236"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="239"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="240"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="241"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="242"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="243"/>
         <source>Application</source>
         <translation>Anwendung</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="233"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="240"/>
         <source>Keyboard Shortcuts</source>
         <translation>Tastaturkürzel</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="234"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="241"/>
         <source>Find in Document</source>
         <translation>Im Dokument suchen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="235"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="242"/>
         <source>Find Next</source>
         <translation>Weitersuchen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="236"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="243"/>
         <source>Find Previous</source>
         <translation>Vorheriges suchen</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="239"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="246"/>
         <source>Return to Origin</source>
         <translation>Zum Ursprung zurückkehren</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="239"/>
-        <location filename="../../source/core/ShortcutManager.cpp" line="240"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="246"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="247"/>
         <source>Edgeless</source>
         <translation>Randlos</translation>
     </message>
     <message>
-        <location filename="../../source/core/ShortcutManager.cpp" line="240"/>
+        <location filename="../../source/core/ShortcutManager.cpp" line="247"/>
         <source>Go Back</source>
         <translation>Zurück</translation>
     </message>
 </context>
 <context>
+    <name>SplitViewManager</name>
+    <message>
+        <location filename="../../source/ui/SplitViewManager.cpp" line="644"/>
+        <source>Find in Document (Ctrl+F)</source>
+        <translation type="unfinished">In Dokument suchen (Ctrl+F)</translation>
+    </message>
+</context>
+<context>
     <name>StarredModel</name>
     <message>
-        <location filename="../../source/ui/launcher/StarredModel.cpp" line="302"/>
+        <location filename="../../source/ui/launcher/StarredModel.cpp" line="310"/>
         <source>Unfiled</source>
         <translation>Nicht abgelegt</translation>
     </message>
@@ -5700,6 +5628,82 @@ und wählen Sie „Markieren“, um es hier hinzuzufügen.</translation>
     </message>
 </context>
 <context>
+    <name>TextBoxFormatBar</name>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="35"/>
+        <source>Size</source>
+        <translation>Größe</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="36"/>
+        <source>Base font size label</source>
+        <translation>Basisschriftgrad-Beschriftung</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="45"/>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="46"/>
+        <source>Base font size</source>
+        <translation>Basisschriftgrad</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="59"/>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="60"/>
+        <source>Font family</source>
+        <translation>Schriftart</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="83"/>
+        <source>Align left</source>
+        <translation>Linksbündig</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="84"/>
+        <source>Align center</source>
+        <translation>Zentriert</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="85"/>
+        <source>Align right</source>
+        <translation>Rechtsbündig</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="93"/>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="94"/>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="454"/>
+        <source>Text color</source>
+        <translation>Textfarbe</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="102"/>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="103"/>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="454"/>
+        <source>Background color</source>
+        <translation>Hintergrundfarbe</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="108"/>
+        <source>Opacity</source>
+        <translation>Deckkraft</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="109"/>
+        <source>Background opacity label</source>
+        <translation>Hintergrunddeckkraft-Beschriftung</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="119"/>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="120"/>
+        <source>Background opacity</source>
+        <translation>Hintergrunddeckkraft</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="127"/>
+        <location filename="../../source/ui/panels/TextBoxFormatBar.cpp" line="128"/>
+        <source>Show border</source>
+        <translation>Rahmen anzeigen</translation>
+    </message>
+</context>
+<context>
     <name>TextSelectionActionBar</name>
     <message>
         <location filename="../../source/ui/actionbars/TextSelectionActionBar.cpp" line="15"/>
@@ -5736,32 +5740,32 @@ und wählen Sie „Markieren“, um es hier hinzuzufügen.</translation>
 <context>
     <name>TimelineModel</name>
     <message>
-        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="182"/>
+        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="189"/>
         <source>Unknown</source>
         <translation>Unbekannt</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="190"/>
+        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="197"/>
         <source>Today</source>
         <translation>Heute</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="195"/>
+        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="202"/>
         <source>Yesterday</source>
         <translation>Gestern</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="200"/>
+        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="207"/>
         <source>This Week</source>
         <translation>Diese Woche</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="205"/>
+        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="212"/>
         <source>This Month</source>
         <translation>Diesen Monat</translation>
     </message>
     <message>
-        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="211"/>
+        <location filename="../../source/ui/launcher/TimelineModel.cpp" line="218"/>
         <source>Last Month</source>
         <translation>Letzten Monat</translation>
     </message>
@@ -5769,68 +5773,88 @@ und wählen Sie „Markieren“, um es hier hinzuzufügen.</translation>
 <context>
     <name>Toolbar</name>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="40"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="105"/>
+        <source>Link Object Tool (Ctrl+.)</source>
+        <translation>Verknüpfungsobjekt-Werkzeug (Ctrl+.)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/Toolbar.cpp" line="111"/>
+        <source>Text Object Tool (Ctrl+T)</source>
+        <translation>Textobjekt-Werkzeug (Ctrl+T)</translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/Toolbar.cpp" line="55"/>
         <source>Pen Tool (B)</source>
         <translation>Stift-Werkzeug (B)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="51"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="40"/>
+        <source>Back to drawing tools</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/Toolbar.cpp" line="66"/>
         <source>Marker Tool (M)</source>
         <translation>Marker-Werkzeug (M)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="60"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="75"/>
         <source>Eraser Tool (E)</source>
         <translation>Radiergummi-Werkzeug (E)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="68"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="83"/>
         <source>Straight Line Mode (/)</source>
         <translation>Gerade-Linie-Modus (/)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="74"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="89"/>
         <source>Lasso Selection Tool (L)</source>
         <translation>Lasso-Auswahlwerkzeug (L)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="82"/>
-        <source>Object Select Tool (V)</source>
-        <translation>Objekt-Auswahlwerkzeug (V)</translation>
+        <location filename="../../source/ui/Toolbar.cpp" line="99"/>
+        <source>Image Object Tool (I)</source>
+        <translation>Bildobjekt-Werkzeug (I)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="91"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="119"/>
         <source>Text Highlighter Tool (T)</source>
         <translation>Textmarker-Werkzeug (T)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="100"/>
-        <location filename="../../source/ui/Toolbar.cpp" line="389"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="134"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="723"/>
         <source>OCR - Text Recognition</source>
         <translation>OCR - Texterkennung</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="110"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="144"/>
         <source>Pan Tool (H)</source>
         <translation>Hand-Werkzeug (H)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="124"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="161"/>
         <source>Redo (Ctrl+Shift+Z / Ctrl+Y)</source>
         <translation>Wiederherstellen (Ctrl+Shift+Z / Ctrl+Y)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="387"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="182"/>
+        <source>More tools</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../../source/ui/Toolbar.cpp" line="721"/>
         <source>OCR - View cached text (engine unavailable on this platform)</source>
         <translation>OCR - Zwischengespeicherten Text anzeigen (Engine auf dieser Plattform nicht verfügbar)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="119"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="156"/>
         <source>Undo (Ctrl+Z)</source>
         <translation>Rückgängig (Ctrl+Z)</translation>
     </message>
     <message>
-        <location filename="../../source/ui/Toolbar.cpp" line="132"/>
+        <location filename="../../source/ui/Toolbar.cpp" line="170"/>
         <source>Touch Gesture Mode
 0: Off
 1: Y-axis scroll only
