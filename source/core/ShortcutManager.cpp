@@ -180,11 +180,13 @@ void ShortcutManager::registerDefaults()
     registerAction("object.affinity_down", "Alt+[", tr("Decrease Affinity"), tr("Objects"));
     registerAction("object.affinity_background", "Alt+\\", tr("Send to Background"), tr("Objects"));
     
-    // ===== Object Insert/Action Mode =====
-    registerAction("object.mode_image", "I", tr("Image Insert Mode"), tr("Objects"));
-    registerAction("object.mode_link", "Ctrl+.", tr("Link Insert Mode"), tr("Objects"));
-    registerAction("object.mode_text", "Ctrl+T", tr("Text Insert Mode"), tr("Objects"));
-    registerAction("object.mode_create", "Ctrl+6", tr("Object Create Mode"), tr("Objects"));
+    // ===== Object tool subtypes =====
+    registerAction("object.mode_image", "I", tr("Image Object Tool"), tr("Tools"));
+    registerAction("object.mode_link", "Ctrl+.", tr("Link Object Tool"), tr("Tools"));
+    registerAction("object.mode_text", "Ctrl+T", tr("Text Object Tool"), tr("Tools"));
+
+    // ===== Shared object action mode =====
+    registerAction("object.mode_create", "Ctrl+6", tr("Object Add Mode"), tr("Objects"));
     registerAction("object.mode_select", "Ctrl+7", tr("Object Select Mode"), tr("Objects"));
     
     // ===== Link Slots =====
@@ -203,6 +205,7 @@ void ShortcutManager::registerDefaults()
     // ===== View =====
     registerAction("view.fullscreen", "F11", tr("Toggle Fullscreen"), tr("View"));
     registerAction("view.debug_overlay", "F12", tr("Toggle Debug Overlay"), tr("View"));
+    registerAction("view.perf_hud", "F10", tr("Toggle Performance HUD"), tr("View"));
     registerAction("view.auto_layout", "Ctrl+Shift+2", tr("Toggle Auto Layout"), tr("View"));
     registerAction("view.left_sidebar", "Ctrl+Shift+L", tr("Toggle Left Sidebar"), tr("View"));
     registerAction("view.right_sidebar", "Ctrl+Shift+M", tr("Toggle Right Sidebar"), tr("View"));
@@ -222,7 +225,11 @@ void ShortcutManager::registerDefaults()
     // Explicit style-selection shortcuts replace the old pdf.auto_highlight
     // toggle: each auto-highlight dropdown option is now a first-class
     // shortcut. Ctrl+H migrates to highlighter.style_cover for muscle memory.
-    registerAction("highlighter.style_none",      "Ctrl+Shift+H", tr("Auto-Highlight: None"),             tr("Highlighter"));
+    // Legacy id: this used to select HighlightStyle::None, which was how the
+    // tool's select-text-only mode was expressed. It now drives the dedicated
+    // toggle. The id is kept so users' persisted overrides in shortcuts.json
+    // are not orphaned by the rename.
+    registerAction("highlighter.style_none",      "Ctrl+Shift+H", tr("Highlighter: Select Text Only"),    tr("Highlighter"));
     registerAction("highlighter.style_cover",     "Ctrl+H",       tr("Auto-Highlight: Cover Text"),       tr("Highlighter"));
     registerAction("highlighter.style_underline", "Ctrl+U",       tr("Auto-Highlight: Underline"),        tr("Highlighter"));
     registerAction("highlighter.style_dotted",    "Ctrl+Shift+U", tr("Auto-Highlight: Dotted Underline"), tr("Highlighter"));

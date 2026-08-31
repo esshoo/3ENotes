@@ -264,7 +264,9 @@ static void applyAndroidFonts(QApplication& app)
 #include "core/DocumentViewportTests.h"
 #include "ui/ToolbarButtonTests.h"
 #include "objects/LinkObjectTests.h"
+#include "objects/TextBoxObjectTests.h"
 #include "pdf/MuPdfExporterTests.h"
+#include "ui/actionbars/ActionBarContainerTests.h"
 #include "ui/ToolbarButtonTestWidget.h"
 #include "ocr/OcrRasterTests.h"
 #include "ocr/OcrGoldenTests.h"
@@ -613,10 +615,16 @@ static int runTests(const QString& testType)
         success = DocumentTests::runAllTests();
     } else if (testType == "notebooklibrary") {
         success = NotebookLibraryTests::runAllTests();
+    } else if (testType == "viewport-unit") {
+        success = DocumentViewportTests::runUnitTests();
     } else if (testType == "linkobject") {
         success = LinkObjectTests::runAllTests();
+    } else if (testType == "textboxobject") {
+        success = TextBoxObjectTests::runAllTests();
     } else if (testType == "pdfexporter") {
         success = MuPdfExporterTests::runAllTests();
+    } else if (testType == "actionbars") {
+        success = ActionBarContainerTests::runAllTests();
     } else if (testType == "ocr-raster") {
         success = OcrRasterTests::runAllTests();
     } else if (testType == "ocr-golden") {
@@ -904,6 +912,8 @@ int main(int argc, char* argv[])
         QSettings toolSettings("SpeedyNote", "App");
         DocumentViewport::setWheelScrollSpeed(
             toolSettings.value("tools/wheelScrollSpeed", 40.0).toDouble());
+        DocumentViewport::setPanOutsidePagesEnabled(
+            toolSettings.value("tools/panOutsidePages", true).toBool());
     }
 
     // ========== Initialize System Notifications ==========
@@ -942,6 +952,8 @@ int main(int argc, char* argv[])
             testToRun = "document";
         } else if (arg == "--test-notebooklibrary") {
             testToRun = "notebooklibrary";
+        } else if (arg == "--test-viewport-unit") {
+            testToRun = "viewport-unit";
         } else if (arg == "--test-viewport") {
             runViewportTests = true;
         } else if (arg == "--test-buttons") {
@@ -950,8 +962,12 @@ int main(int argc, char* argv[])
             runButtonVisualTest = true;
         } else if (arg == "--test-linkobject") {
             testToRun = "linkobject";
+        } else if (arg == "--test-textboxobject") {
+            testToRun = "textboxobject";
         } else if (arg == "--test-pdfexporter") {
             testToRun = "pdfexporter";
+        } else if (arg == "--test-actionbars") {
+            testToRun = "actionbars";
         } else if (arg == "--test-ocr-raster") {
             testToRun = "ocr-raster";
         } else if (arg == "--test-ocr-golden") {

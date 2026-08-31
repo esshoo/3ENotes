@@ -11,6 +11,20 @@ ObjectSelectActionBar::ObjectSelectActionBar(QWidget* parent)
 
 void ObjectSelectActionBar::setupButtons()
 {
+    // === Persistent Select / Add mode ===
+    m_actionModeButton = new ActionBarButton(this);
+    m_actionModeButton->setCheckable(true);
+    addButton(m_actionModeButton);
+    updateActionModeButton();
+    connect(m_actionModeButton, &ActionBarButton::clicked, this, [this]() {
+        const auto nextMode =
+            m_actionMode == DocumentViewport::ObjectActionMode::Select
+                ? DocumentViewport::ObjectActionMode::Create
+                : DocumentViewport::ObjectActionMode::Select;
+        setActionModeState(nextMode);
+        emit actionModeChanged(nextMode);
+    });
+
     // === Aspect ratio lock (image-only, placed at top) ===
     m_aspectLockButton = new ActionBarButton(this);
     m_aspectLockButton->setIconName("lock");
@@ -32,6 +46,14 @@ void ObjectSelectActionBar::setupButtons()
         m_ocrLockButton->setChecked(!m_ocrLockButton->isChecked());
         emit ocrLockToggleRequested();
     });
+
+    // === Convert recognized text to an editable text box (ocr-text-only) ===
+    m_ocrConvertButton = new ActionBarButton(this);
+    m_ocrConvertButton->setIconName("text");
+    m_ocrConvertButton->setToolTip(tr("Convert to Editable Text Box"));
+    addButton(m_ocrConvertButton);
+    connect(m_ocrConvertButton, &ActionBarButton::clicked,
+            this, &ObjectSelectActionBar::ocrConvertToTextBoxRequested);
     
     // === Clipboard operations ===
     
@@ -111,14 +133,23 @@ void ObjectSelectActionBar::setupButtons()
 
 void ObjectSelectActionBar::updateButtonStates()
 {
+    // Add/Select is the persistent entry point for ObjectSelect, including idle
+    // state, but means nothing under a tool that never reads the mode.
+    if (m_actionModeButton) {
+        m_actionModeButton->setVisible(m_objectToolActive);
+    }
+
     // Aspect lock: visible only when a single ImageObject is selected
     if (m_aspectLockButton) {
         m_aspectLockButton->setVisible(m_hasSelection && m_isImageSelected);
     }
     
-    // OCR lock: visible only when a single OcrTextObject is selected
+    // OCR lock and conversion: visible only when a single OcrTextObject is selected
     if (m_ocrLockButton) {
         m_ocrLockButton->setVisible(m_hasSelection && m_isOcrTextSelected);
+    }
+    if (m_ocrConvertButton) {
+        m_ocrConvertButton->setVisible(m_hasSelection && m_isOcrTextSelected);
     }
     
     // Copy, Delete, and layer ordering buttons: visible only when selection exists
@@ -144,9 +175,9 @@ void ObjectSelectActionBar::updateButtonStates()
         m_decreaseAffinityButton->setVisible(m_hasSelection);
     }
     
-    // Paste button: visible when clipboard has object
+    // Paste button: visible for either the internal object clipboard or a system image.
     if (m_pasteButton) {
-        m_pasteButton->setVisible(m_hasObjectInClipboard);
+        m_pasteButton->setVisible(m_hasObjectInClipboard || m_hasImageInClipboard);
     }
     
     // Cancel button: visible when clipboard has content and no selection (paste-only mode)
@@ -168,10 +199,50 @@ void ObjectSelectActionBar::setHasObjectInClipboard(bool hasObject)
     }
 }
 
+void ObjectSelectActionBar::setHasImageInClipboard(bool hasImage)
+{
+    if (m_hasImageInClipboard != hasImage) {
+        m_hasImageInClipboard = hasImage;
+        updateButtonStates();
+    }
+}
+
+void ObjectSelectActionBar::setActionModeState(DocumentViewport::ObjectActionMode mode)
+{
+    if (m_actionMode == mode)
+        return;
+
+    m_actionMode = mode;
+    updateActionModeButton();
+}
+
+void ObjectSelectActionBar::updateActionModeButton()
+{
+    if (!m_actionModeButton)
+        return;
+
+    const bool createMode = m_actionMode == DocumentViewport::ObjectActionMode::Create;
+    m_actionModeButton->setChecked(createMode);
+    m_actionModeButton->setIconName(createMode ? QStringLiteral("addtab")
+                                               : QStringLiteral("select"));
+    m_actionModeButton->setToolTip(
+        createMode
+            ? tr("Add mode (click to switch to Select) (Ctrl+6)")
+            : tr("Select mode (click to switch to Add) (Ctrl+7)"));
+}
+
 void ObjectSelectActionBar::setHasSelection(bool hasSelection)
 {
     if (m_hasSelection != hasSelection) {
         m_hasSelection = hasSelection;
+        updateButtonStates();
+    }
+}
+
+void ObjectSelectActionBar::setObjectToolActive(bool active)
+{
+    if (m_objectToolActive != active) {
+        m_objectToolActive = active;
         updateButtonStates();
     }
 }
@@ -200,6 +271,9 @@ void ObjectSelectActionBar::setDarkMode(bool darkMode)
     ActionBar::setDarkMode(darkMode);
     
     // Propagate to all buttons
+    if (m_actionModeButton) {
+        m_actionModeButton->setDarkMode(darkMode);
+    }
     if (m_aspectLockButton) {
         m_aspectLockButton->setDarkMode(darkMode);
     }

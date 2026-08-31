@@ -1,7 +1,7 @@
-﻿cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16)
 cmake_policy(SET CMP0074 NEW)
 
-project(SpeedyNote VERSION 1.5.1 LANGUAGES C CXX)
+project(SpeedyNote VERSION 1.6.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -332,7 +332,7 @@ elseif(APPLE)
     # =========================================================================
     message(STATUS "🍎 Configuring for macOS")
     
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
     
     # Homebrew paths
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
@@ -873,17 +873,17 @@ set(UI_SOURCES
     source/ui/subtoolbars/MarkerSubToolbar.cpp
     source/ui/subtoolbars/EraserSubToolbar.cpp
     source/ui/subtoolbars/HighlighterSubToolbar.cpp
-    source/ui/subtoolbars/ObjectSelectSubToolbar.cpp
     source/ui/subtoolbars/OcrSubToolbar.cpp
     # Panels
-    source/ui/panels/FloatingTextEditor.cpp
+    source/ui/panels/InlineTextBoxEditor.cpp
+    source/ui/panels/TextBoxFormatBar.cpp
+    source/ui/panels/LinkObjectBar.cpp
     # Action bars
     source/ui/actionbars/ActionBar.cpp
     source/ui/actionbars/ActionBarContainer.cpp
     source/ui/actionbars/LassoActionBar.cpp
     source/ui/actionbars/ObjectSelectActionBar.cpp
     source/ui/actionbars/TextSelectionActionBar.cpp
-    source/ui/actionbars/ClipboardActionBar.cpp
     source/ui/actionbars/PagePanelActionBar.cpp
     # Banners
     source/ui/banners/MissingPdfBanner.cpp
@@ -915,8 +915,6 @@ set(UI_SOURCES
 set(PDF_SOURCES
     source/pdf/PdfProviderFactory.cpp
     source/pdf/MuPdfProvider.cpp
-    source/pdf/PdfRelinkDialog.cpp
-    source/pdf/PdfMismatchDialog.cpp
     source/pdf/PdfSearchEngine.cpp
     source/pdf/MuPdfExporter.cpp
     source/pdf/PdfMaterializer.cpp
@@ -1018,9 +1016,9 @@ set(APP_SOURCES
     source/ControlPanelDialog.cpp
     source/ui/dialogs/KeyCaptureDialog.cpp
     source/ui/dialogs/PageRangeSelectDialog.cpp
+    source/ui/dialogs/PdfSourcesDialog.cpp
     source/ui/dialogs/CopyPagesToDocDialog.cpp
-    source/ui/dialogs/BatchPdfExportDialog.cpp
-    source/ui/dialogs/BatchSnbxExportDialog.cpp
+    source/ui/dialogs/BatchExportDialog.cpp
     source/ui/dialogs/ExportResultsDialog.cpp
     source/ui/dialogs/DocumentSettingsDialog.cpp
     source/text/MarkdownNoteEntry.cpp

@@ -2,14 +2,15 @@
 #define OBJECTSELECTACTIONBAR_H
 
 #include "ActionBar.h"
+#include "../../core/DocumentViewport.h"
 
 class ActionBarButton;
 
 /**
  * @brief Action bar for object selection operations.
  * 
- * Provides quick access to clipboard, delete, and layer ordering operations
- * when object(s) are selected in ObjectSelect tool or clipboard has object.
+ * Provides an always-visible Add/Select mode toggle plus contextual clipboard,
+ * delete, and layer ordering operations while ObjectSelect is active.
  * 
  * Layout (when selection exists):
  * - [Copy]     - Visible when selection exists
@@ -25,8 +26,9 @@ class ActionBarButton;
  * - [Paste]    - Visible when clipboard has object
  * - [Cancel]   - Clears clipboard and dismisses action bar (Esc)
  * 
- * This action bar appears when:
- * - Current tool is ObjectSelect AND (has selection OR clipboard has object)
+ * This action bar appears whenever the current tool is ObjectSelect, and also
+ * under the Highlighter once an annotation is selected by tapping its
+ * highlight. See @ref setObjectToolActive for what differs between the two.
  */
 class ObjectSelectActionBar : public ActionBar {
     Q_OBJECT
@@ -37,7 +39,7 @@ public:
     /**
      * @brief Update button visibility based on current state.
      * 
-     * Currently all buttons are always visible when this action bar is shown.
+     * The Add/Select toggle is always visible; other actions depend on context.
      */
     void updateButtonStates() override;
     
@@ -54,6 +56,8 @@ public:
      * Call this when the object clipboard changes.
      */
     void setHasObjectInClipboard(bool hasObject);
+    void setHasImageInClipboard(bool hasImage);
+    void setActionModeState(DocumentViewport::ObjectActionMode mode);
     
     /**
      * @brief Set whether objects are currently selected.
@@ -63,6 +67,18 @@ public:
      * When true, shows full action bar.
      */
     void setHasSelection(bool hasSelection);
+    
+    /**
+     * @brief Set whether ObjectSelect is the active tool.
+     * @param active False when another tool is hosting this bar.
+     *
+     * Only the Add/Select toggle is genuinely ObjectSelect's own: it switches
+     * that tool's sub-mode, and no other tool reads it, so offering it
+     * elsewhere would arm a mode whose effect is invisible until the user
+     * switches back. Every other button acts on the selection or the
+     * clipboard and behaves identically under either tool.
+     */
+    void setObjectToolActive(bool active);
     
     /**
      * @brief Update image-specific state for the aspect ratio lock button.
@@ -79,6 +95,8 @@ public:
     void updateOcrLockSelection(bool isOcrText, bool isLocked);
 
 signals:
+    void actionModeChanged(DocumentViewport::ObjectActionMode mode);
+
     /**
      * @brief Emitted when the aspect ratio lock button is clicked.
      */
@@ -134,8 +152,17 @@ signals:
      */
     void ocrLockToggleRequested();
 
+    /**
+     * @brief Emitted when the "convert OCR text to a text box" button is clicked.
+     */
+    void ocrConvertToTextBoxRequested();
+
 private:
     void setupButtons();
+    void updateActionModeButton();
+
+    // Persistent interaction mode
+    ActionBarButton* m_actionModeButton = nullptr;
     
     // Clipboard buttons
     ActionBarButton* m_copyButton = nullptr;
@@ -156,15 +183,22 @@ private:
     
     // OCR lock (ocr-text-only)
     ActionBarButton* m_ocrLockButton = nullptr;
+
+    // Convert recognized text into an editable text box (ocr-text-only)
+    ActionBarButton* m_ocrConvertButton = nullptr;
     
     // Cancel button (for paste-only mode)
     ActionBarButton* m_cancelButton = nullptr;
     
     // State tracking
     bool m_hasObjectInClipboard = false;
+    bool m_hasImageInClipboard = false;
     bool m_hasSelection = false;
+    bool m_objectToolActive = true;
     bool m_isImageSelected = false;
     bool m_isOcrTextSelected = false;
+    DocumentViewport::ObjectActionMode m_actionMode =
+        DocumentViewport::ObjectActionMode::Select;
 };
 
 #endif // OBJECTSELECTACTIONBAR_H

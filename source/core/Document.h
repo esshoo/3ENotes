@@ -30,7 +30,10 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
+#include <QFuture>
+#include <QImage>
 #include <QPixmap>
+#include <QThreadPool>
 #include <QSet>
 #include <QHash>
 #include <QVector>
@@ -39,6 +42,8 @@
 #include <map>
 #include <set>
 #include <memory>
+
+class ImageObject;
 
 // ============================================================================
 // LayerDefinition - Layer metadata for edgeless mode manifest (Phase 5.6)
@@ -100,13 +105,14 @@ struct LayerDefinition {
 /**
  * @brief A single PDF source registered with a document.
  *
- * A document owns an ordered list of sources. Index 0 is the "primary" source
- * (the PDF a document was born from), which is mirrored to the legacy top-level
+ * A document owns an ordered list of sources. An explicit flag identifies the
+ * optional primary source (the PDF a document was born from); list position is
+ * not significant. The primary is mirrored to the legacy top-level
  * pdf_path/pdf_hash/pdf_size manifest keys for backward compatibility. A page
  * references its source by id via Page::pdfSourceId (empty id = primary).
  *
- * bundledFile / pageMap are reserved for the mini-PDF materialization step and
- * remain unused until that later phase.
+ * bundledFile / pageMap describe the compact in-bundle fallback generated for
+ * pages imported from non-primary sources.
  */
 struct PdfSource {
     QString id;                 ///< UUID identifying this source within the document
@@ -117,9 +123,35 @@ struct PdfSource {
     bool bundled = false;       ///< True if materialized into the bundle (mini-PDF)
     QString bundledFile;        ///< Relative path of the bundled mini-PDF (when bundled)
     QHash<int,int> pageMap;     ///< Original PDF page -> bundled-file page (when bundled)
-    bool needsRelink = false;   ///< True when the source file could not be located on load
     bool primary = false;       ///< True for the document's own base PDF (never bundled/minified,
                                 ///< mirrored to legacy pdf_path). Imported sources are non-primary.
+};
+
+enum class PdfSourceHealthStatus {
+    AvailableExternal,
+    AvailableRelative,
+    AvailableBundled,
+    PartialBundled,
+    Missing,
+    Unreadable,
+    IdentityMismatch
+};
+
+struct PdfSourceHealth {
+    QString sourceId;           ///< Empty for the primary source, otherwise the registry UUID
+    QString title;
+    QString activePath;
+    PdfSourceHealthStatus status = PdfSourceHealthStatus::Missing;
+    int referencedPages = 0;
+    int unavailablePages = 0;
+
+    bool requiresRepair() const {
+        return unavailablePages > 0
+            && (status == PdfSourceHealthStatus::PartialBundled
+            || status == PdfSourceHealthStatus::Missing
+            || status == PdfSourceHealthStatus::Unreadable
+            || status == PdfSourceHealthStatus::IdentityMismatch);
+    }
 };
 
 // ============================================================================
@@ -411,7 +443,7 @@ public:
      * @brief Set the bundle path for saving/loading tiles.
      * @param path Path to the .snb directory.
      */
-    void setBundlePath(const QString& path) { m_bundlePath = path; }
+    void setBundlePath(const QString& path);
     
     /**
      * @brief Get the bundle path.
@@ -563,12 +595,27 @@ public:
     /**
      * @brief Save all unsaved ImageObjects to the assets folder.
      * @param bundlePath Path to the bundle directory.
-     * @return Number of images saved.
+     * @return Number of images saved, or -1 if any asset failed.
      * 
      * Phase O2: Called during saveBundle() to ensure all images are persisted.
      * ImageObjects with empty imagePath but valid cachedPixmap are saved.
      */
     int saveUnsavedImages(const QString& bundlePath);
+
+    /**
+     * @brief Persist a fresh image without blocking the GUI thread.
+     *
+     * File imports write their retained original bytes. Clipboard images pass
+     * an immutable QImage which the worker encodes once as lossless PNG.
+     */
+    bool enqueueImageAssetWrite(ImageObject* imageObject, const QImage& sourceImage);
+
+    /**
+     * @brief Wait for all pending image writes and publish their results.
+     *
+     * Called at every page/tile/bundle persistence and cleanup boundary.
+     */
+    bool flushPendingImageWrites();
     
     /**
      * @brief Clean up orphaned asset files from the assets folder.
@@ -943,25 +990,6 @@ public:
     void setPdfRelativePath(const QString& path) { if (PdfSource* s = primarySource()) s->relativePath = path; }
     
     /**
-     * @brief Check if PDF needs to be relinked.
-     * @return True if neither absolute nor relative path could locate the PDF.
-     * 
-     * Phase SHARE: Set by loadBundle() when PDF path resolution fails.
-     * DocumentManager checks this flag and shows PdfRelinkDialog if true.
-     */
-    bool needsPdfRelink() const {
-        for (const PdfSource& s : m_pdfSources) { if (s.needsRelink) return true; }
-        return false;
-    }
-    
-    /**
-     * @brief Clear the PDF relink flag on all sources.
-     * 
-     * Call after successfully relinking or if user chooses to continue without PDF.
-     */
-    void clearNeedsPdfRelink() { for (PdfSource& s : m_pdfSources) s.needsRelink = false; }
-    
-    /**
      * @brief Get the primary PDF provider for advanced operations.
      * @return Pointer to the provider, or nullptr if not loaded.
      * 
@@ -975,24 +1003,14 @@ public:
      * @return True if loaded successfully.
      * 
      * If a PDF is already loaded, it will be unloaded first.
-     * Sets the primary source path even if loading fails (for relink functionality).
+     * Sets the primary source path even if loading fails so it can be repaired later.
      */
     bool loadPdf(const QString& path);
     
     /**
-     * @brief Relink to a different PDF file.
-     * @param newPath Path to the new PDF file.
-     * @return True if the new PDF was loaded successfully.
-     * 
-     * Use this when the user locates a moved/renamed PDF.
-     * Marks the document as modified if successful.
-     */
-    bool relinkPdf(const QString& newPath);
-    
-    /**
      * @brief Unload the PDF and clear the reference.
      * 
-     * Releases PDF resources but keeps the path for potential relink.
+     * Releases PDF resources but keeps the source metadata for later recovery.
      */
     void unloadPdf();
     
@@ -1125,6 +1143,36 @@ public:
     int pdfSourceCount() const { return static_cast<int>(m_pdfSources.size()); }
 
     /**
+     * @brief Probe every PDF source and return its current runtime health.
+     *
+     * Candidate selection is shared with providerForSource(): a matching external
+     * absolute path, then a matching bundle-relative full PDF, then the bundled
+     * mini-PDF fallback. Providers are opened while probing so corrupt files are
+     * distinguished from merely missing files.
+     */
+    QVector<PdfSourceHealth> pdfSourceHealthSnapshot() const;
+
+    /**
+     * @brief Number of notebook pages backed by a source.
+     * @param sourceId Empty for the primary source.
+     */
+    int notebookPageCountForSource(const QString& sourceId) const;
+
+    /**
+     * @brief Locate a moved source without changing its stored identity.
+     *
+     * When a hash/size is stored the candidate must match. Legacy hashless sources
+     * establish their identity from the first successfully located file.
+     */
+    bool locateSource(const QString& sourceId, const QString& newPath);
+
+    /**
+     * @brief Clear cached runtime resolution so the next health query retries a source.
+     * @param sourceId Empty for the primary source.
+     */
+    void retryPdfSource(const QString& sourceId) const;
+
+    /**
      * @brief Look up a source by id. Empty id resolves to the primary.
      * @return Pointer into m_pdfSources, or nullptr if not found.
      */
@@ -1158,29 +1206,20 @@ public:
     QString registerSource(const QString& path, const QString& hash, qint64 size, bool bundled = false);
 
     /**
-     * @brief Relink a specific source to a new file path.
-     * @param sourceId Source id (empty = primary source).
-     * @return True if the new file loaded successfully.
-     */
-    bool relinkSource(const QString& sourceId, const QString& newPath);
-
-    /**
-     * @brief Continue without a source: drop its file reference and clear its relink flag.
-     * @param sourceId Source id (empty = primary source).
-     *
-     * For the primary source this is equivalent to clearPdfReference(). For a non-primary
-     * source, its path/relative/bundled reference is cleared so pages backed by it render a
-     * blank background without repeatedly prompting for relink. The source id stays valid.
-     */
-    void dismissSourceRelink(const QString& sourceId);
-
-    /**
      * @brief Ids of sources not referenced by any page (candidates for cleanup).
      *
      * Used by later plans (page delete / save cleanup). Provided here so the
      * registry API is complete.
      */
     QStringList unreferencedSourceIds() const;
+
+    /**
+     * @brief Keep a source alive for this session while undo/redo snapshots refer to it.
+     *
+     * The retention is runtime-only. A later session, which has no matching undo
+     * history, can prune the source normally.
+     */
+    void retainPdfSourceForUndo(const QString& sourceId);
 
     /**
      * @brief Drop PDF sources no page references anymore (Plan A2 / Q7.2).
@@ -1794,6 +1833,16 @@ public:
     static Mode stringToMode(const QString& str);
     
 private:
+    struct PendingImageWrite {
+        QString objectId;
+        QString fullPath;
+        QFuture<bool> future;
+    };
+
+    bool collectFinishedImageWrites(bool waitForAll);
+    void confirmPersistedImageAssets();
+    ImageObject* findLoadedImageObject(const QString& objectId) const;
+
     // ===== PDF Sources (multi-source model) =====
     /// Ordered list of PDF sources. Index 0 is the "primary" (born-from single PDF),
     /// mirrored to the legacy top-level pdf_path/pdf_hash/pdf_size keys on save.
@@ -1803,6 +1852,14 @@ private:
     /// load; other sources open on first render. Mutable so providerForSource() (used
     /// from const render paths) can populate the cache.
     mutable std::map<QString, std::unique_ptr<PdfProvider>> m_pdfProviders;
+    /// Runtime path and page-number space used by each cached provider.
+    mutable std::map<QString, QString> m_pdfProviderPaths;
+    mutable std::map<QString, qint64> m_pdfProviderPathSizes;
+    mutable std::map<QString, qint64> m_pdfProviderPathModifiedTimes;
+    mutable QSet<QString> m_pdfProvidersUsingBundled;
+    mutable QSet<QString> m_pdfProvidersUsingRelative;
+    mutable std::map<QString, PdfSourceHealthStatus> m_pdfSourceFailures;
+    QSet<QString> m_undoRetainedPdfSourceIds;
 
     // ===== Private PDF source helpers =====
     /// The primary source (the document's own base PDF, flagged primary), or nullptr
@@ -1818,6 +1875,20 @@ private:
     }
     /// Ensure a primary source exists, creating one (flagged primary) if needed.
     PdfSource& ensurePrimarySource();
+    struct PdfSourceOpenResult {
+        std::unique_ptr<PdfProvider> provider;
+        QString path;
+        PdfSourceHealthStatus failureStatus = PdfSourceHealthStatus::Missing;
+        bool bundled = false;
+        bool relative = false;
+    };
+    PdfSourceOpenResult openBestPdfSourceCandidate(const PdfSource& source) const;
+    void cachePdfProviderPath(const QString& registryId, const QString& path) const;
+    bool cachedPdfProviderPathIsCurrent(const QString& registryId) const;
+    void clearCachedPdfProvider(const QString& registryId) const;
+    QString normalizedPdfSourceId(const PdfSource& source) const {
+        return source.primary ? QString() : source.id;
+    }
     /// The primary provider without lazy creation, or nullptr if not open.
     PdfProvider* primaryProvider() const {
         const PdfSource* s = primarySource();
@@ -1858,6 +1929,9 @@ private:
     /// copied set (present in @p pageUuidMap) are repointed to the new page uuid;
     /// out-of-set or edgeless targets are made inert (slot emptied) while keeping
     /// the LinkObject itself. url/markdown/empty slots are untouched (Plan B-links).
+    /// A highlight region's sourceRange page uuid is remapped the same way, but
+    /// an unresolvable one is marked stale rather than dropped: the region rects
+    /// are the rendering truth and the highlight must keep displaying.
     void remapImportedLinkTargets(QJsonObject& pageJson,
                                   const QHash<QString, QString>& pageUuidMap) const;
     
@@ -1907,6 +1981,8 @@ private:
     mutable std::set<TileCoord> m_dirtyTiles;       ///< Tiles modified since last save
     std::set<TileCoord> m_deletedTiles;             ///< Tiles to delete from disk on next save
     bool m_lazyLoadEnabled = false;                 ///< True after loading from bundle
+    std::unique_ptr<QThreadPool> m_imageWritePool;  ///< Bounded pool isolated from PDF/render jobs
+    QVector<PendingImageWrite> m_pendingImageWrites;
 
     bool m_ocrTextVisible = false;
     bool m_ocrDarkMode = false;
@@ -1983,6 +2059,11 @@ private:
      * @brief Extract a single Page*'s LinkObjects into outline entries.
      *        Factored out of `enumerateLinkOutline`'s previous lambda so
      *        both the rebuild path and the refresh path can share it.
+     * @param requireContent Skip annotations with nothing worth opening: no
+     *        filled slot and no description the user actually wrote. The
+     *        scroll-bar markers use this so a highlight nobody has given
+     *        content to yet does not tick the bar. Auto-derived descriptions do
+     *        not count, which is why `descriptionUserEdited` exists.
      */
     static QVector<LinkOutlineEntry>
     extractLinkOutlineFromPage(const Page* page,
@@ -1990,7 +2071,8 @@ private:
                                 int tileX,
                                 int tileY,
                                 bool edgeless,
-                                bool requireMarkdown = true);
+                                bool requireMarkdown = true,
+                                bool requireContent = false);
 
     /**
      * @brief Read a tile's JSON on disk and extract just the LinkObject
@@ -2001,11 +2083,13 @@ private:
      * `m_tileIndex`).  Safe to call on const paths.
      */
     QVector<LinkOutlineEntry>
-    peekTileLinkOutlineFromDisk(TileCoord coord, bool requireMarkdown = true) const;
+    peekTileLinkOutlineFromDisk(TileCoord coord, bool requireMarkdown = true,
+                                bool requireContent = false) const;
 
     /// Paged-mode counterpart of `peekTileLinkOutlineFromDisk`.
     QVector<LinkOutlineEntry>
-    peekPageLinkOutlineFromDisk(int pageIndex, bool requireMarkdown = true) const;
+    peekPageLinkOutlineFromDisk(int pageIndex, bool requireMarkdown = true,
+                                bool requireContent = false) const;
 
     /**
      * @brief Shared JSON → outline-entry walker used by both peek helpers.
@@ -2020,7 +2104,8 @@ private:
                                        int  tileX,
                                        int  tileY,
                                        const QPointF& tileOrigin,
-                                       bool requireMarkdown = true);
+                                       bool requireMarkdown = true,
+                                       bool requireContent = false);
 
     /// Cache contents, keyed by container.  Empty vectors are allowed
     /// and mean "container exists but has no markdown-backed links."
